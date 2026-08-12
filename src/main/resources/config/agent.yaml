@@ -1,0 +1,102 @@
+# Eon Agent 配置文件
+# 对应技术方案第 8 节「配置参数总表」
+
+llm:
+  provider: "mimo"
+  base_url: "https://token-plan-cn.xiaomimimo.com/v1"
+  api_key: "tp-c654g8cbqqn3hi***********************"        # 从环境变量读取
+  model_name: "mimo-v2.5"
+  temperature: 0.7
+  timeout: 120                          # 秒
+  max_tokens: 4096
+
+# 百度千帆 AI Search（web_search 工具使用）
+web_search:
+  api_key: "bce-v3/ALTAK-DB1tDlP5ePo4nfD1vRls0**************************"         # 从环境变量读取
+  search_source: "baidu_search_v2"      # 搜索源
+  top_k: 10                             # 返回结果数
+  recency_filter: "year"                # 时间过滤：day/week/month/year
+
+# 模式配置（用户启动时显式选择 SIMPLE/TASK）
+mode:
+  checkpoint_enabled: false             # MVP 阶段关闭 Checkpoint，L2 阶段开启
+
+context:
+  max_tokens: 120000
+  budget_ratio: 0.7                     # 输入占 70%
+  system_prompt_path: "prompts/system_prompt.md"
+  bootstrap_budget_per_file: 20480      # 20KB
+  bootstrap_budget_total: 153600        # 150KB
+  pinned_max_tokens: 2048
+  insights:
+    max_items: 40
+    max_chars: 8000
+  tail_guard:
+    min_tokens: 8000
+    min_turns: 3
+  compression:
+    snip_threshold: 0.65
+    prune_threshold: 0.82
+    summarize_threshold: 0.95
+    snip_keep_chars: 80
+    prune_keep_chars: 30
+    summary_trigger_messages: 16
+
+# 会话预算（独立于上下文窗口大小，控制整个会话的累计 token 消耗）
+budget:
+  max_tokens: 800000              # 整个会话允许消耗的累计 token 上限
+  soft_threshold: 0.75           # 软阈值（75%）：注入 nudge 提示 LLM 收尾
+  hard_threshold: 1.0            # 硬阈值（100%）：硬终止
+  grace_steps: 3                 # 软阈值触发后给的额外轮次，让 LLM 收尾
+
+loop:
+  max_steps: 100
+  absolute_max_steps: 160
+
+loop_detect:
+  repeat_warn: 3
+  repeat_stop: 5
+  no_progress_steps: 6
+  failure_warn: 3              # 连续失败 3 次注入警告 nudge
+  failure_stop: 5              # 连续失败 5 次熔断终止
+
+parallel:
+  max_readonly_concurrency: 5
+
+retry:
+  attempts: 3
+  min_delay_ms: 500
+  max_delay_ms: 5000
+  jitter: 0.2
+
+storage:
+  base_dir: "./data"            # 会话数据根目录，实际路径: base_dir/{sessionId}/{jsonl,artifacts,...}
+
+tools:
+  whitelist:
+    - "todo_write"
+    - "todo_read"
+    - "working_memory"
+    - "finish"
+    - "web_search"
+    - "web_read"
+    - "download"
+    - "file_io"
+  destructive:
+    - "download"                        # 写文件系统
+  readonly:
+    - "todo_read"
+    - "web_search"
+    - "web_read"
+
+# MCP 服务配置
+mcp:
+  servers:
+    novel-mcp-server:
+      url: "http://127.0.0.1:8081/mcp"
+      enabled: true                     # 是否启用该 MCP 服务
+      permission: "READONLY"            # MCP 工具默认权限
+
+logging:
+  level: "INFO"
+  trace_tool_calls: true
