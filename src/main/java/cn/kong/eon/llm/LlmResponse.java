@@ -3,8 +3,6 @@ package cn.kong.eon.llm;
 import cn.kong.eon.model.TokenUsage;
 import dev.langchain4j.data.message.AiMessage;
 
-import java.util.List;
-
 /**
  * LLM 响应封装。
  */

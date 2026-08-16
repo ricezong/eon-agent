@@ -62,17 +62,49 @@ public class AgentConfig {
         return v instanceof Map ? (Map<String, Object>) v : Map.of();
     }
 
-    public LlmConfig getLlm() { return llm; }
-    public ContextConfig getContext() { return context; }
-    public LoopConfig getLoop() { return loop; }
-    public LoopDetectConfig getLoopDetect() { return loopDetect; }
-    public RetryConfig getRetry() { return retry; }
-    public StorageConfig getStorage() { return storage; }
-    public ToolsConfig getTools() { return tools; }
-    public McpConfig getMcp() { return mcp; }
-    public WebSearchConfig getWebSearch() { return webSearch; }
-    public ModeConfig getMode() { return mode; }
-    public BudgetConfig getBudget() { return budget; }
+    public LlmConfig getLlm() {
+        return llm;
+    }
+
+    public ContextConfig getContext() {
+        return context;
+    }
+
+    public LoopConfig getLoop() {
+        return loop;
+    }
+
+    public LoopDetectConfig getLoopDetect() {
+        return loopDetect;
+    }
+
+    public RetryConfig getRetry() {
+        return retry;
+    }
+
+    public StorageConfig getStorage() {
+        return storage;
+    }
+
+    public ToolsConfig getTools() {
+        return tools;
+    }
+
+    public McpConfig getMcp() {
+        return mcp;
+    }
+
+    public WebSearchConfig getWebSearch() {
+        return webSearch;
+    }
+
+    public ModeConfig getMode() {
+        return mode;
+    }
+
+    public BudgetConfig getBudget() {
+        return budget;
+    }
 
     // ===== 子配置类 =====
 
@@ -121,6 +153,8 @@ public class AgentConfig {
         public final int snipKeepChars;
         public final int pruneKeepChars;
         public final int summaryTriggerMessages;
+        public final int summarizeMaxInputChars;
+        public final int summarizeMaxOutputChars;
 
         public ContextConfig(Map<String, Object> m) {
             this.maxTokens = ((Number) m.getOrDefault("max_tokens", 120000)).intValue();
@@ -140,6 +174,9 @@ public class AgentConfig {
             this.snipKeepChars = ((Number) comp.getOrDefault("snip_keep_chars", 80)).intValue();
             this.pruneKeepChars = ((Number) comp.getOrDefault("prune_keep_chars", 30)).intValue();
             this.summaryTriggerMessages = ((Number) comp.getOrDefault("summary_trigger_messages", 16)).intValue();
+            Map<String, Object> summarize = getSubMap(comp, "summarize");
+            this.summarizeMaxInputChars = ((Number) summarize.getOrDefault("max_input_chars", 50000)).intValue();
+            this.summarizeMaxOutputChars = ((Number) summarize.getOrDefault("max_output_chars", 2000)).intValue();
         }
 
         @SuppressWarnings("unchecked")
@@ -148,20 +185,69 @@ public class AgentConfig {
             return v instanceof Map ? (Map<String, Object>) v : Map.of();
         }
 
-        public int getMaxTokens() { return maxTokens; }
-        public double getBudgetRatio() { return budgetRatio; }
-        public String getSystemPromptPath() { return systemPromptPath; }
-        public int getPinnedMaxTokens() { return pinnedMaxTokens; }
-        public int getInsightsMaxItems() { return insightsMaxItems; }
-        public int getInsightsMaxChars() { return insightsMaxChars; }
-        public int getTailGuardMinTokens() { return tailGuardMinTokens; }
-        public int getTailGuardMinTurns() { return tailGuardMinTurns; }
-        public double getSnipThreshold() { return snipThreshold; }
-        public double getPruneThreshold() { return pruneThreshold; }
-        public double getSummarizeThreshold() { return summarizeThreshold; }
-        public int getSnipKeepChars() { return snipKeepChars; }
-        public int getPruneKeepChars() { return pruneKeepChars; }
-        public int getSummaryTriggerMessages() { return summaryTriggerMessages; }
+        public int getMaxTokens() {
+            return maxTokens;
+        }
+
+        public double getBudgetRatio() {
+            return budgetRatio;
+        }
+
+        public String getSystemPromptPath() {
+            return systemPromptPath;
+        }
+
+        public int getPinnedMaxTokens() {
+            return pinnedMaxTokens;
+        }
+
+        public int getInsightsMaxItems() {
+            return insightsMaxItems;
+        }
+
+        public int getInsightsMaxChars() {
+            return insightsMaxChars;
+        }
+
+        public int getTailGuardMinTokens() {
+            return tailGuardMinTokens;
+        }
+
+        public int getTailGuardMinTurns() {
+            return tailGuardMinTurns;
+        }
+
+        public double getSnipThreshold() {
+            return snipThreshold;
+        }
+
+        public double getPruneThreshold() {
+            return pruneThreshold;
+        }
+
+        public double getSummarizeThreshold() {
+            return summarizeThreshold;
+        }
+
+        public int getSnipKeepChars() {
+            return snipKeepChars;
+        }
+
+        public int getPruneKeepChars() {
+            return pruneKeepChars;
+        }
+
+        public int getSummaryTriggerMessages() {
+            return summaryTriggerMessages;
+        }
+
+        public int getSummarizeMaxInputChars() {
+            return summarizeMaxInputChars;
+        }
+
+        public int getSummarizeMaxOutputChars() {
+            return summarizeMaxOutputChars;
+        }
     }
 
     public static class LoopConfig {
@@ -173,8 +259,13 @@ public class AgentConfig {
             this.absoluteMaxSteps = ((Number) m.getOrDefault("absolute_max_steps", 160)).intValue();
         }
 
-        public int getMaxSteps() { return maxSteps; }
-        public int getAbsoluteMaxSteps() { return absoluteMaxSteps; }
+        public int getMaxSteps() {
+            return maxSteps;
+        }
+
+        public int getAbsoluteMaxSteps() {
+            return absoluteMaxSteps;
+        }
     }
 
     /**
@@ -194,10 +285,21 @@ public class AgentConfig {
             this.graceSteps = ((Number) m.getOrDefault("grace_steps", 3)).intValue();
         }
 
-        public int getMaxTokens() { return maxTokens; }
-        public double getSoftThreshold() { return softThreshold; }
-        public double getHardThreshold() { return hardThreshold; }
-        public int getGraceSteps() { return graceSteps; }
+        public int getMaxTokens() {
+            return maxTokens;
+        }
+
+        public double getSoftThreshold() {
+            return softThreshold;
+        }
+
+        public double getHardThreshold() {
+            return hardThreshold;
+        }
+
+        public int getGraceSteps() {
+            return graceSteps;
+        }
     }
 
     public static class LoopDetectConfig {
@@ -215,11 +317,25 @@ public class AgentConfig {
             this.failureStop = ((Number) m.getOrDefault("failure_stop", 5)).intValue();
         }
 
-        public int getRepeatWarn() { return repeatWarn; }
-        public int getRepeatStop() { return repeatStop; }
-        public int getNoProgressSteps() { return noProgressSteps; }
-        public int getFailureWarn() { return failureWarn; }
-        public int getFailureStop() { return failureStop; }
+        public int getRepeatWarn() {
+            return repeatWarn;
+        }
+
+        public int getRepeatStop() {
+            return repeatStop;
+        }
+
+        public int getNoProgressSteps() {
+            return noProgressSteps;
+        }
+
+        public int getFailureWarn() {
+            return failureWarn;
+        }
+
+        public int getFailureStop() {
+            return failureStop;
+        }
     }
 
     public static class RetryConfig {
@@ -235,10 +351,21 @@ public class AgentConfig {
             this.jitter = ((Number) m.getOrDefault("jitter", 0.2)).doubleValue();
         }
 
-        public int getAttempts() { return attempts; }
-        public long getMinDelayMs() { return minDelayMs; }
-        public long getMaxDelayMs() { return maxDelayMs; }
-        public double getJitter() { return jitter; }
+        public int getAttempts() {
+            return attempts;
+        }
+
+        public long getMinDelayMs() {
+            return minDelayMs;
+        }
+
+        public long getMaxDelayMs() {
+            return maxDelayMs;
+        }
+
+        public double getJitter() {
+            return jitter;
+        }
     }
 
     public static class StorageConfig {

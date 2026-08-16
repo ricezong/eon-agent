@@ -3,7 +3,6 @@ package cn.kong.eon.agent.capability;
 import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.TodoItem;
-import cn.kong.eon.model.TodoStatus;
 import cn.kong.eon.store.InsightsStore;
 import cn.kong.eon.store.TodoStore;
 import org.slf4j.Logger;

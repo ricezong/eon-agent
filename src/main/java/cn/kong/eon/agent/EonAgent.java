@@ -16,6 +16,8 @@ import cn.kong.eon.store.JsonlStore;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolRegistry;
 import cn.kong.eon.tool.ToolResultRenderer;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.*;
@@ -159,9 +161,7 @@ public class EonAgent {
                 // 校验工具是否存在
                 for (ToolExecutionRequest req : requests) {
                     if (!toolRegistry.contains(req.name())) {
-                        state.getFormatCorrections().add(
-                                "工具 " + req.name() + " 不存在，请使用可用工具。");
-                        continue;
+                        state.getFormatCorrections().add("工具 " + req.name() + " 不存在，请使用可用工具。");
                     }
                 }
                 state.setPendingToolCalls(requests);
@@ -331,8 +331,8 @@ public class EonAgent {
     private Map<String, Object> parseArgs(String json) {
         if (json == null || json.isBlank()) return Map.of();
         try {
-            return new com.fasterxml.jackson.databind.ObjectMapper()
-                    .readValue(json, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+            return new ObjectMapper()
+                    .readValue(json, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
             log.warn("Failed to parse tool arguments: {}", json, e);
             return Map.of();

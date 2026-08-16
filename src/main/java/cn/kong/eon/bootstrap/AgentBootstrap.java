@@ -67,7 +67,7 @@ public class AgentBootstrap {
         EonAgent agent = new EonAgent(config, llmClient, toolRegistry, resultRenderer, jsonlStore, basePrompt, toolContext);
 
         // 6. 挂载能力模块
-        agent.addCapability(new ContextCompactor(config));
+        agent.addCapability(new ContextCompactor(config, llmClient));
         agent.addCapability(new BudgetGuard(config));
         agent.addCapability(new NudgeRenderer());
         agent.addCapability(new LoopGuard(config));

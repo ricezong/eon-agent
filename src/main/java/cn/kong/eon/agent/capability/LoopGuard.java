@@ -1,6 +1,5 @@
 package cn.kong.eon.agent.capability;
 
-import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmResponse;
 import cn.kong.eon.loop.LoopDetector;

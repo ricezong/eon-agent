@@ -3,6 +3,7 @@ package cn.kong.eon.tool.builtin;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.TodoItem;
 import cn.kong.eon.model.TodoStatus;
+import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -71,7 +72,7 @@ public class TodoWriteTool implements ToolExecutor {
         return new ToolDescriptor(
                 "todo_write",
                 desc,
-                cn.kong.eon.model.ToolPermission.RESTRICTED_WRITE,
+                ToolPermission.RESTRICTED_WRITE,
                 ToolDescriptor.buildSpec("todo_write", desc, props),
                 new TodoWriteTool()
         );

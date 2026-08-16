@@ -1,6 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.model.SessionState;
+import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -27,7 +28,7 @@ public class WorkingMemoryTool implements ToolExecutor {
         return new ToolDescriptor(
                 "working_memory",
                 desc,
-                cn.kong.eon.model.ToolPermission.RESTRICTED_WRITE,
+                ToolPermission.RESTRICTED_WRITE,
                 ToolDescriptor.buildSpec("working_memory", desc, props),
                 new WorkingMemoryTool()
         );

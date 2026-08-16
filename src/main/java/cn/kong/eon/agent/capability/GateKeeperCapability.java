@@ -1,6 +1,5 @@
 package cn.kong.eon.agent.capability;
 
-import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.tool.ToolRegistry;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;

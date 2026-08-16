@@ -1,13 +1,13 @@
 package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.model.SessionState;
+import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -45,7 +45,7 @@ public class DownloadTool implements ToolExecutor {
         return new ToolDescriptor(
                 "download",
                 desc,
-                cn.kong.eon.model.ToolPermission.DESTRUCTIVE,
+                ToolPermission.DESTRUCTIVE,
                 ToolDescriptor.buildSpec("download", desc, props),
                 new DownloadTool()
         );

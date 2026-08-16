@@ -1,6 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.model.SessionState;
+import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -18,12 +19,10 @@ import java.util.stream.Stream;
 /**
  * file_io 工具：文件读写。支持 read/write/list/delete。
  * 路径相对于 workDir，禁止路径穿越（..）。
- * 读限制 1MB，写自动创建父目录。
+ * 写自动创建父目录，大文件截断/落盘由 ToolResultRenderer 统一处理。
  */
 public class FileIoTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(FileIoTool.class);
-
-    private static final int MAX_READ_CHARS = 1_000_000;
 
     public static ToolDescriptor descriptor() {
         Map<String, Map<String, Object>> props = new LinkedHashMap<>();
@@ -46,12 +45,12 @@ public class FileIoTool implements ToolExecutor {
                 "description", "是否追加（operation=write 时可选，默认 false 即覆盖）"
         ));
 
-        String desc = "文件读写（工作目录内）。read 限制 1MB；write 自动创建父目录；"
+        String desc = "文件读写（工作目录内）。write 自动创建父目录；"
                 + "路径禁止含 ..（防穿越）。";
         return new ToolDescriptor(
                 "file_io",
                 desc,
-                cn.kong.eon.model.ToolPermission.RESTRICTED_WRITE,
+                ToolPermission.RESTRICTED_WRITE,
                 ToolDescriptor.buildSpec("file_io", desc, props),
                 new FileIoTool()
         );
@@ -110,11 +109,6 @@ public class FileIoTool implements ToolExecutor {
         }
 
         String content = Files.readString(path);
-        if (content.length() > MAX_READ_CHARS) {
-            content = content.substring(0, MAX_READ_CHARS)
-                    + "\n\n... [文件过大，已截断，显示前 " + MAX_READ_CHARS + " 字符]";
-        }
-
         StringBuilder sb = new StringBuilder();
         sb.append("[读取成功] ").append(path.getFileName()).append("\n");
         sb.append("路径: ").append(path).append("\n");

@@ -261,16 +261,35 @@ class CoreLogicTest {
         // Given
         ToolResultRenderer renderer = new ToolResultRenderer(artifactStore);
         SessionState state = SessionState.create("test-artifact", "test");
-        String largeContent = "x".repeat(10000);  // 超过 8000 字符阈值
+        String largeContent = "x".repeat(8001);  // 超过 8000 字符落盘阈值
 
         // When: 渲染一个大结果
         String rendered = renderer.render("web_read", "call-002",
                 "读取网页", largeContent, state);
 
-        // Then: 应落盘为 artifact，上下文只留引用
+        // Then: 应落盘为 artifact，上下文只留摘要 + 引用
         assertThat(rendered).contains("artifact://art_");
         assertThat(rendered).contains("完整内容引用");
+        assertThat(rendered).contains("原始大小: 8001 字符");
         assertThat(artifactStore.listAll()).hasSize(1);
+    }
+
+    @Test
+    void should_keep_full_content_below_threshold() {
+        // Given
+        ToolResultRenderer renderer = new ToolResultRenderer(artifactStore);
+        SessionState state = SessionState.create("test-full", "test");
+        String content = "x".repeat(4000);  // 低于落盘阈值 8000，不应落盘
+
+        // When: 渲染结果
+        String rendered = renderer.render("web_read", "call-003",
+                "读取网页", content, state);
+
+        // Then: 完整内容应在消息中，无 artifact 引用，无截断标记
+        assertThat(rendered).doesNotContain("artifact://");
+        assertThat(rendered).contains("x".repeat(4000));
+        assertThat(rendered).doesNotContain("中间内容省略");
+        assertThat(artifactStore.listAll()).isEmpty();
     }
 
     @Test

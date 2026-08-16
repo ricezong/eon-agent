@@ -2,6 +2,7 @@ package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
+import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -94,7 +95,7 @@ public class WebSearchTool implements ToolExecutor {
         return new ToolDescriptor(
                 "web_search",
                 desc,
-                cn.kong.eon.model.ToolPermission.READONLY,
+                ToolPermission.READONLY,
                 ToolDescriptor.buildSpec("web_search", desc, props),
                 new WebSearchTool()
         );
@@ -234,11 +235,6 @@ public class WebSearchTool implements ToolExecutor {
             String content = ref.path("content").asText("");
             String date = ref.path("date").asText("");
             String type = ref.path("type").asText("web");
-
-            // 摘要截断
-            if (content.length() > 200) {
-                content = content.substring(0, 200) + "...";
-            }
 
             sb.append(count).append(". ").append(title).append("\n");
             sb.append("   URL: ").append(url).append("\n");

@@ -3,6 +3,7 @@ package cn.kong.eon.tool.builtin;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.TodoItem;
 import cn.kong.eon.model.TodoStatus;
+import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -22,7 +23,7 @@ public class TodoReadTool implements ToolExecutor {
         return new ToolDescriptor(
                 "todo_read",
                 "读取当前任务清单，返回完整列表与进度统计。",
-                cn.kong.eon.model.ToolPermission.READONLY,
+                ToolPermission.READONLY,
                 ToolDescriptor.buildSpec("todo_read",
                         "读取当前任务清单，返回完整列表与进度统计。",
                         props),

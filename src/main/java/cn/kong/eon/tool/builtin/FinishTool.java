@@ -1,6 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.model.SessionState;
+import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -36,7 +37,7 @@ public class FinishTool implements ToolExecutor {
         return new ToolDescriptor(
                 "finish",
                 desc,
-                cn.kong.eon.model.ToolPermission.RESTRICTED_WRITE,
+                ToolPermission.RESTRICTED_WRITE,
                 ToolDescriptor.buildSpec("finish", desc, props),
                 new FinishTool()
         );

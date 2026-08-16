@@ -4,12 +4,14 @@ import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.context.CompressionEngine;
 import cn.kong.eon.context.PairingRepairer;
+import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.model.CompressionState;
 import cn.kong.eon.model.SessionState;
 import dev.langchain4j.data.message.ChatMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -18,9 +20,12 @@ import java.util.List;
  * 始终激活。在 beforeModelCall 中检测水位：
  * - 水位 ≥ snipThreshold：Snip（截短旧 tool result）
  * - 水位 ≥ pruneThreshold：Prune（替换为占位符）
- * - 水位 ≥ summarizeThreshold：Summarize（LLM 摘要，MVP 暂未实现）
+ * - 水位 ≥ summarizeThreshold：Summarize（LLM 生成摘要，删除旧消息）
  *
  * 压缩后执行配对修复。
+ * Summarize 会删除旧消息替换为摘要，可能导致 tool_use/tool_result 配对断裂，
+ * 因此在 summarizeThreshold 触发时调用 PairingRepairer.repair()。
+ * Snip/Prune 只截短 content 不删除消息，不破坏配对。
  */
 public class ContextCompactor implements CapabilityModule {
     private static final Logger log = LoggerFactory.getLogger(ContextCompactor.class);
@@ -29,13 +34,17 @@ public class ContextCompactor implements CapabilityModule {
     private final CompressionEngine compressionEngine;
     private final PairingRepairer pairingRepairer;
 
-    public ContextCompactor(AgentConfig config) {
+    public ContextCompactor(AgentConfig config, LlmClient llmClient) {
         this.config = config;
         this.compressionEngine = new CompressionEngine(
                 config.getContext().snipThreshold,
                 config.getContext().pruneThreshold,
+                config.getContext().summarizeThreshold,
                 config.getContext().snipKeepChars,
-                config.getContext().pruneKeepChars);
+                config.getContext().pruneKeepChars,
+                config.getContext().summarizeMaxInputChars,
+                config.getContext().summarizeMaxOutputChars,
+                llmClient);
         this.pairingRepairer = new PairingRepairer();
     }
 
@@ -53,7 +62,7 @@ public class ContextCompactor implements CapabilityModule {
         double waterLevel = Math.min(1.0, (double) usedTokens / maxTokens);
         state.getCompressionState().setLastWaterLevel(waterLevel);
 
-        log.debug("Water level: {:.1f}% ({}/{})", waterLevel * 100, usedTokens, maxTokens);
+        log.debug("Water level: {}% ({}/{})", String.format("%.1f", waterLevel * 100), usedTokens, maxTokens);
 
         if (waterLevel < config.getContext().snipThreshold) {
             return;  // 低水位，不压缩
@@ -66,9 +75,9 @@ public class ContextCompactor implements CapabilityModule {
         CompressionState cs = state.getCompressionState();
         int tailGuardTurns = config.getContext().tailGuardMinTurns;
 
-        // 压缩
+        // 压缩（CompressionEngine 内部会按水位执行 Snip/Prune/Summarize 三级递进）
         List<ChatMessage> compressed = compressionEngine.compress(
-                new java.util.ArrayList<>(transcript), cs, waterLevel, tailGuardTurns);
+                new ArrayList<>(transcript), cs, waterLevel, tailGuardTurns);
 
         // 配对修复：仅在触发 Summarize（水位 ≥ summarizeThreshold）时执行。
         // Snip/Prune 只截短 content 不删除消息，不破坏 tool_use/tool_result 配对。
@@ -80,7 +89,7 @@ public class ContextCompactor implements CapabilityModule {
 
         ctx.setTranscript(compressed);
 
-        log.info("Context compressed: water={:.1f}%, {} -> {} messages",
-                waterLevel * 100, transcript.size(), compressed.size());
+        log.info("Context compressed: water={}% ({} -> {} messages)",
+                String.format("%.1f", waterLevel * 100), transcript.size(), compressed.size());
     }
 }

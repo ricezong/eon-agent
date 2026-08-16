@@ -1,6 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.model.SessionState;
+import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -20,7 +21,6 @@ public class WebReadTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(WebReadTool.class);
 
     private static final int TIMEOUT_MS = 20000;
-    private static final int MAX_CHARS = 50000;
 
     public static ToolDescriptor descriptor() {
         Map<String, Map<String, Object>> props = new LinkedHashMap<>();
@@ -32,7 +32,7 @@ public class WebReadTool implements ToolExecutor {
         return new ToolDescriptor(
                 "web_read",
                 "读取网页内容，提取正文文本。返回纯文本（去除 HTML 标签）。",
-                cn.kong.eon.model.ToolPermission.READONLY,
+                ToolPermission.READONLY,
                 ToolDescriptor.buildSpec("web_read",
                         "读取网页内容，提取正文文本。返回纯文本（去除 HTML 标签）。",
                         props),
@@ -57,10 +57,6 @@ public class WebReadTool implements ToolExecutor {
 
             String title = doc.title();
             String text = extractMainText(doc);
-
-            if (text.length() > MAX_CHARS) {
-                text = text.substring(0, MAX_CHARS) + "\n\n... [内容截断，共 " + text.length() + " 字符]";
-            }
 
             StringBuilder sb = new StringBuilder();
             sb.append("网页标题: ").append(title).append("\n");
