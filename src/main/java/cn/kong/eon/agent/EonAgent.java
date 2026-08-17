@@ -25,6 +25,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * EonAgent — 单入口统一引擎。
@@ -45,15 +47,30 @@ import java.util.*;
  *   <li>配对修复仅在 Summarize 触发时执行（Snip/Prune 不破坏配对）</li>
  * </ol>
  *
- * <h3>Profile 路由</h3>
+ * <h3>Profile 路由（两档 + 两阶段懒加载）</h3>
  * <ul>
- *   <li>LIGHT_CHAT：不注入工具 Schema（纯聊天）</li>
- *   <li>ASSISTED：只注入网络搜索相关工具（web_search + web_read + finish）</li>
- *   <li>TASK_MULTI：全量注入（LLM 调 todo_write 后自动升级）</li>
+ *   <li>SIMPLE：默认模式，始终注入 tool_catalog（名称+摘要）。
+ *       采用两阶段懒加载：
+ *       <ol>
+ *         <li>第一阶段（pendingToolMounts 为空）：注入 catalog + toolRequestPrompt，
+ *             不传工具 Schema。模型从 catalog 中选择需要的工具，在文本输出中声明。</li>
+ *         <li>第二阶段（pendingToolMounts 非空）：按声明的工具名挂载完整 Schema，
+ *             不传 toolRequestPrompt。模型可以调用工具。</li>
+ *       </ol></li>
+ *   <li>TASK：LLM 调用过 todo_write 后自动升级，全量挂载工具 Schema，
+ *       TodoNavigator 激活。Profile 升级单向，不可降级。</li>
  * </ul>
  */
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
+
+    /**
+     * 两阶段懒加载：模型声明所需工具的输出格式。
+     * 模型在文本输出中以此格式声明需要的工具名，服务端解析后下一轮挂载完整 Schema。
+     * 示例：[NEED_TOOLS: web_search, web_read, finish]
+     */
+    private static final Pattern NEED_TOOLS_PATTERN =
+            Pattern.compile("\\[NEED_TOOLS:\\s*(.+?)\\s*\\]", Pattern.CASE_INSENSITIVE);
 
     private final AgentConfig config;
     private final LlmClient llmClient;
@@ -111,6 +128,9 @@ public class EonAgent {
         log.info("=== EonAgent 启动 === session={}", state.getSessionId());
         log.info("用户请求: {}", state.getUserOriginalInput());
 
+        // 重置懒加载状态（防止多轮对话场景下残留上一轮的 pendingToolMounts）
+        state.setPendingToolMounts(null);
+
         jsonlStore.append(UserMessage.from(state.getUserOriginalInput()));
 
         while (state.getTurnCount() < config.getLoop().maxSteps) {
@@ -138,8 +158,8 @@ public class EonAgent {
                 List<ChatMessage> messages = ctx.build();
                 state.setCurrentMessages(messages);
 
-                // 4. 获取工具 Schema（按 Profile）
-                List<ToolSpecification> tools = getToolsForProfile(profile);
+                // 4. 获取工具 Schema（按 Profile + 两阶段懒加载）
+                List<ToolSpecification> tools = getToolsForProfile(state, profile);
 
                 // 5. 调用模型
                 LlmResponse response = llmClient.chat(messages, tools);
@@ -153,7 +173,22 @@ public class EonAgent {
 
                 List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
                 if (requests == null || requests.isEmpty()) {
-                    // 无 tool_calls：聊天结束
+                    // 无 tool_calls
+                    // 两阶段懒加载：检查模型是否在文本中声明了所需工具
+                    if (profile == RequestProfile.SIMPLE && state.getPendingToolMounts() == null) {
+                        Set<String> declaredTools = parseDeclaredTools(thought);
+                        if (declaredTools != null && !declaredTools.isEmpty()) {
+                            // 模型声明了所需工具，写入 pendingToolMounts，进入下一轮挂载 Schema
+                            Set<String> validTools = filterValidTools(declaredTools);
+                            if (!validTools.isEmpty()) {
+                                state.setPendingToolMounts(validTools);
+                                log.info("Model declared tools: {} -> mounting next turn", validTools);
+                                finalizeAndAppend(state);
+                                continue;  // 回到 Core Loop，下一轮挂载 Schema
+                            }
+                        }
+                    }
+                    // 聊天结束
                     finalizeAndAppend(state);
                     return thought;
                 }
@@ -231,7 +266,7 @@ public class EonAgent {
      */
     private ContextBuilder buildContext(SessionState state, RequestProfile profile) {
         ContextBuilder ctx = new ContextBuilder();
-        ctx.setSystemPrompt(buildSystemPrompt(state, profile));
+        ctx.setSystemPrompt(basePrompt);
 
         // 摘要（压缩后才有）
         if (state.getCompressionState().getLastSummary() != null) {
@@ -242,44 +277,41 @@ public class EonAgent {
         List<ChatMessage> transcript = jsonlStore.readAll();
         ctx.setTranscript(transcript);
 
-        // 工具目录（ASSISTED/TASK_MULTI 才注入，独立消息不破坏 System Prompt 缓存）
-        if (profile != RequestProfile.LIGHT_CHAT) {
-            ctx.setToolCatalog(toolRegistry.getCatalogSummary());
+        // 工具目录（始终注入，独立消息不破坏 System Prompt 缓存）
+        ctx.setToolCatalog(toolRegistry.getCatalogSummary());
+
+        // 两阶段懒加载：SIMPLE 模式且模型尚未声明工具时，注入 toolRequestPrompt 引导模型选择
+        if (profile == RequestProfile.SIMPLE && state.getPendingToolMounts() == null) {
+            ctx.setToolRequestPrompt(buildToolRequestPrompt());
         }
 
         return ctx;
     }
 
     /**
-     * 构建系统提示词。
+     * 按 Profile + 两阶段懒加载获取工具 Schema。
      *
-     * System Prompt 完全冻结（只含 basePrompt），不拼接任何动态内容。
-     * 这样保证 KV Cache 前缀稳定，每轮调用都能命中缓存。
-     *
-     * policy 已删除（无需告知 LLM 当前 Profile）。
-     * tool_catalog 通过 ContextBuilder 的独立消息注入（放在 transcript 之后）。
+     * SIMPLE + pendingToolMounts 为空（第一阶段）：不传工具 Schema，模型只能看到 catalog
+     * SIMPLE + pendingToolMounts 非空（第二阶段）：按声明的工具名挂载完整 Schema
+     * TASK：全量注入所有工具 Schema
      */
-    private String buildSystemPrompt(SessionState state, RequestProfile profile) {
-        return basePrompt;
-    }
+    private List<ToolSpecification> getToolsForProfile(SessionState state, RequestProfile profile) {
+        if (profile == RequestProfile.TASK) {
+            // TASK：全量注入
+            return toolRegistry.getSpecifications();
+        }
 
-    /**
-     * 按 Profile 获取工具 Schema。
-     *
-     * LIGHT_CHAT：不注入任何工具 Schema（纯聊天）
-     * ASSISTED：只注入网络搜索相关工具（web_search + web_read + finish）
-     * TASK_MULTI：全量注入（含 Todo 三件套 + download + MCP）
-     */
-    private List<ToolSpecification> getToolsForProfile(RequestProfile profile) {
-        if (profile == RequestProfile.LIGHT_CHAT) {
+        // SIMPLE 模式
+        Set<String> mounts = state.getPendingToolMounts();
+        if (mounts == null || mounts.isEmpty()) {
+            // 第一阶段：不传工具 Schema
             return List.of();
         }
-        if (profile == RequestProfile.ASSISTED) {
-            // ASSISTED：只注入网络搜索相关工具
-            return toolRegistry.getSpecificationsByName(Set.of("web_search", "web_read", "finish"));
-        }
-        // TASK_MULTI：全量注入
-        return toolRegistry.getSpecifications();
+
+        // 第二阶段：按声明的工具名挂载完整 Schema
+        List<ToolSpecification> specs = toolRegistry.getSpecificationsByName(mounts);
+        log.info("Mounting tools (lazy load): {} -> {} specs", mounts, specs.size());
+        return specs;
     }
 
     /**
@@ -316,9 +348,12 @@ public class EonAgent {
                 : AiMessage.from(state.getPendingToolCalls());
         jsonlStore.append(aiMsg);
 
-        for (ToolExecutionResult result : state.getLastToolResults()) {
-            jsonlStore.append(ToolExecutionResultMessage.from(
-                    result.toolCallId(), result.toolName(), result.content()));
+        List<ToolExecutionResult> toolResults = state.getLastToolResults();
+        if (toolResults != null) {
+            for (ToolExecutionResult result : toolResults) {
+                jsonlStore.append(ToolExecutionResultMessage.from(
+                        result.toolCallId(), result.toolName(), result.content()));
+            }
         }
 
         // 清理临时状态
@@ -337,5 +372,56 @@ public class EonAgent {
             log.warn("Failed to parse tool arguments: {}", json, e);
             return Map.of();
         }
+    }
+
+    /**
+     * 构建工具请求提示词。
+     * 引导模型从 tool_catalog 中选择需要的工具，以 [NEED_TOOLS: tool1, tool2] 格式声明。
+     */
+    private String buildToolRequestPrompt() {
+        return """
+                上方是可用工具目录（tool_catalog）。如果你需要使用其中的工具来完成任务，
+                请在回复中声明你需要的工具名，格式为：[NEED_TOOLS: tool1, tool2, ...]
+                声明后，下一轮你将获得这些工具的完整调用参数。
+                如果任务不需要工具（如纯聊天、知识问答），直接回答即可，无需声明。
+                注意：你也可以使用 todo_write 建立任务清单来进入任务模式（全量工具可见）。
+                """;
+    }
+
+    /**
+     * 从模型文本输出中解析声明的工具名。
+     * 格式：[NEED_TOOLS: web_search, web_read, finish]
+     *
+     * @return 声明的工具名集合，未找到则返回 null
+     */
+    private Set<String> parseDeclaredTools(String text) {
+        if (text == null || text.isBlank()) return null;
+        Matcher matcher = NEED_TOOLS_PATTERN.matcher(text);
+        if (!matcher.find()) return null;
+
+        String raw = matcher.group(1);
+        Set<String> tools = new LinkedHashSet<>();
+        for (String part : raw.split(",")) {
+            String name = part.trim();
+            if (!name.isEmpty()) {
+                tools.add(name);
+            }
+        }
+        return tools.isEmpty() ? null : tools;
+    }
+
+    /**
+     * 过滤出真实存在的工具名（本地 + MCP）。
+     */
+    private Set<String> filterValidTools(Set<String> declaredTools) {
+        Set<String> valid = new LinkedHashSet<>();
+        for (String name : declaredTools) {
+            if (toolRegistry.contains(name)) {
+                valid.add(name);
+            } else {
+                log.warn("Declared tool not found: {}", name);
+            }
+        }
+        return valid;
     }
 }

@@ -13,7 +13,7 @@ import java.util.List;
  * <h3>分层组装</h3>
  * <ul>
  *   <li>基础层（所有请求必走）：System Prompt + 滚动摘要 + 历史消息 + 尾部保护区</li>
- *   <li>Agent 层（按需注入）：ToolCatalog + Navigator</li>
+ *   <li>Agent 层（按需注入）：ToolCatalog + ToolRequestPrompt + Navigator</li>
  * </ul>
  *
  * <h3>物理拼装顺序</h3>
@@ -21,7 +21,8 @@ import java.util.List;
  *   messages[0]          System Prompt（basePrompt，完全冻结，吃 KV Cache）
  *   messages[1]?         Summary（压缩后才有）
  *   messages[2..N]       Transcript（历史消息，可被 Snip/Prune 压缩）
- *   messages[N+1]?       ToolCatalog（ASSISTED/TASK_MULTI 才注入，独立消息）
+ *   messages[N+1]?       ToolCatalog（始终注入，独立消息不破坏 System Prompt 缓存）
+ *   messages[N+1b]?      ToolRequestPrompt（SIMPLE 模式第一阶段注入，引导模型声明所需工具）
  *   messages[N+2]?       Navigator（TodoNavigator 激活后才有）
  *   messages[N+3..End]   TailGuard（尾部保护区，最近 3 轮，绝不裁剪）
  * </pre>
@@ -40,6 +41,7 @@ public class ContextBuilder {
     private String summary;
     private String navigator;
     private String toolCatalog;
+    private String toolRequestPrompt;  // 两阶段懒加载：引导模型声明所需工具
     private String runtimeNudges;
     private List<ChatMessage> transcript;
     private List<ChatMessage> tailGuard;
@@ -61,6 +63,11 @@ public class ContextBuilder {
 
     public ContextBuilder setToolCatalog(String toolCatalog) {
         this.toolCatalog = toolCatalog;
+        return this;
+    }
+
+    public ContextBuilder setToolRequestPrompt(String toolRequestPrompt) {
+        this.toolRequestPrompt = toolRequestPrompt;
         return this;
     }
 
@@ -106,9 +113,14 @@ public class ContextBuilder {
             result.addAll(transcript);
         }
 
-        // ④ Agent 层：工具目录（ASSISTED/TASK_MULTI 才注入，独立消息不破坏 System Prompt 缓存）
+        // ④ Agent 层：工具目录（始终注入，独立消息不破坏 System Prompt 缓存）
         if (toolCatalog != null && !toolCatalog.isBlank()) {
             result.add(UserMessage.from("tool_catalog", toolCatalog));
+        }
+
+        // ④b Agent 层：工具请求提示（SIMPLE 模式且模型尚未声明工具时注入，引导模型选择需要的工具）
+        if (toolRequestPrompt != null && !toolRequestPrompt.isBlank()) {
+            result.add(UserMessage.from("tool_request_prompt", toolRequestPrompt));
         }
 
         // ⑤ Agent 层：Navigator（TodoNavigator 激活后才有）
@@ -137,6 +149,7 @@ public class ContextBuilder {
         if (systemPrompt != null) chars += systemPrompt.length();
         if (summary != null) chars += summary.length();
         if (toolCatalog != null) chars += toolCatalog.length();
+        if (toolRequestPrompt != null) chars += toolRequestPrompt.length();
         if (navigator != null) chars += navigator.length();
         if (transcript != null) {
             for (ChatMessage msg : transcript) {

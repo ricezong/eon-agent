@@ -121,7 +121,7 @@ public class ToolRegistry {
 
     /**
      * 获取指定工具名的 Schema 列表（按名称过滤）。
-     * 用于 ASSISTED Profile：只注入网络搜索相关工具。
+     * 用于 SIMPLE 模式的第二阶段懒加载：按模型声明的工具名挂载完整 Schema。
      */
     public List<ToolSpecification> getSpecificationsByName(Set<String> toolNames) {
         List<ToolSpecification> result = new ArrayList<>();
@@ -229,7 +229,7 @@ public class ToolRegistry {
 
     /**
      * 获取工具目录摘要（名称 + 一句话描述）。
-     * 用于 ASSISTED Profile 的懒加载：先注入摘要，LLM 需要时再加载完整 Schema。
+     * 用于 SIMPLE 模式的懒加载：先注入摘要，LLM 需要时再加载完整 Schema。
      */
     public String getCatalogSummary() {
         StringBuilder sb = new StringBuilder("可用工具目录：\n");

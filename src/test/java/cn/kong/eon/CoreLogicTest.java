@@ -226,7 +226,7 @@ class CoreLogicTest {
         assertThat(toolRegistry.get("finish")).isNotNull();
         assertThat(toolRegistry.get("web_search")).isNotNull();
         assertThat(toolRegistry.get("web_read")).isNotNull();
-        assertThat(toolRegistry.get("download")).isNotNull();
+        assertThat(toolRegistry.get("file_download")).isNotNull();
         assertThat(toolRegistry.get("file_io")).isNotNull();
     }
 
@@ -235,7 +235,7 @@ class CoreLogicTest {
         assertThat(toolRegistry.isReadonly("todo_read")).isTrue();
         assertThat(toolRegistry.isReadonly("web_search")).isTrue();
         assertThat(toolRegistry.isReadonly("web_read")).isTrue();
-        assertThat(toolRegistry.isDestructive("download")).isTrue();
+        assertThat(toolRegistry.isDestructive("file_download")).isTrue();
         assertThat(toolRegistry.isDestructive("todo_read")).isFalse();
     }
 
@@ -261,7 +261,7 @@ class CoreLogicTest {
         // Given
         ToolResultRenderer renderer = new ToolResultRenderer(artifactStore);
         SessionState state = SessionState.create("test-artifact", "test");
-        String largeContent = "x".repeat(8001);  // 超过 8000 字符落盘阈值
+        String largeContent = "x".repeat(8001);  // 超过 3000 字符落盘阈值
 
         // When: 渲染一个大结果
         String rendered = renderer.render("web_read", "call-002",
@@ -279,7 +279,7 @@ class CoreLogicTest {
         // Given
         ToolResultRenderer renderer = new ToolResultRenderer(artifactStore);
         SessionState state = SessionState.create("test-full", "test");
-        String content = "x".repeat(4000);  // 低于落盘阈值 8000，不应落盘
+        String content = "x".repeat(2000);  // 低于落盘阈值 3000，不应落盘
 
         // When: 渲染结果
         String rendered = renderer.render("web_read", "call-003",
@@ -287,7 +287,7 @@ class CoreLogicTest {
 
         // Then: 完整内容应在消息中，无 artifact 引用，无截断标记
         assertThat(rendered).doesNotContain("artifact://");
-        assertThat(rendered).contains("x".repeat(4000));
+        assertThat(rendered).contains("x".repeat(2000));
         assertThat(rendered).doesNotContain("中间内容省略");
         assertThat(artifactStore.listAll()).isEmpty();
     }

@@ -20,9 +20,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * download 工具：下载文件。
+ * file_download 工具：通用文件下载。
  * 真实实现，使用 Java HttpClient 下载文件到本地。
  * 破坏性工具（写文件系统），需门禁审批。
+ * 工具名改为 file_download 以避免与 MCP 服务的 download 工具重名。
  */
 public class DownloadTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(DownloadTool.class);
@@ -33,20 +34,19 @@ public class DownloadTool implements ToolExecutor {
         Map<String, Map<String, Object>> props = new LinkedHashMap<>();
         props.put("url", Map.of(
                 "type", "string",
-                "description", "要下载的文件 URL（必须先通过 web_search/web_read 验证有效，不要编造）",
+                "description", "要下载的文件 URL（需真实有效，不要编造）",
                 "required", true
         ));
         props.put("filename", Map.of(
                 "type", "string",
                 "description", "保存的文件名（可选，默认从 URL 推断）"
         ));
-        String desc = "下载文件到本地（破坏性操作，写文件系统）。"
-                + "调用前必须确认 URL 来自 web_search/web_read 的真实结果，禁止编造 URL。";
+        String desc = "下载文件到本地（破坏性操作，写文件系统）。URL 需真实有效，禁止编造。";
         return new ToolDescriptor(
-                "download",
+                "file_download",
                 desc,
                 ToolPermission.DESTRUCTIVE,
-                ToolDescriptor.buildSpec("download", desc, props),
+                ToolDescriptor.buildSpec("file_download", desc, props),
                 new DownloadTool()
         );
     }

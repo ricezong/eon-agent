@@ -5,6 +5,8 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -12,9 +14,10 @@ import java.util.Map;
 /**
  * finish 工具：任务完成时调用。
  * 对应技术方案第 5.6 节。
- * 校验 Todo 全部完成 + 产出物存在性，通过后终止循环。
+ * 软提醒模式：存在未完成 Todo 时在结果中提示但不阻断 finish。
  */
 public class FinishTool implements ToolExecutor {
+    private static final Logger log = LoggerFactory.getLogger(FinishTool.class);
 
     public static ToolDescriptor descriptor() {
         Map<String, Map<String, Object>> props = new LinkedHashMap<>();
@@ -33,7 +36,7 @@ public class FinishTool implements ToolExecutor {
                 "description", "可选的后续建议"
         ));
         String desc = "任务完成时调用，终止 Agent 循环。"
-                + "前置条件：所有 Todo 必须为 completed 或 cancelled 状态，否则调用会被拒绝。";
+                + "如果存在未完成的 Todo，调用时会在结果中提醒但不阻断。";
         return new ToolDescriptor(
                 "finish",
                 desc,
@@ -52,16 +55,21 @@ public class FinishTool implements ToolExecutor {
             return "[ERROR] finish 必须附带 summary";
         }
 
-        // 校验 Todo 全部完成
+        // 软提醒：存在未完成的 Todo 时在结果中提示，但不阻断 finish
+        StringBuilder sb = new StringBuilder();
         if (!context.todoStore().allCompleted()) {
-            return "[ERROR] 存在未完成的 Todo，请先完成或取消所有任务再调用 finish";
+            int pending = (int) context.todoStore().getAll().stream()
+                    .filter(t -> t.getStatus() != cn.kong.eon.model.TodoStatus.COMPLETED
+                            && t.getStatus() != cn.kong.eon.model.TodoStatus.CANCELLED)
+                    .count();
+            sb.append("[提醒] 存在 ").append(pending).append(" 个未完成的 Todo，建议确认是否需要继续。\n");
+            log.warn("finish called with {} pending todos", pending);
         }
 
         state.setFinished(true);
         state.setFinishReason(goalAchieved != null && goalAchieved ? "GOAL_ACHIEVED" : "TASK_ENDED");
         state.setLastAssistantText(summary);
 
-        StringBuilder sb = new StringBuilder();
         sb.append("[FINISH] 任务结束\n");
         sb.append("目标达成: ").append(goalAchieved).append("\n");
         sb.append("总结: ").append(summary).append("\n");

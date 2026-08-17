@@ -7,6 +7,7 @@ import dev.langchain4j.data.message.ChatMessage;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 会话级运行时状态。
@@ -30,6 +31,11 @@ public class SessionState {
 
     // Profile 管理
     private boolean todoBeenUsed = false;    // LLM 是否调用过 todo_write（用于升级 Profile）
+
+    // 两阶段懒加载：模型声明的所需工具名
+    // 第一轮模型从 catalog 中选择需要的工具，写入此字段；
+    // 第二轮按此字段挂载完整工具 Schema。
+    private transient Set<String> pendingToolMounts;
 
     // 运行时临时字段（不序列化）
     private transient List<ChatMessage> currentMessages;
@@ -131,4 +137,7 @@ public class SessionState {
 
     public List<ToolExecutionResult> getLastToolResults() { return lastToolResults; }
     public void setLastToolResults(List<ToolExecutionResult> lastToolResults) { this.lastToolResults = lastToolResults; }
+
+    public Set<String> getPendingToolMounts() { return pendingToolMounts; }
+    public void setPendingToolMounts(Set<String> pendingToolMounts) { this.pendingToolMounts = pendingToolMounts; }
 }
