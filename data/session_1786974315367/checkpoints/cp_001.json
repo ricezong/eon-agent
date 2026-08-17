@@ -1,0 +1,55 @@
+{
+  "checkpointId" : "cp_001",
+  "sessionId" : "session_1786974315367",
+  "turnCount" : 2,
+  "todoSnapshot" : [ {
+    "id" : "t1",
+    "content" : "搜索小说《神通者》并获取来源信息",
+    "status" : "PENDING",
+    "priority" : "high",
+    "dependsOn" : [ ],
+    "artifacts" : [ ],
+    "version" : 1,
+    "lastModifiedTurn" : 2
+  }, {
+    "id" : "t2",
+    "content" : "获取小说章节列表",
+    "status" : "PENDING",
+    "priority" : "high",
+    "dependsOn" : [ ],
+    "artifacts" : [ ],
+    "version" : 1,
+    "lastModifiedTurn" : 2
+  }, {
+    "id" : "t3",
+    "content" : "批量下载小说章节内容并获取下载URL",
+    "status" : "PENDING",
+    "priority" : "high",
+    "dependsOn" : [ ],
+    "artifacts" : [ ],
+    "version" : 1,
+    "lastModifiedTurn" : 2
+  }, {
+    "id" : "t4",
+    "content" : "将下载的TXT文件保存到本地",
+    "status" : "PENDING",
+    "priority" : "high",
+    "dependsOn" : [ ],
+    "artifacts" : [ ],
+    "version" : 1,
+    "lastModifiedTurn" : 2
+  } ],
+  "usageAccum" : {
+    "promptTokens" : 2786,
+    "completionTokens" : 681,
+    "totalTokens" : 3467
+  },
+  "compressionState" : {
+    "snippedIds" : [ ],
+    "prunedIds" : [ ],
+    "summarizedUpToIndex" : -1,
+    "lastWaterLevel" : 0.16966666666666666
+  },
+  "insightsSnapshot" : [ ],
+  "createdAt" : 1786974335.080482300
+}
