@@ -1,5 +1,8 @@
-package cn.kong.eon.agent.capability;
+package cn.kong.eon.agent.capability.record;
 
+import cn.kong.eon.agent.capability.CapabilityModule;
+import cn.kong.eon.agent.capability.CapabilityResult;
+import cn.kong.eon.agent.capability.Layer;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.store.CheckpointStore;
@@ -9,16 +12,23 @@ import org.slf4j.LoggerFactory;
 /**
  * Checkpoint 管理能力模块。
  *
- * 配置启用时激活。在 todo_write 调用后保存快照。
+ * <p>属于 {@link Layer#RECORD} 记录层，orderInLayer=100（默认）。
+ * 配置启用时激活。在 todo_write 调用后保存快照。</p>
+ *
+ * <h3>重构说明</h3>
+ * <ul>
+ *   <li>priority()=LOW → layer()=RECORD。</li>
+ *   <li>afterToolExecution 返回值 void → CapabilityResult（始终返回 ok，不中断）。</li>
+ * </ul>
  */
-public class CheckpointManager implements CapabilityModule {
-    private static final Logger log = LoggerFactory.getLogger(CheckpointManager.class);
+public class CheckpointManagerCapability implements CapabilityModule {
+    private static final Logger log = LoggerFactory.getLogger(CheckpointManagerCapability.class);
 
     private final AgentConfig config;
     private final CheckpointStore checkpointStore;
     private final TodoStoreAccessor todoStoreAccessor;
 
-    public CheckpointManager(AgentConfig config, CheckpointStore checkpointStore, TodoStoreAccessor todoStoreAccessor) {
+    public CheckpointManagerCapability(AgentConfig config, CheckpointStore checkpointStore, TodoStoreAccessor todoStoreAccessor) {
         this.config = config;
         this.checkpointStore = checkpointStore;
         this.todoStoreAccessor = todoStoreAccessor;
@@ -33,12 +43,12 @@ public class CheckpointManager implements CapabilityModule {
     }
 
     @Override
-    public int priority() { return Priority.LOW; }
+    public Layer layer() { return Layer.RECORD; }
 
     @Override
-    public void afterToolExecution(SessionState state, String toolName, boolean success) {
-        if (!isActive(state)) return;
-        if (!"todo_write".equals(toolName) || !success) return;
+    public CapabilityResult afterToolExecution(SessionState state, String toolName, boolean success) {
+        if (!isActive(state)) return CapabilityResult.ok();
+        if (!"todo_write".equals(toolName) || !success) return CapabilityResult.ok();
 
         checkpointStore.save(
                 state.getSessionId(),
@@ -49,6 +59,8 @@ public class CheckpointManager implements CapabilityModule {
                 state.getInsights()
         );
         log.info("Checkpoint saved: turn={}", state.getTurnCount());
+
+        return CapabilityResult.ok();
     }
 
     /**

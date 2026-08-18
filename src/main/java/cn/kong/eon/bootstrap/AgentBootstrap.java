@@ -1,7 +1,14 @@
 package cn.kong.eon.bootstrap;
 
 import cn.kong.eon.agent.EonAgent;
-import cn.kong.eon.agent.capability.*;
+import cn.kong.eon.agent.capability.context.ContextCompactorCapability;
+import cn.kong.eon.agent.capability.gurad.BudgetGuardCapability;
+import cn.kong.eon.agent.capability.gurad.GateKeeperCapability;
+import cn.kong.eon.agent.capability.gurad.LoopGuardCapability;
+import cn.kong.eon.agent.capability.record.CheckpointManagerCapability;
+import cn.kong.eon.agent.capability.record.TodoActivationTrackerCapability;
+import cn.kong.eon.agent.capability.render.NudgeRendererCapability;
+import cn.kong.eon.agent.capability.render.TodoNavigatorCapability;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.mcp.McpClientManager;
@@ -67,13 +74,14 @@ public class AgentBootstrap {
         EonAgent agent = new EonAgent(config, llmClient, toolRegistry, resultRenderer, jsonlStore, basePrompt, toolContext);
 
         // 6. 挂载能力模块
-        agent.addCapability(new ContextCompactor(config, llmClient));
-        agent.addCapability(new BudgetGuard(config));
-        agent.addCapability(new NudgeRenderer());
-        agent.addCapability(new LoopGuard(config));
+        agent.addCapability(new ContextCompactorCapability(config, llmClient));
+        agent.addCapability(new BudgetGuardCapability(config));
+        agent.addCapability(new NudgeRendererCapability());
+        agent.addCapability(new LoopGuardCapability(config));
         agent.addCapability(new GateKeeperCapability(toolRegistry, true));
-        agent.addCapability(new TodoNavigator(todoStore, insightsStore));
-        agent.addCapability(new CheckpointManager(config, checkpointStore, todoStore::getAll));
+        agent.addCapability(new TodoNavigatorCapability(todoStore, insightsStore));
+        agent.addCapability(new TodoActivationTrackerCapability());
+        agent.addCapability(new CheckpointManagerCapability(config, checkpointStore, todoStore::getAll));
 
         log.info("EonAgent built with {} capability modules", agent.getCapabilityCount());
 

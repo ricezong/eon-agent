@@ -1,5 +1,6 @@
 package cn.kong.eon;
 
+import cn.kong.eon.agent.capability.render.TodoNavigatorCapability;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.context.PairingRepairer;
 import cn.kong.eon.loop.LoopDetector;
@@ -17,7 +18,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -81,14 +81,15 @@ class CoreLogicTest {
         insightsStore.add("找到下载链接: http://example.com/dpcq.txt");
 
         // When: 用 TodoNavigator 渲染 Navigator
-        cn.kong.eon.agent.capability.TodoNavigator navigator =
-                new cn.kong.eon.agent.capability.TodoNavigator(todoStore, insightsStore);
+        TodoNavigatorCapability navigator =
+                new TodoNavigatorCapability(todoStore, insightsStore);
         cn.kong.eon.agent.context.ContextBuilder ctx =
                 new cn.kong.eon.agent.context.ContextBuilder();
-        navigator.beforeModelCall(state, ctx);
+        cn.kong.eon.agent.capability.CapabilityResult result = navigator.beforeModelCall(state, ctx);
 
         // Then: Navigator 应包含用户请求、Todo 和 Insights
         assertThat(navigator.isActive(state)).isTrue();
+        assertThat(result.isAbort()).isFalse();
         // 验证 Navigator 内容通过 ContextBuilder 获取
         // （这里验证 TodoNavigator 正确渲染了内容）
     }
@@ -118,8 +119,8 @@ class CoreLogicTest {
         insightsStore.add("关键发现X");
 
         // When: 用 TodoNavigator 渲染
-        cn.kong.eon.agent.capability.TodoNavigator navigator =
-                new cn.kong.eon.agent.capability.TodoNavigator(todoStore, insightsStore);
+        TodoNavigatorCapability navigator =
+                new TodoNavigatorCapability(todoStore, insightsStore);
         cn.kong.eon.agent.context.ContextBuilder ctx =
                 new cn.kong.eon.agent.context.ContextBuilder();
         navigator.beforeModelCall(state, ctx);

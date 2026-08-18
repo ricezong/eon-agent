@@ -1,9 +1,7 @@
 package cn.kong.eon.agent;
 
 import cn.kong.eon.agent.capability.CapabilityModule;
-import cn.kong.eon.agent.capability.BudgetGuard;
-import cn.kong.eon.agent.capability.GateKeeperCapability;
-import cn.kong.eon.agent.capability.LoopGuard;
+import cn.kong.eon.agent.capability.CapabilityResult;
 import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.agent.profile.PolicyRouter;
 import cn.kong.eon.agent.profile.RequestProfile;
@@ -42,7 +40,7 @@ import java.util.regex.Pattern;
  * <ol>
  *   <li>System Prompt 完全冻结（basePrompt），不拼接动态内容，保证 KV Cache 前缀稳定</li>
  *   <li>tool_catalog 作为独立消息注入（放在 transcript 之后），不破坏 System Prompt 缓存</li>
- *   <li>能力模块按 priority 排序执行（HIGH → NORMAL → LOW）</li>
+ *   <li>能力模块按 Layer 分层 + orderInLayer 微调排序执行（GUARD→CONTEXT→RENDER→OBSERVE→RECORD）</li>
  *   <li>beforeModelCall 在 ctx.build() 之前调用，能力模块可修改 ContextBuilder</li>
  *   <li>配对修复仅在 Summarize 触发时执行（Snip/Prune 不破坏配对）</li>
  * </ol>
@@ -80,7 +78,6 @@ public class EonAgent {
     private final String basePrompt;
     private final PolicyRouter policyRouter;
     private final List<CapabilityModule> modules;
-    private final GateKeeperCapability gateKeeper;
     private final ToolContext toolContext;
 
     public EonAgent(AgentConfig config,
@@ -98,7 +95,6 @@ public class EonAgent {
         this.basePrompt = basePrompt;
         this.policyRouter = new PolicyRouter();
         this.modules = new ArrayList<>();
-        this.gateKeeper = null;
         this.toolContext = toolContext;
     }
 
@@ -112,12 +108,20 @@ public class EonAgent {
     }
 
     /**
-     * 获取按优先级排序的能力模块列表（HIGH→NORMAL→LOW）。
-     * 每次调用都创建新列表，避免修改原列表。
+     * 获取按 Layer + orderInLayer 排序的能力模块列表。
+     *
+     * <p>排序规则：先按 {@link CapabilityModule#layer()} 跨层排序
+     * （GUARD→CONTEXT→RENDER→OBSERVE→RECORD），同层内按
+     * {@link CapabilityModule#orderInLayer()} 微调（数值小先执行）。</p>
+     *
+     * <p>每次调用都创建新列表，避免修改原列表。
+     * 所有 Hook 循环都使用此方法获取排序后的模块，保证执行顺序一致。</p>
      */
     private List<CapabilityModule> getSortedModules() {
         List<CapabilityModule> sorted = new ArrayList<>(modules);
-        sorted.sort(Comparator.comparingInt(CapabilityModule::priority));
+        sorted.sort(Comparator
+                .comparingInt((CapabilityModule m) -> m.layer().order)
+                .thenComparingInt(CapabilityModule::orderInLayer));
         return sorted;
     }
 
@@ -146,11 +150,13 @@ public class EonAgent {
                 // 1. 组装上下文
                 ContextBuilder ctx = buildContext(state, profile);
 
-                // 2. beforeModelCall：能力模块前置处理（按优先级排序：HIGH→NORMAL→LOW）
+                // 2. beforeModelCall：能力模块前置处理（按 Layer + orderInLayer 排序）
                 List<CapabilityModule> sortedModules = getSortedModules();
                 for (CapabilityModule module : sortedModules) {
-                    if (module.isActive(state)) {
-                        module.beforeModelCall(state, ctx);
+                    if (!module.isActive(state)) continue;
+                    CapabilityResult r = module.beforeModelCall(state, ctx);
+                    if (r.isAbort()) {
+                        return formatAbort(r);
                     }
                 }
 
@@ -201,35 +207,40 @@ public class EonAgent {
                 }
                 state.setPendingToolCalls(requests);
 
-                // 7. afterModelCall：能力模块后置处理（死循环检测等）
-                for (CapabilityModule module : modules) {
-                    if (module.isActive(state)) {
-                        module.afterModelCall(state, response);
+                // 7. afterModelCall：能力模块后置处理（死循环检测等，统一用 sortedModules）
+                for (CapabilityModule module : sortedModules) {
+                    if (!module.isActive(state)) continue;
+                    CapabilityResult r = module.afterModelCall(state, response);
+                    if (r.isAbort()) {
+                        return formatAbort(r);
                     }
                 }
 
                 // ===== Extension Loop =====
 
-                // 8. 门禁校验
-                GateKeeperCapability gate = findGateKeeper();
-                if (gate != null) {
-                    String rejectReason = gate.check(requests, state);
-                    if (rejectReason != null) {
-                        log.warn("Gate rejected: {}", rejectReason);
-                        return "门禁拒绝: " + rejectReason;
+                // 8. beforeToolExecution：能力模块工具前置处理（门禁校验等，替代原 findGateKeeper 特殊路径）
+                for (CapabilityModule module : sortedModules) {
+                    if (!module.isActive(state)) continue;
+                    CapabilityResult r = module.beforeToolExecution(state, requests);
+                    if (r.isAbort()) {
+                        return formatAbort(r);
                     }
                 }
 
                 // 9. 执行工具
                 List<ToolExecutionResult> results = executeTools(state);
 
-                // 10. afterToolExecution：能力模块工具后处理（失败计数、Todo 激活等）
+                // 10. afterToolExecution：能力模块工具后处理（失败计数、Todo 激活等，统一用 sortedModules）
                 for (int i = 0; i < requests.size(); i++) {
                     ToolExecutionRequest req = requests.get(i);
                     ToolExecutionResult result = results.get(i);
                     boolean success = !result.content().startsWith("[ERROR]");
-                    for (CapabilityModule module : modules) {
-                        module.afterToolExecution(state, req.name(), success);
+                    for (CapabilityModule module : sortedModules) {
+                        if (!module.isActive(state)) continue;
+                        CapabilityResult r = module.afterToolExecution(state, req.name(), success);
+                        if (r.isAbort()) {
+                            return formatAbort(r);
+                        }
                     }
                 }
 
@@ -241,12 +252,9 @@ public class EonAgent {
                     return state.getLastAssistantText();
                 }
 
-            } catch (BudgetGuard.HardBudgetExceededException e) {
-                log.error("Budget hard exceeded: {}", e.getMessage());
-                return "预算超限（任务终止）: " + e.getMessage();
-            } catch (LoopGuard.LoopDetectedException e) {
-                log.error("Loop detected: {}", e.getMessage());
-                return "检测到死循环: " + e.getMessage();
+            } catch (Exception e) {
+                log.error("Agent loop unexpected error: {}", e.getMessage(), e);
+                return "执行异常: " + e.getMessage();
             }
         }
 
@@ -254,11 +262,26 @@ public class EonAgent {
         return "达到最大步数限制";
     }
 
-    private GateKeeperCapability findGateKeeper() {
-        for (CapabilityModule m : modules) {
-            if (m instanceof GateKeeperCapability g) return g;
+    /**
+     * 格式化能力模块的中断返回值。
+     *
+     * <p>统一处理所有能力模块通过 {@link CapabilityResult#abort} 中断的情况，
+     * 替代原"按异常类型 catch"的强耦合设计。新增守卫模块只需约定新的 category 字符串，
+     * 在此处添加分支即可，无需改 EonAgent 的 catch 块。</p>
+     */
+    private String formatAbort(CapabilityResult r) {
+        String category = r.getCategory();
+        String reason = r.getReason();
+        log.warn("Capability aborted: category={}, reason={}", category, reason);
+        if (category == null) {
+            return "能力中断: " + reason;
         }
-        return null;
+        return switch (category) {
+            case "BUDGET_EXCEEDED" -> "预算超限（任务终止）: " + reason;
+            case "LOOP_DETECTED"   -> "检测到死循环: " + reason;
+            case "GATE_REJECTED"   -> "门禁拒绝: " + reason;
+            default                 -> "能力中断[" + category + "]: " + reason;
+        };
     }
 
     /**

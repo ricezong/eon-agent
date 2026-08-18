@@ -1,0 +1,46 @@
+{
+  "checkpointId" : "cp_001",
+  "sessionId" : "session_1787042202668",
+  "turnCount" : 2,
+  "todoSnapshot" : [ {
+    "id" : "t1",
+    "content" : "搜索漫画《偷星九月天》并获取书籍信息",
+    "status" : "IN_PROGRESS",
+    "priority" : "high",
+    "dependsOn" : [ ],
+    "artifacts" : [ ],
+    "version" : 1,
+    "lastModifiedTurn" : 2
+  }, {
+    "id" : "t2",
+    "content" : "获取章节目录列表",
+    "status" : "PENDING",
+    "priority" : "high",
+    "dependsOn" : [ ],
+    "artifacts" : [ ],
+    "version" : 1,
+    "lastModifiedTurn" : 2
+  }, {
+    "id" : "t3",
+    "content" : "下载前20章内容",
+    "status" : "PENDING",
+    "priority" : "high",
+    "dependsOn" : [ ],
+    "artifacts" : [ ],
+    "version" : 1,
+    "lastModifiedTurn" : 2
+  } ],
+  "usageAccum" : {
+    "promptTokens" : 3379,
+    "completionTokens" : 410,
+    "totalTokens" : 3789
+  },
+  "compressionState" : {
+    "snippedIds" : [ ],
+    "prunedIds" : [ ],
+    "summarizedUpToIndex" : -1,
+    "lastWaterLevel" : 0.17433333333333334
+  },
+  "insightsSnapshot" : [ ],
+  "createdAt" : 1787042225.298383000
+}
