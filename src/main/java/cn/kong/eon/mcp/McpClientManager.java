@@ -14,17 +14,8 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * MCP 客户端管理器。
- * 负责连接 MCP 服务、获取工具列表、执行工具调用。
- *
- * 适配策略：
- * - MCP 服务提供的工具通过 listTools() 获取 ToolSpecification 列表
- * - 工具执行委托给 mcpClient.executeTool(ToolExecutionRequest)
- * - MCP 工具的 ToolSpecification 直接复用（已含 name/description/parameters）
- *
- * 注意：MCP 工具的 parameters 中没有 reason 字段（reason 是我们自定义的），
- * 但由于 LLM 会按 system prompt 要求填写 reason，MCP 服务端会忽略未知字段，
- * 所以不需要修改 MCP 工具的 schema。
+ * MCP 客户端管理器。负责连接 MCP 服务、获取工具列表、执行工具调用。
+ * MCP 工具的 ToolSpecification 直接复用 MCP 服务返回的 schema。
  */
 public class McpClientManager {
     private static final Logger log = LoggerFactory.getLogger(McpClientManager.class);
@@ -38,9 +29,7 @@ public class McpClientManager {
         this.serverUrl = serverUrl;
     }
 
-    /**
-     * 连接 MCP 服务。
-     */
+    /** 连接 MCP 服务。 */
     public void connect() {
         log.info("Connecting to MCP server: key={}, url={}", serverKey, serverUrl);
         try {
@@ -60,9 +49,7 @@ public class McpClientManager {
         }
     }
 
-    /**
-     * 获取 MCP 服务提供的工具列表。
-     */
+    /** 获取 MCP 服务提供的工具列表。 */
     public List<ToolSpecification> listTools() {
         if (mcpClient == null) {
             log.warn("MCP client not connected, cannot list tools");
@@ -81,13 +68,7 @@ public class McpClientManager {
         }
     }
 
-    /**
-     * 执行 MCP 工具调用。
-     *
-     * @param toolName  工具名
-     * @param arguments JSON 格式的参数字符串
-     * @return 工具执行结果字符串
-     */
+    /** 执行 MCP 工具调用。 */
     public String executeTool(String toolName, String arguments) {
         if (mcpClient == null) {
             return "[ERROR] MCP client not connected";
@@ -107,9 +88,6 @@ public class McpClientManager {
         }
     }
 
-    /**
-     * 关闭 MCP 客户端连接。
-     */
     public void close() {
         if (mcpClient != null) {
             try {
@@ -121,10 +99,7 @@ public class McpClientManager {
         }
     }
 
-    public boolean isConnected() {
-        return mcpClient != null;
-    }
-
+    public boolean isConnected() { return mcpClient != null; }
     public String getServerKey() { return serverKey; }
     public String getServerUrl() { return serverUrl; }
     public McpClient getMcpClient() { return mcpClient; }

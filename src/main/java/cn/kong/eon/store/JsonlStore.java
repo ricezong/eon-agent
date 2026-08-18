@@ -13,10 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Append-Only JSONL 消息存储。
- * 对应技术方案第 2.8 节。
- * 原始账本，永不修改，用于审计和回滚。
- * 每条消息一行 JSON，包含 role + content + 可选 toolCallId。
+ * Append-Only JSONL 消息存储。原始账本，永不修改，用于审计和回滚。
+ * 每条消息一行 JSON。
  */
 public class JsonlStore {
     private static final Logger log = LoggerFactory.getLogger(JsonlStore.class);
@@ -38,9 +36,7 @@ public class JsonlStore {
         }
     }
 
-    /**
-     * 追加一条消息（永不修改已有消息）。
-     */
+    /** 追加一条消息（永不修改已有消息）。 */
     public synchronized void append(ChatMessage message) {
         messages.add(message);
         String json = serialize(message);
@@ -57,9 +53,7 @@ public class JsonlStore {
         return new ArrayList<>(messages);
     }
 
-    public int size() {
-        return messages.size();
-    }
+    public int size() { return messages.size(); }
 
     public void clear() {
         messages.clear();
@@ -106,10 +100,7 @@ public class JsonlStore {
         }
     }
 
-    /**
-     * JSONL 序列化中间结构。
-     * 用 type 字段区分消息类型。
-     */
+    /** JSONL 序列化中间结构。 */
     public static class SerializedMessage {
         public String type;       // system / user / ai / tool
         public String content;

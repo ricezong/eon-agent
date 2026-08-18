@@ -3,9 +3,7 @@ package cn.kong.eon.llm;
 import cn.kong.eon.model.TokenUsage;
 import dev.langchain4j.data.message.AiMessage;
 
-/**
- * LLM 响应封装。
- */
+/** LLM 响应封装。 */
 public record LlmResponse(
         AiMessage aiMessage,
         TokenUsage usage,

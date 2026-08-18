@@ -14,26 +14,12 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 /**
- * 循环守卫能力模块。
- *
- * <p>属于 {@link Layer#GUARD} 守卫层，orderInLayer=30（GUARD 层内最后执行，在 BudgetGuard/GateKeeper 之后）。
- * 始终激活。职责：</p>
- * <ul>
- *   <li>{@link #afterModelCall}：检测重复调用（同一工具同一参数）</li>
- *   <li>{@link #afterToolExecution}：检测连续失败熔断</li>
- * </ul>
- *
- * <h3>重构说明</h3>
- * <ul>
- *   <li>priority()=NORMAL → layer()=GUARD + orderInLayer()=30。</li>
- *   <li>afterModelCall / afterToolExecution 返回值 void → CapabilityResult。</li>
- *   <li>删除 LoopDetectedException 内部类，改为返回 abort("LOOP_DETECTED", reason)。</li>
- * </ul>
+ * 循环守卫能力模块（GUARD 层，order=30）。
+ * afterModelCall 检测重复调用；afterToolExecution 检测连续失败熔断。
  */
 public class LoopGuardCapability implements CapabilityModule {
     private static final Logger log = LoggerFactory.getLogger(LoopGuardCapability.class);
 
-    /** 中断类别：检测到死循环。 */
     public static final String CATEGORY_LOOP_DETECTED = "LOOP_DETECTED";
 
     private final LoopDetector loopDetector;
@@ -47,17 +33,10 @@ public class LoopGuardCapability implements CapabilityModule {
                 config.getLoopDetect().failureStop);
     }
 
-    @Override
-    public String name() { return "LoopGuard"; }
-
-    @Override
-    public boolean isActive(SessionState state) { return true; }
-
-    @Override
-    public Layer layer() { return Layer.GUARD; }
-
-    @Override
-    public int orderInLayer() { return 30; }
+    @Override public String name() { return "LoopGuard"; }
+    @Override public boolean isActive(SessionState state) { return true; }
+    @Override public Layer layer() { return Layer.GUARD; }
+    @Override public int orderInLayer() { return 30; }
 
     @Override
     public CapabilityResult afterModelCall(SessionState state, LlmResponse response) {

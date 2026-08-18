@@ -9,11 +9,7 @@ import cn.kong.eon.tool.ToolExecutor;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * working_memory 工具：写入关键发现到 Insights。
- * 对应技术方案第 5.6 节。
- * 模型主动记录关键发现，防止压缩后丢失。
- */
+/** working_memory 工具：写入关键发现到 Insights，防止上下文压缩后丢失。 */
 public class WorkingMemoryTool implements ToolExecutor {
 
     public static ToolDescriptor descriptor() {

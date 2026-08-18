@@ -20,10 +20,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * file_download 工具：通用文件下载。
- * 真实实现，使用 Java HttpClient 下载文件到本地。
- * 破坏性工具（写文件系统），需门禁审批。
- * 工具名改为 file_download 以避免与 MCP 服务的 download 工具重名。
+ * file_download 工具：通用文件下载（破坏性操作）。
+ * 使用 Java HttpClient 下载文件到本地。
  */
 public class DownloadTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(DownloadTool.class);

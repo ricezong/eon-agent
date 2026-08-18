@@ -15,22 +15,8 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
- * todo_write 工具：创建/更新任务清单。
- * 对应技术方案第 5.6 节。
- * 全量替换语义，校验单一焦点与依赖完整性。
- *
- * todos 参数格式（对象数组）：
- * [
- *   {"id": "t1", "content": "搜索下载源", "status": "pending", "priority": "high"},
- *   {"id": "t2", "content": "提取链接", "status": "pending", "priority": "high"}
- * ]
- *
- * 容错策略：
- * - id 缺失时自动生成（t1, t2, ...）
- * - id 为整数时转为字符串
- * - status 缺失时默认 pending；兼容 "todo"/"to_do"/"in-progress" 等变体
- * - content 缺失时尝试用 "task" 字段
- * - 字符串元素自动转为 {content: 字符串, status: pending}
+ * todo_write 工具：创建/更新任务清单（全量替换语义）。
+ * 校验单一焦点与依赖完整性。支持多种容错（字符串元素、status 变体等）。
  */
 public class TodoWriteTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(TodoWriteTool.class);
@@ -38,7 +24,6 @@ public class TodoWriteTool implements ToolExecutor {
     public static ToolDescriptor descriptor() {
         Map<String, Map<String, Object>> props = new LinkedHashMap<>();
 
-        // todos 是对象数组，items 描述每个 todo 的结构
         Map<String, Map<String, Object>> itemSchema = new LinkedHashMap<>();
         itemSchema.put("id", Map.of(
                 "type", "string",
@@ -86,8 +71,7 @@ public class TodoWriteTool implements ToolExecutor {
                 return "[ERROR] 缺少 'todos' 参数。请传入对象数组，例如：[{\"id\":\"t1\",\"content\":\"搜索\",\"status\":\"pending\",\"priority\":\"high\"}]";
             }
 
-            // 容错：LLM 有时会把数组序列化成字符串嵌入 JSON（如 {"todos": "[{...}]"}）
-            // 此时 todosRaw 是 String，尝试再次解析为 JSON 数组
+            // 容错：LLM 有时把数组序列化成字符串
             List<?> list;
             if (todosRaw instanceof List<?> l) {
                 list = l;
@@ -144,14 +128,7 @@ public class TodoWriteTool implements ToolExecutor {
         }
     }
 
-    /**
-     * 将字符串解析为 JSON 数组。
-     * 用于容错 LLM 把数组序列化成字符串的情况（如 {"todos": "[{...}]"}）。
-     * 支持数组字符串（"[...]"）和单对象字符串（"{...}"，自动包装为单元素列表）。
-     *
-     * @param json 字符串
-     * @return 解析后的 List，解析失败或非数组/对象时返回 null
-     */
+    /** 容错解析：支持数组字符串和单对象字符串。 */
     private List<?> parseJsonArray(String json) {
         if (json == null || json.isBlank()) return null;
         String trimmed = json.trim();
@@ -162,7 +139,6 @@ public class TodoWriteTool implements ToolExecutor {
                 return l;
             }
             if (parsed instanceof Map<?, ?> m) {
-                // 单对象自动包装为单元素列表
                 return List.of(m);
             }
             return null;
@@ -172,12 +148,9 @@ public class TodoWriteTool implements ToolExecutor {
         }
     }
 
-    /**
-     * 容错转换：支持 Map（对象）、String（自动转对象）、其他类型转字符串。
-     */
     @SuppressWarnings("unchecked")
     private TodoItem convertToTodoItem(Object item, int autoId) {
-        // 情况 1：字符串 → 自动转为 {content: 字符串, status: pending}
+        // 字符串 → 自动转为 {content, status=pending}
         if (item instanceof String s) {
             log.debug("todo_write: 字符串元素自动转为对象, content={}", s);
             TodoItem todo = new TodoItem();
@@ -188,7 +161,6 @@ public class TodoWriteTool implements ToolExecutor {
             return todo;
         }
 
-        // 情况 2：Map（对象）
         if (item instanceof Map<?, ?> rawMap) {
             Map<String, Object> map = new LinkedHashMap<>();
             for (Map.Entry<?, ?> e : rawMap.entrySet()) {
@@ -197,13 +169,12 @@ public class TodoWriteTool implements ToolExecutor {
 
             TodoItem todo = new TodoItem();
 
-            // id：支持 String/Integer/Long，统一转 String
             Object idVal = map.get("id");
             if (idVal != null) {
                 todo.setId(String.valueOf(idVal));
             }
 
-            // content：优先 "content"，兼容 "task"/"text"/"title"
+            // content 兼容 task/text/title/description
             Object contentVal = map.get("content");
             if (contentVal == null) contentVal = map.get("task");
             if (contentVal == null) contentVal = map.get("text");
@@ -211,15 +182,12 @@ public class TodoWriteTool implements ToolExecutor {
             if (contentVal == null) contentVal = map.get("description");
             todo.setContent(contentVal != null ? String.valueOf(contentVal) : "(未命名任务)");
 
-            // status：兼容多种写法
             String statusStr = map.get("status") != null ? String.valueOf(map.get("status")) : "pending";
             todo.setStatus(parseStatus(statusStr));
 
-            // priority
             Object priorityVal = map.get("priority");
             todo.setPriority(priorityVal != null ? String.valueOf(priorityVal) : "medium");
 
-            // depends_on
             Object deps = map.get("depends_on");
             if (deps == null) deps = map.get("dependsOn");
             if (deps instanceof List<?> depList) {
@@ -233,7 +201,6 @@ public class TodoWriteTool implements ToolExecutor {
             return todo;
         }
 
-        // 情况 3：其他类型 → 转字符串作为 content
         log.warn("todo_write: 未知元素类型 {}，转为字符串", item.getClass().getSimpleName());
         TodoItem todo = new TodoItem();
         todo.setId("t" + autoId);
@@ -243,9 +210,7 @@ public class TodoWriteTool implements ToolExecutor {
         return todo;
     }
 
-    /**
-     * 容错解析 status，兼容多种写法。
-     */
+    /** 兼容多种 status 写法。 */
     private TodoStatus parseStatus(String statusStr) {
         if (statusStr == null || statusStr.isBlank()) return TodoStatus.PENDING;
         String normalized = statusStr.trim().toLowerCase().replace("-", "_").replace(" ", "_");

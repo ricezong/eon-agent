@@ -17,9 +17,7 @@ import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Checkpoint 存储。
- * 对应技术方案第 2.4 节。
- * 每次 todo_write 或每 5 轮落盘一次，崩溃后从最新 checkpoint 恢复。
+ * Checkpoint 存储。崩溃后从最新 checkpoint 恢复。
  */
 public class CheckpointStore {
     private static final Logger log = LoggerFactory.getLogger(CheckpointStore.class);
@@ -40,9 +38,7 @@ public class CheckpointStore {
         }
     }
 
-    /**
-     * 保存 checkpoint。
-     */
+    /** 保存 checkpoint。 */
     public Checkpoint save(String sessionId, int turnCount,
                            java.util.List<TodoItem> todoSnapshot,
                            TokenUsage usageAccum,
@@ -70,9 +66,7 @@ public class CheckpointStore {
         return cp;
     }
 
-    /**
-     * 加载最新 checkpoint。
-     */
+    /** 加载最新 checkpoint。 */
     public Checkpoint loadLatest(String sessionId) {
         try (var stream = Files.list(checkpointDir)) {
             var files = stream

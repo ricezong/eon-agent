@@ -1,13 +1,6 @@
 package cn.kong.eon.model;
 
-/**
- * Todo 任务状态机。
- * pending -> in_progress -> completed
- *             |      |
- *             v      v
- *           blocked -> in_progress
- * cancelled <-> reactivate
- */
+/** Todo 任务状态。 */
 public enum TodoStatus {
     PENDING("⏸️", "待办"),
     IN_PROGRESS("🔄", "进行中"),

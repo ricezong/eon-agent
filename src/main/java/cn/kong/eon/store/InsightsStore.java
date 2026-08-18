@@ -8,9 +8,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Insights 滚动存储。
- * 对应技术方案第 4 节「Insights 滚动区」。
- * 模型通过 working_memory 工具写入关键发现。
+ * Insights 滚动存储。模型通过 working_memory 工具写入关键发现。
  * 上限 40 条 / 8000 字符，超出淘汰最旧的。
  */
 public class InsightsStore {
@@ -25,30 +23,18 @@ public class InsightsStore {
         this.maxChars = maxChars;
     }
 
-    /**
-     * 追加一条 insight（最新在前）。
-     */
+    /** 追加一条 insight（最新在前）。 */
     public synchronized void add(String insight) {
         insights.add(0, insight);
         evict();
         log.debug("Insight added: {} (total={})", insight.substring(0, Math.min(50, insight.length())), insights.size());
     }
 
-    public List<String> getAll() {
-        return new ArrayList<>(insights);
-    }
+    public List<String> getAll() { return new ArrayList<>(insights); }
+    public void clear() { insights.clear(); }
+    public int size() { return insights.size(); }
 
-    public void clear() {
-        insights.clear();
-    }
-
-    public int size() {
-        return insights.size();
-    }
-
-    /**
-     * 淘汰超限的旧条目。
-     */
+    /** 淘汰超限的旧条目。 */
     private void evict() {
         while (insights.size() > maxItems) {
             insights.remove(insights.size() - 1);

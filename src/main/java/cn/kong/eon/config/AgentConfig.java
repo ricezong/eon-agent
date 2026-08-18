@@ -6,14 +6,12 @@ import java.io.InputStream;
 import java.util.*;
 
 /**
- * Agent 配置加载器。
- * 从 agent.yaml 加载配置，提供类型安全的访问方法。
+ * Agent 配置加载器。从 agent.yaml 加载配置，提供类型安全的访问方法。
  */
 public class AgentConfig {
 
     private final Map<String, Object> raw;
 
-    // 子配置
     private final LlmConfig llm;
     private final ContextConfig context;
     private final LoopConfig loop;
@@ -62,49 +60,17 @@ public class AgentConfig {
         return v instanceof Map ? (Map<String, Object>) v : Map.of();
     }
 
-    public LlmConfig getLlm() {
-        return llm;
-    }
-
-    public ContextConfig getContext() {
-        return context;
-    }
-
-    public LoopConfig getLoop() {
-        return loop;
-    }
-
-    public LoopDetectConfig getLoopDetect() {
-        return loopDetect;
-    }
-
-    public RetryConfig getRetry() {
-        return retry;
-    }
-
-    public StorageConfig getStorage() {
-        return storage;
-    }
-
-    public ToolsConfig getTools() {
-        return tools;
-    }
-
-    public McpConfig getMcp() {
-        return mcp;
-    }
-
-    public WebSearchConfig getWebSearch() {
-        return webSearch;
-    }
-
-    public ModeConfig getMode() {
-        return mode;
-    }
-
-    public BudgetConfig getBudget() {
-        return budget;
-    }
+    public LlmConfig getLlm() { return llm; }
+    public ContextConfig getContext() { return context; }
+    public LoopConfig getLoop() { return loop; }
+    public LoopDetectConfig getLoopDetect() { return loopDetect; }
+    public RetryConfig getRetry() { return retry; }
+    public StorageConfig getStorage() { return storage; }
+    public ToolsConfig getTools() { return tools; }
+    public McpConfig getMcp() { return mcp; }
+    public WebSearchConfig getWebSearch() { return webSearch; }
+    public ModeConfig getMode() { return mode; }
+    public BudgetConfig getBudget() { return budget; }
 
     // ===== 子配置类 =====
 
@@ -127,6 +93,7 @@ public class AgentConfig {
             this.maxTokens = ((Number) m.getOrDefault("max_tokens", 4096)).intValue();
         }
 
+        /** 支持 ${ENV_VAR} 语法引用环境变量。 */
         private static String resolveEnv(String value) {
             if (value == null) return "";
             if (value.startsWith("${") && value.endsWith("}")) {
@@ -185,69 +152,22 @@ public class AgentConfig {
             return v instanceof Map ? (Map<String, Object>) v : Map.of();
         }
 
-        public int getMaxTokens() {
-            return maxTokens;
-        }
-
-        public double getBudgetRatio() {
-            return budgetRatio;
-        }
-
-        public String getSystemPromptPath() {
-            return systemPromptPath;
-        }
-
-        public int getPinnedMaxTokens() {
-            return pinnedMaxTokens;
-        }
-
-        public int getInsightsMaxItems() {
-            return insightsMaxItems;
-        }
-
-        public int getInsightsMaxChars() {
-            return insightsMaxChars;
-        }
-
-        public int getTailGuardMinTokens() {
-            return tailGuardMinTokens;
-        }
-
-        public int getTailGuardMinTurns() {
-            return tailGuardMinTurns;
-        }
-
-        public double getSnipThreshold() {
-            return snipThreshold;
-        }
-
-        public double getPruneThreshold() {
-            return pruneThreshold;
-        }
-
-        public double getSummarizeThreshold() {
-            return summarizeThreshold;
-        }
-
-        public int getSnipKeepChars() {
-            return snipKeepChars;
-        }
-
-        public int getPruneKeepChars() {
-            return pruneKeepChars;
-        }
-
-        public int getSummaryTriggerMessages() {
-            return summaryTriggerMessages;
-        }
-
-        public int getSummarizeMaxInputChars() {
-            return summarizeMaxInputChars;
-        }
-
-        public int getSummarizeMaxOutputChars() {
-            return summarizeMaxOutputChars;
-        }
+        public int getMaxTokens() { return maxTokens; }
+        public double getBudgetRatio() { return budgetRatio; }
+        public String getSystemPromptPath() { return systemPromptPath; }
+        public int getPinnedMaxTokens() { return pinnedMaxTokens; }
+        public int getInsightsMaxItems() { return insightsMaxItems; }
+        public int getInsightsMaxChars() { return insightsMaxChars; }
+        public int getTailGuardMinTokens() { return tailGuardMinTokens; }
+        public int getTailGuardMinTurns() { return tailGuardMinTurns; }
+        public double getSnipThreshold() { return snipThreshold; }
+        public double getPruneThreshold() { return pruneThreshold; }
+        public double getSummarizeThreshold() { return summarizeThreshold; }
+        public int getSnipKeepChars() { return snipKeepChars; }
+        public int getPruneKeepChars() { return pruneKeepChars; }
+        public int getSummaryTriggerMessages() { return summaryTriggerMessages; }
+        public int getSummarizeMaxInputChars() { return summarizeMaxInputChars; }
+        public int getSummarizeMaxOutputChars() { return summarizeMaxOutputChars; }
     }
 
     public static class LoopConfig {
@@ -259,19 +179,11 @@ public class AgentConfig {
             this.absoluteMaxSteps = ((Number) m.getOrDefault("absolute_max_steps", 160)).intValue();
         }
 
-        public int getMaxSteps() {
-            return maxSteps;
-        }
-
-        public int getAbsoluteMaxSteps() {
-            return absoluteMaxSteps;
-        }
+        public int getMaxSteps() { return maxSteps; }
+        public int getAbsoluteMaxSteps() { return absoluteMaxSteps; }
     }
 
-    /**
-     * 会话预算配置。
-     * 独立于上下文窗口大小，控制整个会话的累计 token 消耗。
-     */
+    /** 会话级 Token 预算配置。 */
     public static class BudgetConfig {
         public final int maxTokens;
         public final double softThreshold;
@@ -285,21 +197,10 @@ public class AgentConfig {
             this.graceSteps = ((Number) m.getOrDefault("grace_steps", 3)).intValue();
         }
 
-        public int getMaxTokens() {
-            return maxTokens;
-        }
-
-        public double getSoftThreshold() {
-            return softThreshold;
-        }
-
-        public double getHardThreshold() {
-            return hardThreshold;
-        }
-
-        public int getGraceSteps() {
-            return graceSteps;
-        }
+        public int getMaxTokens() { return maxTokens; }
+        public double getSoftThreshold() { return softThreshold; }
+        public double getHardThreshold() { return hardThreshold; }
+        public int getGraceSteps() { return graceSteps; }
     }
 
     public static class LoopDetectConfig {
@@ -317,25 +218,11 @@ public class AgentConfig {
             this.failureStop = ((Number) m.getOrDefault("failure_stop", 5)).intValue();
         }
 
-        public int getRepeatWarn() {
-            return repeatWarn;
-        }
-
-        public int getRepeatStop() {
-            return repeatStop;
-        }
-
-        public int getNoProgressSteps() {
-            return noProgressSteps;
-        }
-
-        public int getFailureWarn() {
-            return failureWarn;
-        }
-
-        public int getFailureStop() {
-            return failureStop;
-        }
+        public int getRepeatWarn() { return repeatWarn; }
+        public int getRepeatStop() { return repeatStop; }
+        public int getNoProgressSteps() { return noProgressSteps; }
+        public int getFailureWarn() { return failureWarn; }
+        public int getFailureStop() { return failureStop; }
     }
 
     public static class RetryConfig {
@@ -351,21 +238,10 @@ public class AgentConfig {
             this.jitter = ((Number) m.getOrDefault("jitter", 0.2)).doubleValue();
         }
 
-        public int getAttempts() {
-            return attempts;
-        }
-
-        public long getMinDelayMs() {
-            return minDelayMs;
-        }
-
-        public long getMaxDelayMs() {
-            return maxDelayMs;
-        }
-
-        public double getJitter() {
-            return jitter;
-        }
+        public int getAttempts() { return attempts; }
+        public long getMinDelayMs() { return minDelayMs; }
+        public long getMaxDelayMs() { return maxDelayMs; }
+        public double getJitter() { return jitter; }
     }
 
     public static class StorageConfig {
@@ -389,10 +265,7 @@ public class AgentConfig {
         }
     }
 
-    /**
-     * MCP 服务配置。
-     * 支持多个 MCP 服务，每个服务有 url / enabled / permission 三个字段。
-     */
+    /** MCP 服务配置，支持多服务。 */
     public static class McpConfig {
         public final Map<String, McpServerConfig> servers;
 
@@ -420,7 +293,7 @@ public class AgentConfig {
         public final String key;
         public final String url;
         public final boolean enabled;
-        public final String permission;  // READONLY / RESTRICTED_WRITE / DESTRUCTIVE
+        public final String permission;
 
         public McpServerConfig(String key, Map<String, Object> m) {
             this.key = key;
@@ -430,14 +303,12 @@ public class AgentConfig {
         }
     }
 
-    /**
-     * 百度千帆 AI Search 配置。
-     */
+    /** 百度千帆 AI Search 配置。 */
     public static class WebSearchConfig {
         public final String apiKey;
         public final String searchSource;
         public final int topK;
-        public final String recencyFilter;  // day/week/month/year/null
+        public final String recencyFilter;
 
         public WebSearchConfig(Map<String, Object> m) {
             this.apiKey = resolveEnv((String) m.getOrDefault("api_key", ""));
@@ -457,12 +328,9 @@ public class AgentConfig {
         }
     }
 
-    /**
-     * 模式配置。
-     * 控制运行时行为。
-     */
+    /** 运行时模式配置。 */
     public static class ModeConfig {
-        public final boolean checkpointEnabled;   // 是否启用 Checkpoint（默认 false）
+        public final boolean checkpointEnabled;
 
         public ModeConfig(Map<String, Object> m) {
             this.checkpointEnabled = (boolean) m.getOrDefault("checkpoint_enabled", false);

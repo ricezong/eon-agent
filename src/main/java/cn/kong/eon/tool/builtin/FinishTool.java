@@ -12,9 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * finish 工具：任务完成时调用。
- * 对应技术方案第 5.6 节。
- * 软提醒模式：存在未完成 Todo 时在结果中提示但不阻断 finish。
+ * finish 工具：任务完成时调用，终止 Agent 循环。
+ * 存在未完成 Todo 时在结果中提醒但不阻断。
  */
 public class FinishTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(FinishTool.class);
@@ -55,7 +54,6 @@ public class FinishTool implements ToolExecutor {
             return "[ERROR] finish 必须附带 summary";
         }
 
-        // 软提醒：存在未完成的 Todo 时在结果中提示，但不阻断 finish
         StringBuilder sb = new StringBuilder();
         if (!context.todoStore().allCompleted()) {
             int pending = (int) context.todoStore().getAll().stream()

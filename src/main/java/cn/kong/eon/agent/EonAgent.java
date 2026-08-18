@@ -27,46 +27,18 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * EonAgent — 单入口统一引擎。
+ * Agent 单入口统一引擎。
  *
- * <h3>架构设计</h3>
- * 不区分聊天模式和 Agent 模式，采用"单入口 + 能力插拔 + 统一上下文"架构：
- * <ul>
- *   <li>Core Loop：路由 → 组装 → beforeModelCall → build → 调用 → 解析 → 返回/扩展</li>
- *   <li>Extension Loop：门禁 → 执行 → afterToolExecution → 回填 → 回到 Core Loop</li>
- * </ul>
+ * Core Loop: 路由 → 组装上下文 → beforeModelCall → build → 调用 LLM → 解析 → 返回/扩展
+ * Extension Loop: beforeToolExecution → 执行工具 → afterToolExecution → 回填 → 回到 Core Loop
  *
- * <h3>关键设计</h3>
- * <ol>
- *   <li>System Prompt 完全冻结（basePrompt），不拼接动态内容，保证 KV Cache 前缀稳定</li>
- *   <li>tool_catalog 作为独立消息注入（放在 transcript 之后），不破坏 System Prompt 缓存</li>
- *   <li>能力模块按 Layer 分层 + orderInLayer 微调排序执行（GUARD→CONTEXT→RENDER→OBSERVE→RECORD）</li>
- *   <li>beforeModelCall 在 ctx.build() 之前调用，能力模块可修改 ContextBuilder</li>
- *   <li>配对修复仅在 Summarize 触发时执行（Snip/Prune 不破坏配对）</li>
- * </ol>
- *
- * <h3>Profile 路由（两档 + 两阶段懒加载）</h3>
- * <ul>
- *   <li>SIMPLE：默认模式，始终注入 tool_catalog（名称+摘要）。
- *       采用两阶段懒加载：
- *       <ol>
- *         <li>第一阶段（pendingToolMounts 为空）：注入 catalog + toolRequestPrompt，
- *             不传工具 Schema。模型从 catalog 中选择需要的工具，在文本输出中声明。</li>
- *         <li>第二阶段（pendingToolMounts 非空）：按声明的工具名挂载完整 Schema，
- *             不传 toolRequestPrompt。模型可以调用工具。</li>
- *       </ol></li>
- *   <li>TASK：LLM 调用过 todo_write 后自动升级，全量挂载工具 Schema，
- *       TodoNavigator 激活。Profile 升级单向，不可降级。</li>
- * </ul>
+ * System Prompt 完全冻结（basePrompt），tool_catalog 作为独立消息注入，保证 KV Cache 前缀稳定。
+ * Profile 两档：SIMPLE（默认，两阶段懒加载工具 Schema）、TASK（todo_write 后升级，全量挂载）。
  */
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
 
-    /**
-     * 两阶段懒加载：模型声明所需工具的输出格式。
-     * 模型在文本输出中以此格式声明需要的工具名，服务端解析后下一轮挂载完整 Schema。
-     * 示例：[NEED_TOOLS: web_search, web_read, finish]
-     */
+    /** 两阶段懒加载：模型声明所需工具的格式。 */
     private static final Pattern NEED_TOOLS_PATTERN =
             Pattern.compile("\\[NEED_TOOLS:\\s*(.+?)\\s*\\]", Pattern.CASE_INSENSITIVE);
 
@@ -107,16 +79,7 @@ public class EonAgent {
         return modules.size();
     }
 
-    /**
-     * 获取按 Layer + orderInLayer 排序的能力模块列表。
-     *
-     * <p>排序规则：先按 {@link CapabilityModule#layer()} 跨层排序
-     * （GUARD→CONTEXT→RENDER→OBSERVE→RECORD），同层内按
-     * {@link CapabilityModule#orderInLayer()} 微调（数值小先执行）。</p>
-     *
-     * <p>每次调用都创建新列表，避免修改原列表。
-     * 所有 Hook 循环都使用此方法获取排序后的模块，保证执行顺序一致。</p>
-     */
+    /** 按 Layer + orderInLayer 排序，每次调用创建新列表。 */
     private List<CapabilityModule> getSortedModules() {
         List<CapabilityModule> sorted = new ArrayList<>(modules);
         sorted.sort(Comparator
@@ -125,14 +88,12 @@ public class EonAgent {
         return sorted;
     }
 
-    /**
-     * 运行 Agent。
-     */
+    /** 运行 Agent 主循环。 */
     public String run(SessionState state) {
         log.info("=== EonAgent 启动 === session={}", state.getSessionId());
         log.info("用户请求: {}", state.getUserOriginalInput());
 
-        // 重置懒加载状态（防止多轮对话场景下残留上一轮的 pendingToolMounts）
+        // 重置懒加载状态
         state.setPendingToolMounts(null);
 
         jsonlStore.append(UserMessage.from(state.getUserOriginalInput()));
@@ -140,7 +101,6 @@ public class EonAgent {
         while (state.getTurnCount() < config.getLoop().maxSteps) {
             state.incrementTurn();
 
-            // 路由 Profile
             RequestProfile profile = policyRouter.route(state);
             log.info("--- Turn {} [{}] ---", state.getTurnCount(), profile);
 
@@ -150,7 +110,7 @@ public class EonAgent {
                 // 1. 组装上下文
                 ContextBuilder ctx = buildContext(state, profile);
 
-                // 2. beforeModelCall：能力模块前置处理（按 Layer + orderInLayer 排序）
+                // 2. beforeModelCall
                 List<CapabilityModule> sortedModules = getSortedModules();
                 for (CapabilityModule module : sortedModules) {
                     if (!module.isActive(state)) continue;
@@ -179,18 +139,16 @@ public class EonAgent {
 
                 List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
                 if (requests == null || requests.isEmpty()) {
-                    // 无 tool_calls
-                    // 两阶段懒加载：检查模型是否在文本中声明了所需工具
+                    // 无 tool_calls：检查两阶段懒加载声明
                     if (profile == RequestProfile.SIMPLE && state.getPendingToolMounts() == null) {
                         Set<String> declaredTools = parseDeclaredTools(thought);
                         if (declaredTools != null && !declaredTools.isEmpty()) {
-                            // 模型声明了所需工具，写入 pendingToolMounts，进入下一轮挂载 Schema
                             Set<String> validTools = filterValidTools(declaredTools);
                             if (!validTools.isEmpty()) {
                                 state.setPendingToolMounts(validTools);
                                 log.info("Model declared tools: {} -> mounting next turn", validTools);
                                 finalizeAndAppend(state);
-                                continue;  // 回到 Core Loop，下一轮挂载 Schema
+                                continue;
                             }
                         }
                     }
@@ -207,7 +165,7 @@ public class EonAgent {
                 }
                 state.setPendingToolCalls(requests);
 
-                // 7. afterModelCall：能力模块后置处理（死循环检测等，统一用 sortedModules）
+                // 7. afterModelCall
                 for (CapabilityModule module : sortedModules) {
                     if (!module.isActive(state)) continue;
                     CapabilityResult r = module.afterModelCall(state, response);
@@ -218,7 +176,7 @@ public class EonAgent {
 
                 // ===== Extension Loop =====
 
-                // 8. beforeToolExecution：能力模块工具前置处理（门禁校验等，替代原 findGateKeeper 特殊路径）
+                // 8. beforeToolExecution
                 for (CapabilityModule module : sortedModules) {
                     if (!module.isActive(state)) continue;
                     CapabilityResult r = module.beforeToolExecution(state, requests);
@@ -230,7 +188,7 @@ public class EonAgent {
                 // 9. 执行工具
                 List<ToolExecutionResult> results = executeTools(state);
 
-                // 10. afterToolExecution：能力模块工具后处理（失败计数、Todo 激活等，统一用 sortedModules）
+                // 10. afterToolExecution
                 for (int i = 0; i < requests.size(); i++) {
                     ToolExecutionRequest req = requests.get(i);
                     ToolExecutionResult result = results.get(i);
@@ -262,13 +220,7 @@ public class EonAgent {
         return "达到最大步数限制";
     }
 
-    /**
-     * 格式化能力模块的中断返回值。
-     *
-     * <p>统一处理所有能力模块通过 {@link CapabilityResult#abort} 中断的情况，
-     * 替代原"按异常类型 catch"的强耦合设计。新增守卫模块只需约定新的 category 字符串，
-     * 在此处添加分支即可，无需改 EonAgent 的 catch 块。</p>
-     */
+    /** 格式化能力模块的中断返回值。 */
     private String formatAbort(CapabilityResult r) {
         String category = r.getCategory();
         String reason = r.getReason();
@@ -284,26 +236,21 @@ public class EonAgent {
         };
     }
 
-    /**
-     * 组装上下文。
-     */
+    /** 组装上下文。 */
     private ContextBuilder buildContext(SessionState state, RequestProfile profile) {
         ContextBuilder ctx = new ContextBuilder();
         ctx.setSystemPrompt(basePrompt);
 
-        // 摘要（压缩后才有）
         if (state.getCompressionState().getLastSummary() != null) {
             ctx.setSummary(state.getCompressionState().getLastSummary());
         }
 
-        // 历史消息
         List<ChatMessage> transcript = jsonlStore.readAll();
         ctx.setTranscript(transcript);
 
-        // 工具目录（始终注入，独立消息不破坏 System Prompt 缓存）
         ctx.setToolCatalog(toolRegistry.getCatalogSummary());
 
-        // 两阶段懒加载：SIMPLE 模式且模型尚未声明工具时，注入 toolRequestPrompt 引导模型选择
+        // SIMPLE 第一阶段：注入 toolRequestPrompt 引导模型选择工具
         if (profile == RequestProfile.SIMPLE && state.getPendingToolMounts() == null) {
             ctx.setToolRequestPrompt(buildToolRequestPrompt());
         }
@@ -313,33 +260,26 @@ public class EonAgent {
 
     /**
      * 按 Profile + 两阶段懒加载获取工具 Schema。
-     *
-     * SIMPLE + pendingToolMounts 为空（第一阶段）：不传工具 Schema，模型只能看到 catalog
-     * SIMPLE + pendingToolMounts 非空（第二阶段）：按声明的工具名挂载完整 Schema
-     * TASK：全量注入所有工具 Schema
+     * SIMPLE + 未声明：不传 Schema
+     * SIMPLE + 已声明：按声明的工具名挂载
+     * TASK：全量注入
      */
     private List<ToolSpecification> getToolsForProfile(SessionState state, RequestProfile profile) {
         if (profile == RequestProfile.TASK) {
-            // TASK：全量注入
             return toolRegistry.getSpecifications();
         }
 
-        // SIMPLE 模式
         Set<String> mounts = state.getPendingToolMounts();
         if (mounts == null || mounts.isEmpty()) {
-            // 第一阶段：不传工具 Schema
             return List.of();
         }
 
-        // 第二阶段：按声明的工具名挂载完整 Schema
         List<ToolSpecification> specs = toolRegistry.getSpecificationsByName(mounts);
         log.info("Mounting tools (lazy load): {} -> {} specs", mounts, specs.size());
         return specs;
     }
 
-    /**
-     * 执行工具。
-     */
+    /** 执行工具。 */
     private List<ToolExecutionResult> executeTools(SessionState state) {
         List<ToolExecutionRequest> requests = state.getPendingToolCalls();
         List<ToolExecutionResult> results = new ArrayList<>();
@@ -362,9 +302,7 @@ public class EonAgent {
         return results;
     }
 
-    /**
-     * 回填到 JSONL。
-     */
+    /** 回填 AI 消息和工具结果到 JSONL，清理临时状态。 */
     private void finalizeAndAppend(SessionState state) {
         AiMessage aiMsg = state.getLastAssistantText() != null && !state.getLastAssistantText().isBlank()
                 ? AiMessage.from(state.getLastAssistantText(), state.getPendingToolCalls())
@@ -379,7 +317,6 @@ public class EonAgent {
             }
         }
 
-        // 清理临时状态
         state.getPendingNudges().clear();
         state.getFormatCorrections().clear();
         state.setPendingToolCalls(null);
@@ -397,10 +334,7 @@ public class EonAgent {
         }
     }
 
-    /**
-     * 构建工具请求提示词。
-     * 引导模型从 tool_catalog 中选择需要的工具，以 [NEED_TOOLS: tool1, tool2] 格式声明。
-     */
+    /** 引导模型从 catalog 中选择需要的工具。 */
     private String buildToolRequestPrompt() {
         return """
                 上方是可用工具目录（tool_catalog）。如果你需要使用其中的工具来完成任务，
@@ -411,12 +345,7 @@ public class EonAgent {
                 """;
     }
 
-    /**
-     * 从模型文本输出中解析声明的工具名。
-     * 格式：[NEED_TOOLS: web_search, web_read, finish]
-     *
-     * @return 声明的工具名集合，未找到则返回 null
-     */
+    /** 从模型文本输出中解析 [NEED_TOOLS: tool1, tool2] 格式的工具声明。 */
     private Set<String> parseDeclaredTools(String text) {
         if (text == null || text.isBlank()) return null;
         Matcher matcher = NEED_TOOLS_PATTERN.matcher(text);
@@ -433,9 +362,7 @@ public class EonAgent {
         return tools.isEmpty() ? null : tools;
     }
 
-    /**
-     * 过滤出真实存在的工具名（本地 + MCP）。
-     */
+    /** 过滤出真实存在的工具名（本地 + MCP）。 */
     private Set<String> filterValidTools(Set<String> declaredTools) {
         Set<String> valid = new LinkedHashSet<>();
         for (String name : declaredTools) {

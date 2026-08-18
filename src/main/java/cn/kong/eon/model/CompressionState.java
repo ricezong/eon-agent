@@ -6,17 +6,16 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * 压缩状态：记录哪些消息已被 Snip / Prune / Summarize。
- * 对应技术方案第 2.5 节 CompressionState。
+ * 压缩状态。记录哪些消息已被 Snip / Prune / Summarize。
  * 压缩决策单调推进——同一消息一旦被 Snip，不会回退为完整。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CompressionState {
-    private Set<String> snippedIds;       // 已 Snip 的消息 ID
-    private Set<String> prunedIds;        // 已 Prune 的消息 ID
-    private String lastSummary;           // 最近一次 LLM 摘要文本
-    private int summarizedUpToIndex;      // 摘要覆盖到哪条消息
-    private double lastWaterLevel;        // 上次水位
+    private Set<String> snippedIds;
+    private Set<String> prunedIds;
+    private String lastSummary;
+    private int summarizedUpToIndex;
+    private double lastWaterLevel;
 
     public CompressionState() {
         this.snippedIds = new HashSet<>();

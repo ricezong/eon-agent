@@ -6,10 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Todo 任务项。
- * 对应技术方案第 2.1 节 TodoItem 数据结构。
- * 核心四字段：id / content / status / priority
- * 扩展字段：parent_id / depends_on / artifacts / notes / block_reason
+ * Todo 任务项。核心字段：id / content / status / priority。
+ * 扩展：depends_on / artifacts / notes / block_reason。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class TodoItem {
@@ -23,7 +21,7 @@ public class TodoItem {
     private String notes;
     private String blockReason;         // blocked 时必填
     private int version;                // 乐观锁
-    private int lastModifiedTurn;       // 最后修改轮次
+    private int lastModifiedTurn;
 
     public TodoItem() {
         this.dependsOn = new ArrayList<>();

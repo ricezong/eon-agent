@@ -4,18 +4,14 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.Instant;
 
-/**
- * Artifact 引用记录。
- * 对应技术方案第 2.3 节。
- * 大文本工具结果落盘后，上下文只保留此引用。
- */
+/** Artifact 引用记录。大文本工具结果落盘后，上下文只保留此引用。 */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ArtifactRef {
-    private String refId;           // 如 "art_001"
-    private String source;          // 来源工具名
-    private String summary;         // 一句话摘要
-    private long sizeChars;         // 原始字符数
-    private String filePath;        // 落盘路径
+    private String refId;
+    private String source;
+    private String summary;
+    private long sizeChars;
+    private String filePath;
     private Instant createdAt;
 
     public ArtifactRef() {}

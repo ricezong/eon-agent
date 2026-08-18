@@ -10,31 +10,26 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 会话级运行时状态。
- * 对应技术方案第 2.7 节 SessionState。
- * 贯穿整个 Agent Loop，所有组件共享此状态。
+ * 会话级运行时状态。贯穿整个 Agent Loop，所有组件共享。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class SessionState {
     private String sessionId;
     private String userOriginalInput;        // 用户原始请求（永不裁剪）
     private int turnCount;
-    private int userTurnCount;               // 用户回合数（用于 Nudge）
+    private int userTurnCount;
     private TokenUsage usageAccum;
     private CompressionState compressionState;
-    private List<String> insights;           // Insights 滚动区
+    private List<String> insights;
     private List<String> pendingNudges;      // 临时附加层（本轮有效）
     private List<String> formatCorrections;  // 格式纠正（本轮有效）
     private boolean finished;
     private String finishReason;
-    private String lastAssistantText;        // 最近一轮 assistant 文本输出
+    private String lastAssistantText;
 
-    // Profile 管理
-    private boolean todoBeenUsed = false;    // LLM 是否调用过 todo_write（用于升级 Profile）
+    private boolean todoBeenUsed = false;    // 是否调用过 todo_write（用于升级 Profile）
 
-    // 两阶段懒加载：模型声明的所需工具名
-    // 第一轮模型从 catalog 中选择需要的工具，写入此字段；
-    // 第二轮按此字段挂载完整工具 Schema。
+    /** 两阶段懒加载：模型声明的所需工具名。 */
     private transient Set<String> pendingToolMounts;
 
     // 运行时临时字段（不序列化）
@@ -68,17 +63,9 @@ public class SessionState {
     public void decrementTurn() { if (this.turnCount > 0) this.turnCount--; }
     public void incrementUserTurn() { this.userTurnCount++; }
 
-    public void addInsight(String insight) {
-        insights.add(0, insight);  // 最新在前
-    }
-
-    public void addNudge(String nudge) {
-        pendingNudges.add(nudge);
-    }
-
-    public void addFormatCorrection(String correction) {
-        formatCorrections.add(correction);
-    }
+    public void addInsight(String insight) { insights.add(0, insight); }
+    public void addNudge(String nudge) { pendingNudges.add(nudge); }
+    public void addFormatCorrection(String correction) { formatCorrections.add(correction); }
 
     public void clearTemporary() {
         pendingNudges.clear();

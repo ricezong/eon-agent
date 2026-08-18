@@ -13,10 +13,7 @@ import org.slf4j.LoggerFactory;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * web_read 工具：读取网页内容。
- * 真实实现，使用 Jsoup 抓取并提取正文文本。
- */
+/** web_read 工具：使用 Jsoup 抓取网页并提取正文文本。 */
 public class WebReadTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(WebReadTool.class);
 
@@ -73,16 +70,12 @@ public class WebReadTool implements ToolExecutor {
         }
     }
 
-    /**
-     * 提取网页正文文本。
-     * 移除 script/style/nav 等标签，保留正文。
-     */
+    /** 移除 script/style/nav 等标签，提取正文。 */
     private String extractMainText(Document doc) {
         doc.select("script, style, nav, header, footer, aside, iframe, noscript").remove();
 
         String text = doc.body() != null ? doc.body().text() : doc.text();
 
-        // 清理多余空白
         text = text.replaceAll("\\s{3,}", "\n\n");
         text = text.replaceAll("[ \\t]+", " ");
 

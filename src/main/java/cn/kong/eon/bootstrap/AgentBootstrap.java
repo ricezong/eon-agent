@@ -29,19 +29,13 @@ import java.util.List;
 import java.util.Scanner;
 
 /**
- * Agent 组装器。
- *
- * 单入口架构：构建 EonAgent + 挂载能力模块。
- * 不区分聊天模式和 Agent 模式，由 PolicyRouter 自动路由。
+ * Agent 组装器：构建 EonAgent + 挂载能力模块 + 连接 MCP 服务。
  */
 public class AgentBootstrap {
     private static final Logger log = LoggerFactory.getLogger(AgentBootstrap.class);
 
-    /**
-     * 构建 EonAgent。
-     */
     public static EonAgent build(AgentConfig config, String sessionId) {
-        // 1. 创建 Store 层（所有路径基于 base_dir/{sessionId}/ 隔离）
+        // 1. Store 层（按 sessionId 隔离）
         Path sessionDir = Path.of(config.getStorage().baseDir, sessionId);
         TodoStore todoStore = new TodoStore();
         InsightsStore insightsStore = new InsightsStore(
@@ -51,11 +45,11 @@ public class AgentBootstrap {
         JsonlStore jsonlStore = new JsonlStore(sessionDir.resolve("transcript.jsonl"));
         CheckpointStore checkpointStore = new CheckpointStore(sessionDir.resolve("checkpoints"));
 
-        // 2. 创建 Tool 层（全量注册，LLM 自主选用）
+        // 2. Tool 层
         ToolRegistry toolRegistry = new ToolRegistry(config.getTools().whitelist);
         registerAllTools(toolRegistry);
 
-        // 2.1 连接 MCP 服务
+        // 2.1 MCP 服务
         List<McpClientManager> mcpManagers = connectMcpServers(config, toolRegistry);
 
         ToolResultRenderer resultRenderer = new ToolResultRenderer(artifactStore);
@@ -64,10 +58,10 @@ public class AgentBootstrap {
                 sessionDir.resolve("downloads").toString(),
                 sessionDir.resolve("workspace").toString());
 
-        // 3. 加载基础提示词
+        // 3. 加载提示词
         String basePrompt = loadPrompt(config.getContext().systemPromptPath);
 
-        // 4. 创建 LLM 层
+        // 4. LLM 层
         LlmClient llmClient = new LlmClient(config);
 
         // 5. 创建 EonAgent
@@ -97,9 +91,7 @@ public class AgentBootstrap {
         return agent;
     }
 
-    /**
-     * 注册全部本地工具。
-     */
+    /** 注册全部本地工具。 */
     private static void registerAllTools(ToolRegistry toolRegistry) {
         toolRegistry.register(TodoWriteTool.descriptor());
         toolRegistry.register(TodoReadTool.descriptor());
@@ -112,9 +104,7 @@ public class AgentBootstrap {
         log.info("All local tools registered (7)");
     }
 
-    /**
-     * 连接所有已启用的 MCP 服务。
-     */
+    /** 连接所有已启用的 MCP 服务，注册远程工具。 */
     private static List<McpClientManager> connectMcpServers(AgentConfig config, ToolRegistry toolRegistry) {
         List<McpClientManager> managers = new ArrayList<>();
         List<AgentConfig.McpServerConfig> servers = config.getMcp().getEnabledServers();
@@ -144,9 +134,7 @@ public class AgentBootstrap {
         return managers;
     }
 
-    /**
-     * 从 classpath 或文件系统加载提示词。
-     */
+    /** 从 classpath 或文件系统加载提示词。 */
     private static String loadPrompt(String relativePath) {
         try {
             Path promptPath = Path.of(relativePath);
@@ -165,9 +153,7 @@ public class AgentBootstrap {
         }
     }
 
-    /**
-     * 交互式启动。
-     */
+    /** 交互式启动。 */
     public static void main(String[] args) {
         AgentConfig config = AgentConfig.loadFromClasspath("config/agent.yaml");
 

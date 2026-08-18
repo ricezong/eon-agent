@@ -2,10 +2,7 @@ package cn.kong.eon.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-/**
- * Token 用量累计。
- * 对应技术方案第 2.6 节。
- */
+/** Token 用量累计。 */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class TokenUsage {
     private int promptTokens;

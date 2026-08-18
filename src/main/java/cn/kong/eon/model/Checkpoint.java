@@ -4,11 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.Instant;
 
-/**
- * Checkpoint 快照。
- * 对应技术方案第 2.4 节。
- * 每次 todo_write 或每 5 轮落盘一次，崩溃后从最新 checkpoint 恢复。
- */
+/** Checkpoint 快照，崩溃后从最新 checkpoint 恢复。 */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class Checkpoint {
     private String checkpointId;

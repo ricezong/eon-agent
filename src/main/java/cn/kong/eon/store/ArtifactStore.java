@@ -16,9 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Artifact 存储。
- * 对应技术方案第 2.3 节。
- * 大文本工具结果落盘，上下文只留引用。
+ * Artifact 存储。大文本工具结果落盘，上下文只保留引用。
  */
 public class ArtifactStore {
     private static final Logger log = LoggerFactory.getLogger(ArtifactStore.class);
@@ -39,9 +37,7 @@ public class ArtifactStore {
         }
     }
 
-    /**
-     * 保存大文本为 artifact，返回引用。
-     */
+    /** 保存大文本为 artifact，返回引用。 */
     public ArtifactRef save(String source, String content, String summary) {
         int seq = counter.incrementAndGet();
         String refId = String.format("art_%03d", seq);
@@ -60,9 +56,7 @@ public class ArtifactStore {
         return ref;
     }
 
-    /**
-     * 读取 artifact 全文。
-     */
+    /** 读取 artifact 全文。 */
     public String readContent(String refId) {
         ArtifactRef ref = refs.get(refId);
         if (ref == null) return null;
@@ -74,17 +68,10 @@ public class ArtifactStore {
         }
     }
 
-    public ArtifactRef get(String refId) {
-        return refs.get(refId);
-    }
+    public ArtifactRef get(String refId) { return refs.get(refId); }
+    public List<ArtifactRef> listAll() { return new ArrayList<>(refs.values()); }
 
-    public List<ArtifactRef> listAll() {
-        return new ArrayList<>(refs.values());
-    }
-
-    /**
-     * 在 artifact 内容中搜索关键词。
-     */
+    /** 在 artifact 内容中搜索关键词。 */
     public String search(String refId, String pattern) {
         String content = readContent(refId);
         if (content == null) return "Artifact not found: " + refId;

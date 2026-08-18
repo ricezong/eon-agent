@@ -19,7 +19,6 @@ import java.util.stream.Stream;
 /**
  * file_io 工具：文件读写。支持 read/write/list/delete。
  * 路径相对于 workDir，禁止路径穿越（..）。
- * 写自动创建父目录，大文件截断/落盘由 ToolResultRenderer 统一处理。
  */
 public class FileIoTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(FileIoTool.class);
@@ -86,10 +85,7 @@ public class FileIoTool implements ToolExecutor {
         }
     }
 
-    /**
-     * 解析路径，禁止 .. 穿越。
-     * workDir 已含 sessionId（由 AgentBootstrap 隔离），直接在其下解析。
-     */
+    /** 解析路径，禁止 .. 穿越。 */
     private Path resolveSafe(String workDir, String relativePath) {
         Path base = Path.of(workDir).toAbsolutePath().normalize();
         Path resolved = base.resolve(relativePath).normalize();

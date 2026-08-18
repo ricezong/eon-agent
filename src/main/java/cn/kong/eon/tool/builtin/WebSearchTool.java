@@ -22,16 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * web_search 工具：搜索网页。
- * 真实实现，使用百度千帆 AI Search API。
- *
- * 接口文档：
- *   POST https://qianfan.baidubce.com/v2/ai_search/web_search
- *   Authorization: Bearer <API Key>
- *   Body: { messages: [{content, role}], search_source, resource_type_filter, ... }
- *
- * 响应：{ references: [{id, title, url, content, date, type, ...}], request_id }
- *      错误：{ requestId, code, message }
+ * web_search 工具：使用百度千帆 AI Search API 搜索网页。
  */
 public class WebSearchTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(WebSearchTool.class);
@@ -47,17 +38,10 @@ public class WebSearchTool implements ToolExecutor {
 
     private final String apiKey;
 
-    /**
-     * 无参构造：从配置文件加载 API Key。
-     * 兼容旧调用方式（AgentBootstrap 中 new WebSearchTool()）。
-     */
     public WebSearchTool() {
         this.apiKey = loadApiKeyFromConfig();
     }
 
-    /**
-     * 显式传入 API Key 的构造函数。
-     */
     public WebSearchTool(String apiKey) {
         this.apiKey = apiKey != null ? apiKey : loadApiKeyFromConfig();
     }
@@ -135,28 +119,21 @@ public class WebSearchTool implements ToolExecutor {
         }
     }
 
-    /**
-     * 构建千帆 API 请求体。
-     */
     private ObjectNode buildRequestBody(String query, int topK, String siteFilter, String recencyFilter) {
         ObjectNode body = mapper.createObjectNode();
 
-        // messages
         ArrayNode messages = body.putArray("messages");
         ObjectNode msg = messages.addObject();
         msg.put("content", query);
         msg.put("role", "user");
 
-        // search_source
         body.put("search_source", "baidu_search_v2");
 
-        // resource_type_filter
         ArrayNode resourceTypeFilter = body.putArray("resource_type_filter");
         ObjectNode webFilter = resourceTypeFilter.addObject();
         webFilter.put("type", "web");
         webFilter.put("top_k", topK);
 
-        // search_filter (可选，限定站点)
         if (siteFilter != null && !siteFilter.isBlank()) {
             ObjectNode searchFilter = body.putObject("search_filter");
             ObjectNode match = searchFilter.putObject("match");
@@ -164,7 +141,6 @@ public class WebSearchTool implements ToolExecutor {
             sites.add(siteFilter);
         }
 
-        // search_recency_filter (可选)
         if (recencyFilter != null && !recencyFilter.isBlank()) {
             body.put("search_recency_filter", recencyFilter);
         }
@@ -172,9 +148,6 @@ public class WebSearchTool implements ToolExecutor {
         return body;
     }
 
-    /**
-     * 调用千帆 API。
-     */
     private String callApi(ObjectNode body) throws Exception {
         String requestBody = mapper.writeValueAsString(body);
 
@@ -192,7 +165,6 @@ public class WebSearchTool implements ToolExecutor {
 
         if (response.statusCode() != 200) {
             log.error("千帆 API 返回非 200: status={}, body={}", response.statusCode(), response.body());
-            // 尝试解析错误消息
             try {
                 JsonNode errNode = mapper.readTree(response.body());
                 if (errNode.has("message")) {
@@ -205,13 +177,9 @@ public class WebSearchTool implements ToolExecutor {
         return response.body();
     }
 
-    /**
-     * 解析千帆 API 响应。
-     */
     private String parseResponse(String responseJson, String query) throws Exception {
         JsonNode root = mapper.readTree(responseJson);
 
-        // 检查错误响应
         if (root.has("code") && root.has("message")) {
             String code = root.path("code").asText();
             String message = root.path("message").asText();

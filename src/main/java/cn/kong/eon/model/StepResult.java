@@ -1,9 +1,6 @@
 package cn.kong.eon.model;
 
-/**
- * 单步执行结果。
- * 对应技术方案第 3 节 StepResult。
- */
+/** 单步执行结果。 */
 public record StepResult(StepAction action, String reason, String message) {
 
     public static StepResult continueLoop() {
@@ -19,8 +16,8 @@ public record StepResult(StepAction action, String reason, String message) {
     }
 
     public enum StepAction {
-        CONTINUE,   // 继续下一步
-        RETRY,      // 重试当前步
-        STOP        // 终止循环
+        CONTINUE,
+        RETRY,
+        STOP
     }
 }

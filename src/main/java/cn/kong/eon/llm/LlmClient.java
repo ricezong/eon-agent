@@ -16,9 +16,7 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * LLM 客户端封装。
- * 对应技术方案第 3 节「调用模型」。
- * 使用 LangChain4j 的 OpenAiChatModel（兼容 DeepSeek）。
+ * LLM 客户端封装，使用 LangChain4j 的 OpenAiChatModel（兼容 DeepSeek 等）。
  * 支持超时检测与指数退避重试。
  */
 public class LlmClient {
@@ -46,10 +44,7 @@ public class LlmClient {
                 llmConfig.provider, llmConfig.modelName, llmConfig.baseUrl);
     }
 
-    /**
-     * 调用 LLM。
-     * 带指数退避重试。
-     */
+    /** 调用 LLM，带指数退避重试。 */
     public LlmResponse chat(List<ChatMessage> messages, List<ToolSpecification> tools) {
         int attempt = 0;
         Exception lastException = null;

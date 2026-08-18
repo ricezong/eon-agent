@@ -12,10 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * todo_read 工具：读取当前任务清单。
- * 对应技术方案第 5.6 节。
- */
+/** todo_read 工具：读取当前任务清单。 */
 public class TodoReadTool implements ToolExecutor {
 
     public static ToolDescriptor descriptor() {

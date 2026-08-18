@@ -9,14 +9,8 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
- * 工具注册表。
- * 对应技术方案第 5.4 节。
- * 统一管理所有工具的元数据与执行管线。
- * 对 Agent Loop 提供一致的调用接口。
- *
- * 支持两类工具：
- * 1. 本地工具：通过 ToolDescriptor 注册，由 ToolExecutor 执行
- * 2. MCP 工具：通过 registerMcpTools() 注册，由 McpClientManager 委托执行
+ * 工具注册表。统一管理本地工具和 MCP 工具的元数据与执行。
+ * 本地工具通过 ToolDescriptor 注册；MCP 工具通过 registerMcpTools() 注册，委托 McpClientManager 执行。
  */
 public class ToolRegistry {
     private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
@@ -24,18 +18,15 @@ public class ToolRegistry {
     private final Map<String, ToolDescriptor> tools = new LinkedHashMap<>();
     private final Set<String> whitelist;
 
-    // MCP 工具：toolName -> McpClientManager
+    // MCP 工具
     private final Map<String, McpClientManager> mcpToolSources = new HashMap<>();
-    // MCP 工具的 ToolSpecification（直接复用 MCP 服务返回的 schema）
     private final Map<String, ToolSpecification> mcpToolSpecs = new HashMap<>();
 
     public ToolRegistry(Set<String> whitelist) {
         this.whitelist = whitelist != null ? whitelist : new HashSet<>();
     }
 
-    /**
-     * 注册本地工具。
-     */
+    /** 注册本地工具（受白名单过滤）。 */
     public void register(ToolDescriptor descriptor) {
         if (!whitelist.isEmpty() && !whitelist.contains(descriptor.getName())) {
             log.warn("Tool {} not in whitelist, skip registration", descriptor.getName());
@@ -46,11 +37,7 @@ public class ToolRegistry {
     }
 
     /**
-     * 注册 MCP 工具。
-     * 从 McpClientManager 获取工具列表，全部注册。
-     *
-     * @param mcpManager MCP 客户端管理器
-     * @param permission MCP 工具的默认权限（READONLY / RESTRICTED_WRITE / DESTRUCTIVE）
+     * 注册 MCP 工具。MCP 工具不受本地白名单限制。
      * @return 实际注册的工具数量
      */
     public int registerMcpTools(McpClientManager mcpManager, String permission) {
@@ -63,8 +50,6 @@ public class ToolRegistry {
         int count = 0;
         for (ToolSpecification spec : toolSpecs) {
             String toolName = spec.name();
-            // MCP 工具默认全部放行，不受本地工具白名单限制
-            // （白名单只用于过滤本地工具；MCP 工具由 MCP 服务的权限控制）
             mcpToolSources.put(toolName, mcpManager);
             mcpToolSpecs.put(toolName, spec);
             log.info("MCP tool registered: {} [{}] from server '{}'",
@@ -84,45 +69,26 @@ public class ToolRegistry {
         };
     }
 
-    /**
-     * 获取工具描述符（仅本地工具）。
-     */
-    public ToolDescriptor get(String name) {
-        return tools.get(name);
-    }
+    public ToolDescriptor get(String name) { return tools.get(name); }
 
-    /**
-     * 判断工具是否存在（本地或 MCP）。
-     */
+    /** 判断工具是否存在（本地或 MCP）。 */
     public boolean contains(String name) {
         return tools.containsKey(name) || mcpToolSpecs.containsKey(name);
     }
 
-    /**
-     * 判断是否为 MCP 工具。
-     */
-    public boolean isMcpTool(String name) {
-        return mcpToolSpecs.containsKey(name);
-    }
+    public boolean isMcpTool(String name) { return mcpToolSpecs.containsKey(name); }
 
-    /**
-     * 获取所有工具的 ToolSpecification（本地 + MCP，用于传给 LLM）。
-     */
+    /** 获取所有工具 Schema（本地 + MCP）。 */
     public List<ToolSpecification> getSpecifications() {
         List<ToolSpecification> all = new ArrayList<>();
-        // 本地工具
         for (ToolDescriptor desc : tools.values()) {
             all.add(desc.getSpecification());
         }
-        // MCP 工具
         all.addAll(mcpToolSpecs.values());
         return all;
     }
 
-    /**
-     * 获取指定工具名的 Schema 列表（按名称过滤）。
-     * 用于 SIMPLE 模式的第二阶段懒加载：按模型声明的工具名挂载完整 Schema。
-     */
+    /** 按名称过滤获取 Schema（用于 SIMPLE 模式第二阶段懒加载）。 */
     public List<ToolSpecification> getSpecificationsByName(Set<String> toolNames) {
         List<ToolSpecification> result = new ArrayList<>();
         for (String name : toolNames) {
@@ -138,9 +104,7 @@ public class ToolRegistry {
         return result;
     }
 
-    /**
-     * 执行工具（本地或 MCP）。
-     */
+    /** 执行工具（本地或 MCP）。 */
     public String execute(String name, Map<String, Object> arguments,
                           cn.kong.eon.model.SessionState state, ToolContext context) {
         // 本地工具
@@ -173,16 +137,12 @@ public class ToolRegistry {
         return "[ERROR] Tool not found: " + name;
     }
 
-    /**
-     * 获取工具权限。
-     * 本地工具从 ToolDescriptor 获取；MCP 工具默认 READONLY。
-     */
+    /** 获取工具权限（MCP 工具默认 READONLY）。 */
     public ToolPermission getPermission(String name) {
         ToolDescriptor descriptor = tools.get(name);
         if (descriptor != null) {
             return descriptor.getPermission();
         }
-        // MCP 工具默认只读
         if (mcpToolSpecs.containsKey(name)) {
             return ToolPermission.READONLY;
         }
@@ -199,13 +159,8 @@ public class ToolRegistry {
         return perm == ToolPermission.READONLY;
     }
 
-    public Set<String> getWhitelist() {
-        return Collections.unmodifiableSet(whitelist);
-    }
+    public Set<String> getWhitelist() { return Collections.unmodifiableSet(whitelist); }
 
-    /**
-     * 获取所有已注册工具名（本地 + MCP）。
-     */
     public Collection<String> getAllToolNames() {
         Set<String> names = new LinkedHashSet<>();
         names.addAll(tools.keySet());
@@ -213,24 +168,10 @@ public class ToolRegistry {
         return names;
     }
 
-    /**
-     * 获取本地工具描述符集合（不含 MCP 工具）。
-     */
-    public Collection<ToolDescriptor> getAll() {
-        return tools.values();
-    }
+    public Collection<ToolDescriptor> getAll() { return tools.values(); }
+    public int getMcpToolCount() { return mcpToolSpecs.size(); }
 
-    /**
-     * 获取 MCP 工具数量。
-     */
-    public int getMcpToolCount() {
-        return mcpToolSpecs.size();
-    }
-
-    /**
-     * 获取工具目录摘要（名称 + 一句话描述）。
-     * 用于 SIMPLE 模式的懒加载：先注入摘要，LLM 需要时再加载完整 Schema。
-     */
+    /** 获取工具目录摘要（名称 + 描述），用于 SIMPLE 模式懒加载。 */
     public String getCatalogSummary() {
         StringBuilder sb = new StringBuilder("可用工具目录：\n");
         for (ToolDescriptor desc : tools.values()) {
@@ -246,9 +187,6 @@ public class ToolRegistry {
         return sb.toString();
     }
 
-    /**
-     * 将参数 Map 转为 JSON 字符串（用于 MCP 调用）。
-     */
     private String convertArgsToJson(Map<String, Object> arguments) {
         if (arguments == null || arguments.isEmpty()) {
             return "{}";

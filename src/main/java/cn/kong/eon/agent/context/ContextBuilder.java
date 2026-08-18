@@ -8,32 +8,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 上下文构建器。
+ * 上下文构建器。分层组装最终发送给 LLM 的 messages。
  *
- * <h3>分层组装</h3>
- * <ul>
- *   <li>基础层（所有请求必走）：System Prompt + 滚动摘要 + 历史消息 + 尾部保护区</li>
- *   <li>Agent 层（按需注入）：ToolCatalog + ToolRequestPrompt + Navigator</li>
- * </ul>
+ * 物理顺序：
+ *   System Prompt → Summary → Transcript → ToolCatalog → ToolRequestPrompt
+ *   → Navigator → RuntimeNudges → TailGuard
  *
- * <h3>物理拼装顺序</h3>
- * <pre>
- *   messages[0]          System Prompt（basePrompt，完全冻结，吃 KV Cache）
- *   messages[1]?         Summary（压缩后才有）
- *   messages[2..N]       Transcript（历史消息，可被 Snip/Prune 压缩）
- *   messages[N+1]?       ToolCatalog（始终注入，独立消息不破坏 System Prompt 缓存）
- *   messages[N+1b]?      ToolRequestPrompt（SIMPLE 模式第一阶段注入，引导模型声明所需工具）
- *   messages[N+2]?       Navigator（TodoNavigator 激活后才有）
- *   messages[N+3..End]   TailGuard（尾部保护区，最近 3 轮，绝不裁剪）
- * </pre>
- *
- * <h3>KV Cache 友好</h3>
- * System Prompt 不拼接任何动态内容，tool_catalog 和 navigator 作为独立消息注入，
- * 放在 transcript 之后，不破坏 System Prompt 的前缀稳定性。
- *
- * <h3>使用方式</h3>
- * CapabilityModule 通过 beforeModelCall 向 ContextBuilder 注入内容，
- * EonAgent 在 beforeModelCall 之后调用 build() 生成最终 messages。
+ * System Prompt 不拼接动态内容，保证 KV Cache 前缀稳定。
+ * 能力模块通过 beforeModelCall 注入内容，EonAgent 调用 build() 生成最终 messages。
  */
 public class ContextBuilder {
 
@@ -41,99 +23,45 @@ public class ContextBuilder {
     private String summary;
     private String navigator;
     private String toolCatalog;
-    private String toolRequestPrompt;  // 两阶段懒加载：引导模型声明所需工具
+    private String toolRequestPrompt;
     private String runtimeNudges;
     private List<ChatMessage> transcript;
     private List<ChatMessage> tailGuard;
 
-    public ContextBuilder setSystemPrompt(String systemPrompt) {
-        this.systemPrompt = systemPrompt;
-        return this;
-    }
+    public ContextBuilder setSystemPrompt(String systemPrompt) { this.systemPrompt = systemPrompt; return this; }
+    public ContextBuilder setSummary(String summary) { this.summary = summary; return this; }
+    public ContextBuilder setNavigator(String navigator) { this.navigator = navigator; return this; }
+    public ContextBuilder setToolCatalog(String toolCatalog) { this.toolCatalog = toolCatalog; return this; }
+    public ContextBuilder setToolRequestPrompt(String toolRequestPrompt) { this.toolRequestPrompt = toolRequestPrompt; return this; }
+    public ContextBuilder setRuntimeNudges(String runtimeNudges) { this.runtimeNudges = runtimeNudges; return this; }
+    public ContextBuilder setTranscript(List<ChatMessage> transcript) { this.transcript = transcript; return this; }
+    public List<ChatMessage> getTranscript() { return transcript; }
+    public ContextBuilder setTailGuard(List<ChatMessage> tailGuard) { this.tailGuard = tailGuard; return this; }
 
-    public ContextBuilder setSummary(String summary) {
-        this.summary = summary;
-        return this;
-    }
-
-    public ContextBuilder setNavigator(String navigator) {
-        this.navigator = navigator;
-        return this;
-    }
-
-    public ContextBuilder setToolCatalog(String toolCatalog) {
-        this.toolCatalog = toolCatalog;
-        return this;
-    }
-
-    public ContextBuilder setToolRequestPrompt(String toolRequestPrompt) {
-        this.toolRequestPrompt = toolRequestPrompt;
-        return this;
-    }
-
-    public ContextBuilder setRuntimeNudges(String runtimeNudges) {
-        this.runtimeNudges = runtimeNudges;
-        return this;
-    }
-
-    public ContextBuilder setTranscript(List<ChatMessage> transcript) {
-        this.transcript = transcript;
-        return this;
-    }
-
-    public List<ChatMessage> getTranscript() {
-        return transcript;
-    }
-
-    public ContextBuilder setTailGuard(List<ChatMessage> tailGuard) {
-        this.tailGuard = tailGuard;
-        return this;
-    }
-
-    /**
-     * 构建最终的 messages 列表。
-     *
-     * 顺序：System Prompt → Summary → Transcript → ToolCatalog → Navigator → TailGuard
-     */
     public List<ChatMessage> build() {
         List<ChatMessage> result = new ArrayList<>();
 
-        // ① 基础层：System Prompt（冻结，吃 KV Cache）
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             result.add(SystemMessage.from(systemPrompt));
         }
-
-        // ② 基础层：滚动摘要（压缩后才有）
         if (summary != null && !summary.isBlank()) {
             result.add(SystemMessage.from("## [Summary] 历史对话摘要\n" + summary));
         }
-
-        // ③ 基础层：历史消息（可被 Snip/Prune 压缩）
         if (transcript != null) {
             result.addAll(transcript);
         }
-
-        // ④ Agent 层：工具目录（始终注入，独立消息不破坏 System Prompt 缓存）
         if (toolCatalog != null && !toolCatalog.isBlank()) {
             result.add(UserMessage.from("tool_catalog", toolCatalog));
         }
-
-        // ④b Agent 层：工具请求提示（SIMPLE 模式且模型尚未声明工具时注入，引导模型选择需要的工具）
         if (toolRequestPrompt != null && !toolRequestPrompt.isBlank()) {
             result.add(UserMessage.from("tool_request_prompt", toolRequestPrompt));
         }
-
-        // ⑤ Agent 层：Navigator（TodoNavigator 激活后才有）
         if (navigator != null && !navigator.isBlank()) {
             result.add(UserMessage.from("navigator", navigator));
         }
-
-        // ⑤b Agent 层：运行时提醒（NudgeRenderer 始终注入，不依赖 TodoNavigator）
         if (runtimeNudges != null && !runtimeNudges.isBlank()) {
             result.add(UserMessage.from("runtime_nudges", runtimeNudges));
         }
-
-        // ⑥ 基础层：尾部保护区（最近 3 轮，绝不裁剪）
         if (tailGuard != null) {
             result.addAll(tailGuard);
         }
@@ -141,9 +69,7 @@ public class ContextBuilder {
         return result;
     }
 
-    /**
-     * 估算当前上下文的 token 数（粗略：字符数/4）。
-     */
+    /** 粗略估算 token 数（字符数/4）。 */
     public long estimateTokens() {
         long chars = 0;
         if (systemPrompt != null) chars += systemPrompt.length();
@@ -152,14 +78,10 @@ public class ContextBuilder {
         if (toolRequestPrompt != null) chars += toolRequestPrompt.length();
         if (navigator != null) chars += navigator.length();
         if (transcript != null) {
-            for (ChatMessage msg : transcript) {
-                chars += extractText(msg).length();
-            }
+            for (ChatMessage msg : transcript) chars += extractText(msg).length();
         }
         if (tailGuard != null) {
-            for (ChatMessage msg : tailGuard) {
-                chars += extractText(msg).length();
-            }
+            for (ChatMessage msg : tailGuard) chars += extractText(msg).length();
         }
         return chars / 4;
     }
