@@ -83,10 +83,10 @@ tools:
     - "finish"
     - "web_search"
     - "web_read"
-    - "file_download"
+    - "download"
     - "file_io"
   destructive:
-    - "file_download"                   # 通用文件下载，写文件系统
+    - "download"                   # 通用文件下载，写文件系统
   readonly:
     - "todo_read"
     - "web_search"
