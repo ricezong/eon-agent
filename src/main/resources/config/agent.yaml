@@ -4,7 +4,7 @@
 llm:
   provider: "mimo"
   base_url: "https://token-plan-cn.xiaomimimo.com/v1"
-  api_key: "tp-c654g8cbqqn3hi***********************"        # 从环境变量读取
+  api_key: "tp-c654g8cbqqn3himi5wtceuwflocalhostze5d"        # 从环境变量读取
   model_name: "mimo-v2.5"
   temperature: 0.7
   timeout: 120                          # 秒
@@ -12,12 +12,12 @@ llm:
 
 # 百度千帆 AI Search（web_search 工具使用）
 web_search:
-  api_key: "bce-v3/ALTAK-DB1tDlP5ePo4nfD1vRls0**************************"         # 从环境变量读取
+  api_key: "bce-v3/ALTAK-DB1tDlP5ePo4nfD1vRls0/c5650localhost40fe293227271"         # 从环境变量读取
   search_source: "baidu_search_v2"      # 搜索源
   top_k: 10                             # 返回结果数
   recency_filter: "year"                # 时间过滤：day/week/month/year
 
-# 模式配置（用户启动时显式选择 SIMPLE/TASK）
+# 模式配置（Profile 由 PolicyRouter 自动路由：SIMPLE/TASK）
 mode:
   checkpoint_enabled: false             # MVP 阶段关闭 Checkpoint，L2 阶段开启
 
@@ -41,6 +41,9 @@ context:
     snip_keep_chars: 80
     prune_keep_chars: 30
     summary_trigger_messages: 16
+    summarize:
+      max_input_chars: 50000       # 摘要输入最大字符数（防止超长输入）
+      max_output_chars: 2000       # 摘要输出最大字符数
 
 # 会话预算（独立于上下文窗口大小，控制整个会话的累计 token 消耗）
 budget:
@@ -80,10 +83,10 @@ tools:
     - "finish"
     - "web_search"
     - "web_read"
-    - "download"
+    - "file_download"
     - "file_io"
   destructive:
-    - "download"                        # 写文件系统
+    - "file_download"                   # 通用文件下载，写文件系统
   readonly:
     - "todo_read"
     - "web_search"
@@ -93,7 +96,7 @@ tools:
 mcp:
   servers:
     novel-mcp-server:
-      url: "http://127.0.0.1:8081/mcp"
+      url: "http://localhost:8081/mcp"
       enabled: true                     # 是否启用该 MCP 服务
       permission: "READONLY"            # MCP 工具默认权限
 
