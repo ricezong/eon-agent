@@ -20,7 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * file_download 工具：通用文件下载（破坏性操作）。
+ * download 工具：通用文件下载（破坏性操作）。
  * 使用 Java HttpClient 下载文件到本地。
  */
 public class DownloadTool implements ToolExecutor {
@@ -41,10 +41,10 @@ public class DownloadTool implements ToolExecutor {
         ));
         String desc = "下载文件到本地（破坏性操作，写文件系统）。URL 需真实有效，禁止编造。";
         return new ToolDescriptor(
-                "file_download",
+                "download",
                 desc,
                 ToolPermission.DESTRUCTIVE,
-                ToolDescriptor.buildSpec("file_download", desc, props),
+                ToolDescriptor.buildSpec("download", desc, props),
                 new DownloadTool()
         );
     }

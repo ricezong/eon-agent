@@ -227,7 +227,7 @@ class CoreLogicTest {
         assertThat(toolRegistry.get("finish")).isNotNull();
         assertThat(toolRegistry.get("web_search")).isNotNull();
         assertThat(toolRegistry.get("web_read")).isNotNull();
-        assertThat(toolRegistry.get("file_download")).isNotNull();
+        assertThat(toolRegistry.get("download")).isNotNull();
         assertThat(toolRegistry.get("file_io")).isNotNull();
     }
 
@@ -236,7 +236,7 @@ class CoreLogicTest {
         assertThat(toolRegistry.isReadonly("todo_read")).isTrue();
         assertThat(toolRegistry.isReadonly("web_search")).isTrue();
         assertThat(toolRegistry.isReadonly("web_read")).isTrue();
-        assertThat(toolRegistry.isDestructive("file_download")).isTrue();
+        assertThat(toolRegistry.isDestructive("download")).isTrue();
         assertThat(toolRegistry.isDestructive("todo_read")).isFalse();
     }
 
