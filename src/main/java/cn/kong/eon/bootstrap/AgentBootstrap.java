@@ -111,7 +111,7 @@ public class AgentBootstrap {
 
     /** 注册全部本地工具。 */
     private static void registerAllTools(ToolRegistry toolRegistry) {
-        toolRegistry.register(RequestToolsTool.descriptor());
+        toolRegistry.register(EnableToolsTool.descriptor());
         toolRegistry.register(TodoWriteTool.descriptor());
         toolRegistry.register(TodoReadTool.descriptor());
         toolRegistry.register(WorkingMemoryTool.descriptor());

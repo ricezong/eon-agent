@@ -51,7 +51,7 @@ class CoreLogicTest {
         CheckpointStore checkpointStore = new CheckpointStore(sessionDir.resolve("checkpoints"));
 
         toolRegistry = new ToolRegistry(config.getTools().whitelist);
-        toolRegistry.register(RequestToolsTool.descriptor());
+        toolRegistry.register(EnableToolsTool.descriptor());
         toolRegistry.register(TodoWriteTool.descriptor());
         toolRegistry.register(TodoReadTool.descriptor());
         toolRegistry.register(WorkingMemoryTool.descriptor());
@@ -218,9 +218,9 @@ class CoreLogicTest {
 
     @Test
     void should_register_all_9_tools() {
-        // Then: 9 个工具全部注册（含 request_tools）
+        // Then: 9 个工具全部注册（含 enable_tools）
         assertThat(toolRegistry.getAll()).hasSize(9);
-        assertThat(toolRegistry.get("request_tools")).isNotNull();
+        assertThat(toolRegistry.get("enable_tools")).isNotNull();
         assertThat(toolRegistry.get("todo_write")).isNotNull();
         assertThat(toolRegistry.get("todo_read")).isNotNull();
         assertThat(toolRegistry.get("working_memory")).isNotNull();
@@ -233,7 +233,7 @@ class CoreLogicTest {
 
     @Test
     void should_classify_tool_permissions() {
-        assertThat(toolRegistry.isReadonly("request_tools")).isTrue();
+        assertThat(toolRegistry.isReadonly("enable_tools")).isTrue();
         assertThat(toolRegistry.isReadonly("todo_read")).isTrue();
         assertThat(toolRegistry.isReadonly("web_search")).isTrue();
         assertThat(toolRegistry.isReadonly("web_read")).isTrue();
@@ -491,16 +491,16 @@ class CoreLogicTest {
         assertThat(todoStore.size()).isEqualTo(0);
     }
 
-    // ==================== request_tools 工具测试 ====================
+    // ==================== enable_tools 工具测试 ====================
 
     @Test
-    void should_execute_request_tools() {
+    void should_execute_enable_tools() {
         SessionState state = SessionState.create("test-req-tools", "test");
         java.util.Map<String, Object> args = java.util.Map.of(
                 "tools", java.util.List.of("web_search", "web_read")
         );
 
-        String result = toolRegistry.execute("request_tools", args, state, toolContext);
+        String result = toolRegistry.execute("enable_tools", args, state, toolContext);
 
         assertThat(result).contains("已声明工具");
         assertThat(result).contains("web_search");
@@ -508,13 +508,13 @@ class CoreLogicTest {
     }
 
     @Test
-    void should_reject_empty_request_tools() {
+    void should_reject_empty_enable_tools() {
         SessionState state = SessionState.create("test-req-empty", "test");
         java.util.Map<String, Object> args = java.util.Map.of(
                 "tools", java.util.List.of()
         );
 
-        String result = toolRegistry.execute("request_tools", args, state, toolContext);
+        String result = toolRegistry.execute("enable_tools", args, state, toolContext);
 
         assertThat(result).contains("[ERROR]");
     }

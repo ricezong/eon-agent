@@ -9,10 +9,10 @@ import cn.kong.eon.tool.ToolExecutor;
 import java.util.*;
 
 /**
- * request_tools 工具：模型通过结构化工具调用声明所需工具，替代正则解析。
+ * enable_tools 工具：模型通过结构化工具调用声明所需工具，引擎拦截后按需挂载对应 Schema。
  * 引擎在 executeTools 中拦截此工具的执行结果，从参数中提取工具名设置 pendingToolMounts。
  */
-public class RequestToolsTool implements ToolExecutor {
+public class EnableToolsTool implements ToolExecutor {
 
     public static ToolDescriptor descriptor() {
         Map<String, Map<String, Object>> props = new LinkedHashMap<>();
@@ -25,11 +25,11 @@ public class RequestToolsTool implements ToolExecutor {
 
         String desc = "声明你需要的工具。调用后下一轮将获得这些工具的完整调用参数。";
         return new ToolDescriptor(
-                "request_tools",
+                "enable_tools",
                 desc,
                 ToolPermission.READONLY,
-                ToolDescriptor.buildSpec("request_tools", desc, props),
-                new RequestToolsTool()
+                ToolDescriptor.buildSpec("enable_tools", desc, props),
+                new EnableToolsTool()
         );
     }
 

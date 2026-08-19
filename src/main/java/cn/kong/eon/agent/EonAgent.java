@@ -32,7 +32,7 @@ import java.util.*;
  * Extension Loop: PreTool → 执行工具 → PostTool → 回填 → 回到 Core Loop
  *
  * System Prompt 完全冻结（basePrompt），tool_catalog 作为独立消息注入，保证 KV Cache 前缀稳定。
- * Profile 两档：SIMPLE（默认，两阶段懒加载工具 Schema）、TASK（todo_write 后升级，全量挂载）。
+ * Profile 两档：SIMPLE（默认）、TASK（todo_write 后升级，TodoNavigator 激活）。两者均走两阶段懒加载。
  *
  * Hook 调度：按执行阶段分组（PreModel/PostModel/PreTool/PostTool），用 instanceof 过滤，
  * 同阶段内按 order() 升序执行。
@@ -40,7 +40,7 @@ import java.util.*;
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
 
-    private static final String REQUEST_TOOLS = "request_tools";
+    private static final String ENABLE_TOOLS = "enable_tools";
 
     private final AgentConfig config;
     private final LlmClient llmClient;
@@ -140,7 +140,7 @@ public class EonAgent {
                 List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
                 if (requests == null || requests.isEmpty()) {
                     // 已声明工具但未调用：提醒模型
-                    if (profile == RequestProfile.SIMPLE && state.getPendingToolMounts() != null) {
+                    if (state.getPendingToolMounts() != null) {
                         state.addFormatCorrection(
                                 "你已获得工具的完整调用参数但未调用。如果任务需要工具，请直接调用；如果不需要，请直接回答。");
                         finalizeAndAppend(state);
@@ -249,25 +249,20 @@ public class EonAgent {
     }
 
     /**
-     * 按 Profile + 两阶段懒加载获取工具 Schema。
-     * SIMPLE + 未声明：只挂载 request_tools
-     * SIMPLE + 已声明：按声明的工具名挂载（排除 request_tools）
-     * TASK：全量注入
+     * 两阶段懒加载获取工具 Schema（SIMPLE / TASK 统一）。
+     * 未声明：只挂载 enable_tools
+     * 已声明：按声明的工具名挂载（排除 enable_tools 自身）
      */
     private List<ToolSpecification> getToolsForProfile(SessionState state, RequestProfile profile) {
-        if (profile == RequestProfile.TASK) {
-            return toolRegistry.getSpecifications();
-        }
-
         Set<String> mounts = state.getPendingToolMounts();
         if (mounts == null || mounts.isEmpty()) {
-            // SIMPLE 第一轮：只挂载 request_tools
-            return toolRegistry.getSpecificationsByName(Set.of(REQUEST_TOOLS));
+            // 第一轮：只挂载 enable_tools
+            return toolRegistry.getSpecificationsByName(Set.of(ENABLE_TOOLS));
         }
 
-        // SIMPLE 第二轮：挂载模型声明的工具（排除 request_tools 自身）
+        // 第二轮：挂载模型声明的工具（排除 enable_tools 自身）
         Set<String> realMounts = new LinkedHashSet<>(mounts);
-        realMounts.remove(REQUEST_TOOLS);
+        realMounts.remove(ENABLE_TOOLS);
         List<ToolSpecification> specs = toolRegistry.getSpecificationsByName(realMounts);
         log.info("Mounting tools (lazy load): {} -> {} specs", realMounts, specs.size());
         return specs;
@@ -284,8 +279,8 @@ public class EonAgent {
 
             String rawResult = toolRegistry.execute(req.name(), args, state, toolContext);
 
-            // 拦截 request_tools：从参数中提取工具名，设置 pendingToolMounts
-            if (REQUEST_TOOLS.equals(req.name())) {
+            // 拦截 enable_tools：从参数中提取工具名，设置 pendingToolMounts
+            if (ENABLE_TOOLS.equals(req.name())) {
                 Object toolsRaw = args.get("tools");
                 if (toolsRaw instanceof List<?> list) {
                     Set<String> declaredTools = new LinkedHashSet<>();
@@ -299,7 +294,7 @@ public class EonAgent {
                     }
                     if (!declaredTools.isEmpty()) {
                         state.setPendingToolMounts(declaredTools);
-                        log.info("Model declared tools via request_tools: {}", declaredTools);
+                        log.info("Model declared tools via enable_tools: {}", declaredTools);
                     }
                 }
             }

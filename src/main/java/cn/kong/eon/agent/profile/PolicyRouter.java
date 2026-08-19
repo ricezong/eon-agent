@@ -6,8 +6,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 策略路由器。零 LLM 调用，基于 todoBeenUsed 标志判断：
- *   - 未调用 todo_write → SIMPLE（两阶段懒加载）
- *   - 已调用 todo_write → TASK（全量工具 Schema）
+ *   - 未调用 todo_write → SIMPLE
+ *   - 已调用 todo_write → TASK（TodoNavigator 激活）
  * 单向升级，不可降级。
  */
 public class PolicyRouter {
