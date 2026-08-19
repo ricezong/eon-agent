@@ -11,11 +11,11 @@ import java.util.List;
  * 上下文构建器。分层组装最终发送给 LLM 的 messages。
  *
  * 物理顺序：
- *   System Prompt → Summary → Transcript → ToolCatalog → ToolRequestPrompt
+ *   System Prompt → Summary → Transcript → ToolCatalog
  *   → Navigator → RuntimeNudges → TailGuard
  *
  * System Prompt 不拼接动态内容，保证 KV Cache 前缀稳定。
- * 能力模块通过 beforeModelCall 注入内容，EonAgent 调用 build() 生成最终 messages。
+ * Hook 通过 beforeModelCall 注入内容，EonAgent 调用 build() 生成最终 messages。
  */
 public class ContextBuilder {
 
@@ -23,7 +23,6 @@ public class ContextBuilder {
     private String summary;
     private String navigator;
     private String toolCatalog;
-    private String toolRequestPrompt;
     private String runtimeNudges;
     private List<ChatMessage> transcript;
     private List<ChatMessage> tailGuard;
@@ -32,7 +31,6 @@ public class ContextBuilder {
     public ContextBuilder setSummary(String summary) { this.summary = summary; return this; }
     public ContextBuilder setNavigator(String navigator) { this.navigator = navigator; return this; }
     public ContextBuilder setToolCatalog(String toolCatalog) { this.toolCatalog = toolCatalog; return this; }
-    public ContextBuilder setToolRequestPrompt(String toolRequestPrompt) { this.toolRequestPrompt = toolRequestPrompt; return this; }
     public ContextBuilder setRuntimeNudges(String runtimeNudges) { this.runtimeNudges = runtimeNudges; return this; }
     public ContextBuilder setTranscript(List<ChatMessage> transcript) { this.transcript = transcript; return this; }
     public List<ChatMessage> getTranscript() { return transcript; }
@@ -53,9 +51,6 @@ public class ContextBuilder {
         if (toolCatalog != null && !toolCatalog.isBlank()) {
             result.add(UserMessage.from("tool_catalog", toolCatalog));
         }
-        if (toolRequestPrompt != null && !toolRequestPrompt.isBlank()) {
-            result.add(UserMessage.from("tool_request_prompt", toolRequestPrompt));
-        }
         if (navigator != null && !navigator.isBlank()) {
             result.add(UserMessage.from("navigator", navigator));
         }
@@ -75,7 +70,6 @@ public class ContextBuilder {
         if (systemPrompt != null) chars += systemPrompt.length();
         if (summary != null) chars += summary.length();
         if (toolCatalog != null) chars += toolCatalog.length();
-        if (toolRequestPrompt != null) chars += toolRequestPrompt.length();
         if (navigator != null) chars += navigator.length();
         if (transcript != null) {
             for (ChatMessage msg : transcript) chars += extractText(msg).length();

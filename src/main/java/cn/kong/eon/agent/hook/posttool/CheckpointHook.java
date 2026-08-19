@@ -1,8 +1,7 @@
-package cn.kong.eon.agent.capability.record;
+package cn.kong.eon.agent.hook.posttool;
 
-import cn.kong.eon.agent.capability.CapabilityModule;
-import cn.kong.eon.agent.capability.CapabilityResult;
-import cn.kong.eon.agent.capability.Layer;
+import cn.kong.eon.agent.hook.Hook;
+import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.store.CheckpointStore;
@@ -10,30 +9,29 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Checkpoint 管理能力模块（RECORD 层）。
+ * Checkpoint 管理（工具执行后阶段，order=100）。
  * 配置启用时，在 todo_write 调用后保存快照。
  */
-public class CheckpointManagerCapability implements CapabilityModule {
-    private static final Logger log = LoggerFactory.getLogger(CheckpointManagerCapability.class);
+public class CheckpointHook implements Hook.PostToolHook {
+    private static final Logger log = LoggerFactory.getLogger(CheckpointHook.class);
 
     private final AgentConfig config;
     private final CheckpointStore checkpointStore;
     private final TodoStoreAccessor todoStoreAccessor;
 
-    public CheckpointManagerCapability(AgentConfig config, CheckpointStore checkpointStore, TodoStoreAccessor todoStoreAccessor) {
+    public CheckpointHook(AgentConfig config, CheckpointStore checkpointStore, TodoStoreAccessor todoStoreAccessor) {
         this.config = config;
         this.checkpointStore = checkpointStore;
         this.todoStoreAccessor = todoStoreAccessor;
     }
 
-    @Override public String name() { return "CheckpointManager"; }
+    @Override public String name() { return "Checkpoint"; }
     @Override public boolean isActive(SessionState state) { return config.getMode().checkpointEnabled; }
-    @Override public Layer layer() { return Layer.RECORD; }
 
     @Override
-    public CapabilityResult afterToolExecution(SessionState state, String toolName, boolean success) {
-        if (!isActive(state)) return CapabilityResult.ok();
-        if (!"todo_write".equals(toolName) || !success) return CapabilityResult.ok();
+    public HookResult afterToolExecution(SessionState state, String toolName, boolean success) {
+        if (!isActive(state)) return HookResult.ok();
+        if (!"todo_write".equals(toolName) || !success) return HookResult.ok();
 
         checkpointStore.save(
                 state.getSessionId(),
@@ -45,7 +43,7 @@ public class CheckpointManagerCapability implements CapabilityModule {
         );
         log.info("Checkpoint saved: turn={}", state.getTurnCount());
 
-        return CapabilityResult.ok();
+        return HookResult.ok();
     }
 
     /** TodoStore 访问器接口。 */

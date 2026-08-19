@@ -1,8 +1,9 @@
 package cn.kong.eon.agent;
 
-import cn.kong.eon.agent.capability.CapabilityModule;
-import cn.kong.eon.agent.capability.CapabilityResult;
 import cn.kong.eon.agent.context.ContextBuilder;
+import cn.kong.eon.agent.hook.AbortCategory;
+import cn.kong.eon.agent.hook.Hook;
+import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.profile.PolicyRouter;
 import cn.kong.eon.agent.profile.RequestProfile;
 import cn.kong.eon.config.AgentConfig;
@@ -23,24 +24,23 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Agent 单入口统一引擎。
  *
- * Core Loop: 路由 → 组装上下文 → beforeModelCall → build → 调用 LLM → 解析 → 返回/扩展
- * Extension Loop: beforeToolExecution → 执行工具 → afterToolExecution → 回填 → 回到 Core Loop
+ * Core Loop: 路由 → 组装上下文 → PreModel → build → 调用 LLM → 解析 → 返回/扩展
+ * Extension Loop: PreTool → 执行工具 → PostTool → 回填 → 回到 Core Loop
  *
  * System Prompt 完全冻结（basePrompt），tool_catalog 作为独立消息注入，保证 KV Cache 前缀稳定。
  * Profile 两档：SIMPLE（默认，两阶段懒加载工具 Schema）、TASK（todo_write 后升级，全量挂载）。
+ *
+ * Hook 调度：按执行阶段分组（PreModel/PostModel/PreTool/PostTool），用 instanceof 过滤，
+ * 同阶段内按 order() 升序执行。
  */
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
 
-    /** 两阶段懒加载：模型声明所需工具的格式。 */
-    private static final Pattern NEED_TOOLS_PATTERN =
-            Pattern.compile("\\[NEED_TOOLS:\\s*(.+?)\\s*\\]", Pattern.CASE_INSENSITIVE);
+    private static final String REQUEST_TOOLS = "request_tools";
 
     private final AgentConfig config;
     private final LlmClient llmClient;
@@ -49,7 +49,7 @@ public class EonAgent {
     private final JsonlStore jsonlStore;
     private final String basePrompt;
     private final PolicyRouter policyRouter;
-    private final List<CapabilityModule> modules;
+    private final List<Hook> hooks;
     private final ToolContext toolContext;
 
     public EonAgent(AgentConfig config,
@@ -66,25 +66,23 @@ public class EonAgent {
         this.jsonlStore = jsonlStore;
         this.basePrompt = basePrompt;
         this.policyRouter = new PolicyRouter();
-        this.modules = new ArrayList<>();
+        this.hooks = new ArrayList<>();
         this.toolContext = toolContext;
     }
 
-    public void addCapability(CapabilityModule module) {
-        modules.add(module);
-        log.debug("Capability module added: {}", module.name());
+    public void addHook(Hook hook) {
+        hooks.add(hook);
+        log.debug("Hook added: {}", hook.name());
     }
 
-    public int getCapabilityCount() {
-        return modules.size();
+    public int getHookCount() {
+        return hooks.size();
     }
 
-    /** 按 Layer + orderInLayer 排序，每次调用创建新列表。 */
-    private List<CapabilityModule> getSortedModules() {
-        List<CapabilityModule> sorted = new ArrayList<>(modules);
-        sorted.sort(Comparator
-                .comparingInt((CapabilityModule m) -> m.layer().order)
-                .thenComparingInt(CapabilityModule::orderInLayer));
+    /** 按 order 升序排序，每次调用创建新列表。 */
+    private List<Hook> getSortedHooks() {
+        List<Hook> sorted = new ArrayList<>(hooks);
+        sorted.sort(Comparator.comparingInt(Hook::order));
         return sorted;
     }
 
@@ -110,13 +108,15 @@ public class EonAgent {
                 // 1. 组装上下文
                 ContextBuilder ctx = buildContext(state, profile);
 
-                // 2. beforeModelCall
-                List<CapabilityModule> sortedModules = getSortedModules();
-                for (CapabilityModule module : sortedModules) {
-                    if (!module.isActive(state)) continue;
-                    CapabilityResult r = module.beforeModelCall(state, ctx);
-                    if (r.isAbort()) {
-                        return formatAbort(r);
+                // 2. PreModel 阶段
+                List<Hook> sortedHooks = getSortedHooks();
+                for (Hook hook : sortedHooks) {
+                    if (!hook.isActive(state)) continue;
+                    if (hook instanceof Hook.PreModelHook pmh) {
+                        HookResult r = pmh.beforeModelCall(state, ctx);
+                        if (r.isAbort()) {
+                            return formatAbort(r);
+                        }
                     }
                 }
 
@@ -139,18 +139,12 @@ public class EonAgent {
 
                 List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
                 if (requests == null || requests.isEmpty()) {
-                    // 无 tool_calls：检查两阶段懒加载声明
-                    if (profile == RequestProfile.SIMPLE && state.getPendingToolMounts() == null) {
-                        Set<String> declaredTools = parseDeclaredTools(thought);
-                        if (declaredTools != null && !declaredTools.isEmpty()) {
-                            Set<String> validTools = filterValidTools(declaredTools);
-                            if (!validTools.isEmpty()) {
-                                state.setPendingToolMounts(validTools);
-                                log.info("Model declared tools: {} -> mounting next turn", validTools);
-                                finalizeAndAppend(state);
-                                continue;
-                            }
-                        }
+                    // 已声明工具但未调用：提醒模型
+                    if (profile == RequestProfile.SIMPLE && state.getPendingToolMounts() != null) {
+                        state.addFormatCorrection(
+                                "你已获得工具的完整调用参数但未调用。如果任务需要工具，请直接调用；如果不需要，请直接回答。");
+                        finalizeAndAppend(state);
+                        continue;
                     }
                     // 聊天结束
                     finalizeAndAppend(state);
@@ -165,39 +159,45 @@ public class EonAgent {
                 }
                 state.setPendingToolCalls(requests);
 
-                // 7. afterModelCall
-                for (CapabilityModule module : sortedModules) {
-                    if (!module.isActive(state)) continue;
-                    CapabilityResult r = module.afterModelCall(state, response);
-                    if (r.isAbort()) {
-                        return formatAbort(r);
+                // 7. PostModel 阶段
+                for (Hook hook : sortedHooks) {
+                    if (!hook.isActive(state)) continue;
+                    if (hook instanceof Hook.PostModelHook pmh) {
+                        HookResult r = pmh.afterModelCall(state, response);
+                        if (r.isAbort()) {
+                            return formatAbort(r);
+                        }
                     }
                 }
 
                 // ===== Extension Loop =====
 
-                // 8. beforeToolExecution
-                for (CapabilityModule module : sortedModules) {
-                    if (!module.isActive(state)) continue;
-                    CapabilityResult r = module.beforeToolExecution(state, requests);
-                    if (r.isAbort()) {
-                        return formatAbort(r);
+                // 8. PreTool 阶段
+                for (Hook hook : sortedHooks) {
+                    if (!hook.isActive(state)) continue;
+                    if (hook instanceof Hook.PreToolHook pth) {
+                        HookResult r = pth.beforeToolExecution(state, requests);
+                        if (r.isAbort()) {
+                            return formatAbort(r);
+                        }
                     }
                 }
 
                 // 9. 执行工具
                 List<ToolExecutionResult> results = executeTools(state);
 
-                // 10. afterToolExecution
+                // 10. PostTool 阶段
                 for (int i = 0; i < requests.size(); i++) {
                     ToolExecutionRequest req = requests.get(i);
                     ToolExecutionResult result = results.get(i);
                     boolean success = !result.content().startsWith("[ERROR]");
-                    for (CapabilityModule module : sortedModules) {
-                        if (!module.isActive(state)) continue;
-                        CapabilityResult r = module.afterToolExecution(state, req.name(), success);
-                        if (r.isAbort()) {
-                            return formatAbort(r);
+                    for (Hook hook : sortedHooks) {
+                        if (!hook.isActive(state)) continue;
+                        if (hook instanceof Hook.PostToolHook pth) {
+                            HookResult r = pth.afterToolExecution(state, req.name(), success);
+                            if (r.isAbort()) {
+                                return formatAbort(r);
+                            }
                         }
                     }
                 }
@@ -220,20 +220,15 @@ public class EonAgent {
         return "达到最大步数限制";
     }
 
-    /** 格式化能力模块的中断返回值。 */
-    private String formatAbort(CapabilityResult r) {
-        String category = r.getCategory();
+    /** 格式化 Hook 的中断返回值。 */
+    private String formatAbort(HookResult r) {
+        AbortCategory category = r.getCategory();
         String reason = r.getReason();
-        log.warn("Capability aborted: category={}, reason={}", category, reason);
+        log.warn("Hook aborted: category={}, reason={}", category, reason);
         if (category == null) {
-            return "能力中断: " + reason;
+            return "执行中断: " + reason;
         }
-        return switch (category) {
-            case "BUDGET_EXCEEDED" -> "预算超限（任务终止）: " + reason;
-            case "LOOP_DETECTED"   -> "检测到死循环: " + reason;
-            case "GATE_REJECTED"   -> "门禁拒绝: " + reason;
-            default                 -> "能力中断[" + category + "]: " + reason;
-        };
+        return category.getDisplayName() + ": " + reason;
     }
 
     /** 组装上下文。 */
@@ -250,18 +245,13 @@ public class EonAgent {
 
         ctx.setToolCatalog(toolRegistry.getCatalogSummary());
 
-        // SIMPLE 第一阶段：注入 toolRequestPrompt 引导模型选择工具
-        if (profile == RequestProfile.SIMPLE && state.getPendingToolMounts() == null) {
-            ctx.setToolRequestPrompt(buildToolRequestPrompt());
-        }
-
         return ctx;
     }
 
     /**
      * 按 Profile + 两阶段懒加载获取工具 Schema。
-     * SIMPLE + 未声明：不传 Schema
-     * SIMPLE + 已声明：按声明的工具名挂载
+     * SIMPLE + 未声明：只挂载 request_tools
+     * SIMPLE + 已声明：按声明的工具名挂载（排除 request_tools）
      * TASK：全量注入
      */
     private List<ToolSpecification> getToolsForProfile(SessionState state, RequestProfile profile) {
@@ -271,11 +261,15 @@ public class EonAgent {
 
         Set<String> mounts = state.getPendingToolMounts();
         if (mounts == null || mounts.isEmpty()) {
-            return List.of();
+            // SIMPLE 第一轮：只挂载 request_tools
+            return toolRegistry.getSpecificationsByName(Set.of(REQUEST_TOOLS));
         }
 
-        List<ToolSpecification> specs = toolRegistry.getSpecificationsByName(mounts);
-        log.info("Mounting tools (lazy load): {} -> {} specs", mounts, specs.size());
+        // SIMPLE 第二轮：挂载模型声明的工具（排除 request_tools 自身）
+        Set<String> realMounts = new LinkedHashSet<>(mounts);
+        realMounts.remove(REQUEST_TOOLS);
+        List<ToolSpecification> specs = toolRegistry.getSpecificationsByName(realMounts);
+        log.info("Mounting tools (lazy load): {} -> {} specs", realMounts, specs.size());
         return specs;
     }
 
@@ -289,6 +283,27 @@ public class EonAgent {
             String reason = (String) args.get("reason");
 
             String rawResult = toolRegistry.execute(req.name(), args, state, toolContext);
+
+            // 拦截 request_tools：从参数中提取工具名，设置 pendingToolMounts
+            if (REQUEST_TOOLS.equals(req.name())) {
+                Object toolsRaw = args.get("tools");
+                if (toolsRaw instanceof List<?> list) {
+                    Set<String> declaredTools = new LinkedHashSet<>();
+                    for (Object item : list) {
+                        String name = String.valueOf(item).trim();
+                        if (toolRegistry.contains(name)) {
+                            declaredTools.add(name);
+                        } else {
+                            log.warn("Declared tool not found: {}", name);
+                        }
+                    }
+                    if (!declaredTools.isEmpty()) {
+                        state.setPendingToolMounts(declaredTools);
+                        log.info("Model declared tools via request_tools: {}", declaredTools);
+                    }
+                }
+            }
+
             String rendered = resultRenderer.render(req.name(), req.id(), reason, rawResult, state);
 
             results.add(ToolExecutionResult.of(req.id(), req.name(), rendered));
@@ -332,46 +347,5 @@ public class EonAgent {
             log.warn("Failed to parse tool arguments: {}", json, e);
             return Map.of();
         }
-    }
-
-    /** 引导模型从 catalog 中选择需要的工具。 */
-    private String buildToolRequestPrompt() {
-        return """
-                上方是可用工具目录（tool_catalog）。如果你需要使用其中的工具来完成任务，
-                请在回复中声明你需要的工具名，格式为：[NEED_TOOLS: tool1, tool2, ...]
-                声明后，下一轮你将获得这些工具的完整调用参数。
-                如果任务不需要工具（如纯聊天、知识问答），直接回答即可，无需声明。
-                注意：你也可以使用 todo_write 建立任务清单来进入任务模式（全量工具可见）。
-                """;
-    }
-
-    /** 从模型文本输出中解析 [NEED_TOOLS: tool1, tool2] 格式的工具声明。 */
-    private Set<String> parseDeclaredTools(String text) {
-        if (text == null || text.isBlank()) return null;
-        Matcher matcher = NEED_TOOLS_PATTERN.matcher(text);
-        if (!matcher.find()) return null;
-
-        String raw = matcher.group(1);
-        Set<String> tools = new LinkedHashSet<>();
-        for (String part : raw.split(",")) {
-            String name = part.trim();
-            if (!name.isEmpty()) {
-                tools.add(name);
-            }
-        }
-        return tools.isEmpty() ? null : tools;
-    }
-
-    /** 过滤出真实存在的工具名（本地 + MCP）。 */
-    private Set<String> filterValidTools(Set<String> declaredTools) {
-        Set<String> valid = new LinkedHashSet<>();
-        for (String name : declaredTools) {
-            if (toolRegistry.contains(name)) {
-                valid.add(name);
-            } else {
-                log.warn("Declared tool not found: {}", name);
-            }
-        }
-        return valid;
     }
 }

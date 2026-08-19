@@ -1,6 +1,6 @@
 package cn.kong.eon;
 
-import cn.kong.eon.agent.capability.render.TodoNavigatorCapability;
+import cn.kong.eon.agent.hook.premodel.TodoNavigatorHook;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.context.PairingRepairer;
 import cn.kong.eon.loop.LoopDetector;
@@ -51,6 +51,7 @@ class CoreLogicTest {
         CheckpointStore checkpointStore = new CheckpointStore(sessionDir.resolve("checkpoints"));
 
         toolRegistry = new ToolRegistry(config.getTools().whitelist);
+        toolRegistry.register(RequestToolsTool.descriptor());
         toolRegistry.register(TodoWriteTool.descriptor());
         toolRegistry.register(TodoReadTool.descriptor());
         toolRegistry.register(WorkingMemoryTool.descriptor());
@@ -80,18 +81,16 @@ class CoreLogicTest {
         ), 0);
         insightsStore.add("找到下载链接: http://example.com/dpcq.txt");
 
-        // When: 用 TodoNavigator 渲染 Navigator
-        TodoNavigatorCapability navigator =
-                new TodoNavigatorCapability(todoStore, insightsStore);
+        // When: 用 TodoNavigatorHook 渲染 Navigator
+        TodoNavigatorHook navigator =
+                new TodoNavigatorHook(todoStore, insightsStore);
         cn.kong.eon.agent.context.ContextBuilder ctx =
                 new cn.kong.eon.agent.context.ContextBuilder();
-        cn.kong.eon.agent.capability.CapabilityResult result = navigator.beforeModelCall(state, ctx);
+        cn.kong.eon.agent.hook.HookResult result = navigator.beforeModelCall(state, ctx);
 
-        // Then: Navigator 应包含用户请求、Todo 和 Insights
+        // Then: Navigator 应包含 Todo 和 Insights
         assertThat(navigator.isActive(state)).isTrue();
         assertThat(result.isAbort()).isFalse();
-        // 验证 Navigator 内容通过 ContextBuilder 获取
-        // （这里验证 TodoNavigator 正确渲染了内容）
     }
 
     @Test
@@ -111,22 +110,21 @@ class CoreLogicTest {
     }
 
     @Test
-    void should_merge_pinned_and_insights_into_single_user_message() {
+    void should_render_todo_and_insights_into_navigator() {
         // Given（TodoNavigator 激活后才有 Navigator）
         SessionState state = SessionState.create("test-merge", "用户原始请求");
         state.setTodoBeenUsed(true);
         todoStore.replaceAll(List.of(TodoItem.of("t1", "任务A", "high")), 0);
         insightsStore.add("关键发现X");
 
-        // When: 用 TodoNavigator 渲染
-        TodoNavigatorCapability navigator =
-                new TodoNavigatorCapability(todoStore, insightsStore);
+        // When: 用 TodoNavigatorHook 渲染
+        TodoNavigatorHook navigator =
+                new TodoNavigatorHook(todoStore, insightsStore);
         cn.kong.eon.agent.context.ContextBuilder ctx =
                 new cn.kong.eon.agent.context.ContextBuilder();
         navigator.beforeModelCall(state, ctx);
 
-        // Then: 验证 Navigator 内容包含 Pinned 和 Insights
-        // 通过 build() 后检查 navigator 消息
+        // Then: 验证 Navigator 内容包含 Todo 和 Insights（不包含用户原始请求，避免重复）
         ctx.setSystemPrompt("system");
         List<ChatMessage> messages = ctx.build();
         UserMessage navMsg = messages.stream()
@@ -135,9 +133,10 @@ class CoreLogicTest {
                 .filter(um -> "navigator".equals(um.name()))
                 .findFirst()
                 .orElseThrow();
-        assertThat(navMsg.singleText()).contains("用户原始请求");
         assertThat(navMsg.singleText()).contains("任务A");
         assertThat(navMsg.singleText()).contains("关键发现X");
+        // 用户原始请求已在 transcript 第一条 UserMessage 中，不应在 navigator 中重复
+        assertThat(navMsg.singleText()).doesNotContain("用户原始请求");
     }
 
     @Test
@@ -218,9 +217,10 @@ class CoreLogicTest {
     }
 
     @Test
-    void should_register_all_8_tools() {
-        // Then: 8 个工具全部注册
-        assertThat(toolRegistry.getAll()).hasSize(8);
+    void should_register_all_9_tools() {
+        // Then: 9 个工具全部注册（含 request_tools）
+        assertThat(toolRegistry.getAll()).hasSize(9);
+        assertThat(toolRegistry.get("request_tools")).isNotNull();
         assertThat(toolRegistry.get("todo_write")).isNotNull();
         assertThat(toolRegistry.get("todo_read")).isNotNull();
         assertThat(toolRegistry.get("working_memory")).isNotNull();
@@ -233,6 +233,7 @@ class CoreLogicTest {
 
     @Test
     void should_classify_tool_permissions() {
+        assertThat(toolRegistry.isReadonly("request_tools")).isTrue();
         assertThat(toolRegistry.isReadonly("todo_read")).isTrue();
         assertThat(toolRegistry.isReadonly("web_search")).isTrue();
         assertThat(toolRegistry.isReadonly("web_read")).isTrue();
@@ -341,8 +342,6 @@ class CoreLogicTest {
 
     @Test
     void should_accept_string_array_todos() {
-        // 场景：LLM 传了字符串数组 ["搜索下载源", "提取链接"]
-        // 期望：自动转为 {content: 字符串, status: pending}
         SessionState state = SessionState.create("test-str-array", "test");
         java.util.Map<String, Object> args = java.util.Map.of(
                 "reason", "测试字符串数组",
@@ -355,15 +354,12 @@ class CoreLogicTest {
         assertThat(result).contains("搜索下载源");
         assertThat(result).contains("提取链接");
         assertThat(todoStore.size()).isEqualTo(3);
-        // 所有任务应为 pending
         todoStore.getAll().forEach(t ->
                 assertThat(t.getStatus()).isEqualTo(TodoStatus.PENDING));
     }
 
     @Test
     void should_accept_integer_id() {
-        // 场景：LLM 传了数字 id {"id": 1, "content": "..."}
-        // 期望：整数 id 转为字符串
         SessionState state = SessionState.create("test-int-id", "test");
         java.util.Map<String, Object> args = java.util.Map.of(
                 "reason", "测试数字id",
@@ -383,8 +379,6 @@ class CoreLogicTest {
 
     @Test
     void should_accept_status_variants() {
-        // 场景：LLM 用了 "todo"/"in-progress"/"done" 等变体
-        // 期望：自动归一化
         SessionState state = SessionState.create("test-status", "test");
         java.util.Map<String, Object> args = java.util.Map.of(
                 "reason", "测试status变体",
@@ -408,8 +402,6 @@ class CoreLogicTest {
 
     @Test
     void should_auto_generate_id_when_missing() {
-        // 场景：LLM 没传 id
-        // 期望：自动生成 id
         SessionState state = SessionState.create("test-no-id", "test");
         java.util.Map<String, Object> args = java.util.Map.of(
                 "reason", "测试无id",
@@ -422,14 +414,11 @@ class CoreLogicTest {
         toolRegistry.execute("todo_write", args, state, toolContext);
 
         assertThat(todoStore.size()).isEqualTo(2);
-        // 每个 todo 都应有非空 id
         todoStore.getAll().forEach(t -> assertThat(t.getId()).isNotBlank());
     }
 
     @Test
     void should_accept_task_field_as_content() {
-        // 场景：LLM 用 "task" 字段而非 "content"
-        // 期望：兼容
         SessionState state = SessionState.create("test-task-field", "test");
         java.util.Map<String, Object> args = java.util.Map.of(
                 "reason", "测试task字段",
@@ -445,9 +434,6 @@ class CoreLogicTest {
 
     @Test
     void should_clear_todos_when_empty_array() {
-        // 场景：todos 为空数组
-        // 期望：清空列表（全量替换语义，空数组 = 清空）
-        // 先写入一些 todo
         SessionState state = SessionState.create("test-empty", "test");
         toolRegistry.execute("todo_write", java.util.Map.of(
                 "reason", "先写入",
@@ -457,7 +443,6 @@ class CoreLogicTest {
         ), state, toolContext);
         assertThat(todoStore.size()).isEqualTo(1);
 
-        // 再传空数组清空
         java.util.Map<String, Object> args = java.util.Map.of(
                 "reason", "测试空数组清空",
                 "todos", java.util.List.of()
@@ -471,9 +456,6 @@ class CoreLogicTest {
 
     @Test
     void should_accept_todos_as_json_string() {
-        // 场景：LLM 把 todos 数组序列化成字符串嵌入 JSON（如 {"todos": "[{...}]"}）
-        // 这是 jsonl 日志中真实出现的失败场景：parseArgs 解析后 todos 是 String 而非 List
-        // 期望：自动二次解析字符串为 JSON 数组
         SessionState state = SessionState.create("test-str-todos", "test");
         String todosJsonString = "[{\"id\":\"t1\",\"content\":\"搜索抖音2017-2022年粉丝超1000万的网红信息\","
                 + "\"status\":\"in_progress\",\"priority\":\"high\"},"
@@ -483,11 +465,10 @@ class CoreLogicTest {
                 + "\"status\":\"pending\",\"priority\":\"medium\"}]";
         java.util.Map<String, Object> args = new java.util.HashMap<>();
         args.put("reason", "创建调研任务清单");
-        args.put("todos", todosJsonString); // 注意：传的是 String，不是 List
+        args.put("todos", todosJsonString);
 
         String result = toolRegistry.execute("todo_write", args, state, toolContext);
 
-        // 不应报错，应正常解析
         assertThat(result).contains("当前任务清单");
         assertThat(result).doesNotContain("[ERROR]");
         assertThat(todoStore.size()).isEqualTo(3);
@@ -498,8 +479,6 @@ class CoreLogicTest {
 
     @Test
     void should_reject_invalid_todos_string() {
-        // 场景：todos 是字符串但不是合法 JSON 数组
-        // 期望：返回明确错误信息
         SessionState state = SessionState.create("test-invalid-str", "test");
         java.util.Map<String, Object> args = new java.util.HashMap<>();
         args.put("reason", "测试非法字符串");
@@ -512,15 +491,40 @@ class CoreLogicTest {
         assertThat(todoStore.size()).isEqualTo(0);
     }
 
+    // ==================== request_tools 工具测试 ====================
+
+    @Test
+    void should_execute_request_tools() {
+        SessionState state = SessionState.create("test-req-tools", "test");
+        java.util.Map<String, Object> args = java.util.Map.of(
+                "tools", java.util.List.of("web_search", "web_read")
+        );
+
+        String result = toolRegistry.execute("request_tools", args, state, toolContext);
+
+        assertThat(result).contains("已声明工具");
+        assertThat(result).contains("web_search");
+        assertThat(result).contains("web_read");
+    }
+
+    @Test
+    void should_reject_empty_request_tools() {
+        SessionState state = SessionState.create("test-req-empty", "test");
+        java.util.Map<String, Object> args = java.util.Map.of(
+                "tools", java.util.List.of()
+        );
+
+        String result = toolRegistry.execute("request_tools", args, state, toolContext);
+
+        assertThat(result).contains("[ERROR]");
+    }
+
     // ==================== 连续失败熔断器测试 ====================
 
     @Test
     void should_warn_after_consecutive_failures() {
-        // 场景：工具连续失败 3 次（达到 failureWarn 阈值）
-        // 期望：返回 WARN 级别，要求标记 blocked
         LoopDetector detector = new LoopDetector(3, 5, 6, 3, 5);
 
-        // 模拟连续 3 次失败
         LoopDetector.DetectionResult r1 = detector.recordToolResult("web_search", false);
         LoopDetector.DetectionResult r2 = detector.recordToolResult("web_search", false);
         LoopDetector.DetectionResult r3 = detector.recordToolResult("web_search", false);
@@ -533,8 +537,6 @@ class CoreLogicTest {
 
     @Test
     void should_trip_after_failure_stop_threshold() {
-        // 场景：工具连续失败 5 次（达到 failureStop 阈值）
-        // 期望：返回 STOP 级别，熔断终止
         LoopDetector detector = new LoopDetector(3, 5, 6, 3, 5);
 
         LoopDetector.DetectionResult result = null;
@@ -548,14 +550,11 @@ class CoreLogicTest {
 
     @Test
     void should_reset_failures_on_success() {
-        // 场景：失败 2 次后成功，计数器应归零
         LoopDetector detector = new LoopDetector(3, 5, 6, 3, 5);
 
         detector.recordToolResult("web_search", false);
         detector.recordToolResult("web_search", false);
-        // 成功一次，计数器归零
         detector.recordToolResult("web_search", true);
-        // 再失败 2 次，不应触发警告（因为之前已归零）
         LoopDetector.DetectionResult r1 = detector.recordToolResult("web_search", false);
         LoopDetector.DetectionResult r2 = detector.recordToolResult("web_search", false);
 
@@ -565,8 +564,6 @@ class CoreLogicTest {
 
     @Test
     void should_detect_cross_tool_failure_escalation() {
-        // 场景：web_search 失败 2 次，然后 web_read 失败 3 次
-        // 期望：跨工具累计失败 5 次，触发熔断（防止 LLM 绕过失败工具）
         LoopDetector detector = new LoopDetector(3, 5, 6, 3, 5);
 
         detector.recordToolResult("web_search", false);
@@ -581,7 +578,6 @@ class CoreLogicTest {
 
     @Test
     void should_trip_individual_tool_after_failures() {
-        // 场景：web_search 连续失败 5 次（达到 failureStop 阈值），该工具应被标记为 tripped
         LoopDetector detector = new LoopDetector(3, 5, 6, 3, 5);
 
         for (int i = 0; i < 5; i++) {

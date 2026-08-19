@@ -1,9 +1,8 @@
-package cn.kong.eon.agent.capability.render;
+package cn.kong.eon.agent.hook.premodel;
 
-import cn.kong.eon.agent.capability.CapabilityModule;
-import cn.kong.eon.agent.capability.CapabilityResult;
-import cn.kong.eon.agent.capability.Layer;
 import cn.kong.eon.agent.context.ContextBuilder;
+import cn.kong.eon.agent.hook.Hook;
+import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.TodoItem;
 import cn.kong.eon.store.InsightsStore;
@@ -14,30 +13,28 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 /**
- * Todo 导航渲染能力模块（RENDER 层，order=20）。
- * todo_write 调用后激活，渲染 Pinned（用户请求 + Todo 列表）+ Insights 到 ContextBuilder。
+ * Todo 导航渲染（模型调用前阶段，order=20）。
+ * todo_write 调用后激活，渲染 Todo 列表 + Insights 到 ContextBuilder。
+ * 用户原始请求已在 transcript 第一条 UserMessage 中，不在此重复注入。
  */
-public class TodoNavigatorCapability implements CapabilityModule {
-    private static final Logger log = LoggerFactory.getLogger(TodoNavigatorCapability.class);
+public class TodoNavigatorHook implements Hook.PreModelHook {
+    private static final Logger log = LoggerFactory.getLogger(TodoNavigatorHook.class);
 
     private final TodoStore todoStore;
     private final InsightsStore insightsStore;
 
-    public TodoNavigatorCapability(TodoStore todoStore, InsightsStore insightsStore) {
+    public TodoNavigatorHook(TodoStore todoStore, InsightsStore insightsStore) {
         this.todoStore = todoStore;
         this.insightsStore = insightsStore;
     }
 
     @Override public String name() { return "TodoNavigator"; }
     @Override public boolean isActive(SessionState state) { return state.hasTodoBeenUsed(); }
-    @Override public Layer layer() { return Layer.RENDER; }
-    @Override public int orderInLayer() { return 20; }
+    @Override public int order() { return 20; }
 
     @Override
-    public CapabilityResult beforeModelCall(SessionState state, ContextBuilder ctx) {
+    public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
         StringBuilder sb = new StringBuilder();
-
-        sb.append("## [Pinned] 用户请求\n").append(state.getUserOriginalInput()).append("\n\n");
 
         sb.append("## [Pinned] 当前任务清单\n");
         List<TodoItem> todos = todoStore.getAll();
@@ -62,6 +59,6 @@ public class TodoNavigatorCapability implements CapabilityModule {
         ctx.setNavigator(sb.toString());
         log.debug("Navigator rendered: {} chars", sb.length());
 
-        return CapabilityResult.ok();
+        return HookResult.ok();
     }
 }
