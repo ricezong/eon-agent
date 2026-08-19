@@ -124,8 +124,8 @@ public class EonAgent {
                 List<ChatMessage> messages = ctx.build();
                 state.setCurrentMessages(messages);
 
-                // 4. 获取工具 Schema（按 Profile + 两阶段懒加载）
-                List<ToolSpecification> tools = getToolsForProfile(state, profile);
+                // 4. 获取工具 Schema
+                List<ToolSpecification> tools = getToolsForProfile(state);
 
                 // 5. 调用模型
                 LlmResponse response = llmClient.chat(messages, tools);
@@ -249,11 +249,11 @@ public class EonAgent {
     }
 
     /**
-     * 两阶段懒加载获取工具 Schema（SIMPLE / TASK 统一）。
+     * 两阶段懒加载获取工具 Schema
      * 未声明：只挂载 enable_tools
      * 已声明：按声明的工具名挂载（排除 enable_tools 自身）
      */
-    private List<ToolSpecification> getToolsForProfile(SessionState state, RequestProfile profile) {
+    private List<ToolSpecification> getToolsForProfile(SessionState state) {
         Set<String> mounts = state.getPendingToolMounts();
         if (mounts == null || mounts.isEmpty()) {
             // 第一轮：只挂载 enable_tools

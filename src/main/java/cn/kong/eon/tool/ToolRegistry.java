@@ -88,7 +88,7 @@ public class ToolRegistry {
         return all;
     }
 
-    /** 按名称过滤获取 Schema（用于 SIMPLE 模式第二阶段懒加载）。 */
+    /** 按名称过滤获取 Schema */
     public List<ToolSpecification> getSpecificationsByName(Set<String> toolNames) {
         List<ToolSpecification> result = new ArrayList<>();
         for (String name : toolNames) {

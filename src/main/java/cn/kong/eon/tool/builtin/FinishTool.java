@@ -51,7 +51,7 @@ public class FinishTool implements ToolExecutor {
         Boolean goalAchieved = (Boolean) arguments.get("goal_achieved");
 
         if (summary == null || summary.isBlank()) {
-            return "[ERROR] finish 必须附带 summary";
+            return "[ERROR] finish 必须附带 summary, 请基于当前对话上下文进行总结";
         }
 
         StringBuilder sb = new StringBuilder();
