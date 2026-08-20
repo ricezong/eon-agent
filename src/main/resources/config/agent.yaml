@@ -8,7 +8,7 @@ llm:
   model_name: "mimo-v2.5"
   temperature: 0.7
   timeout: 120                          # 秒
-  max_tokens: 4096
+  max_tokens: 12800                     # 单次 LLM 响应最大输出 token 数
 
 # 百度千帆 AI Search（web_search 工具使用）
 web_search:
@@ -47,7 +47,7 @@ context:
 
 # 会话预算（独立于上下文窗口大小，控制整个会话的累计 token 消耗）
 budget:
-  max_tokens: 800000              # 整个会话允许消耗的累计 token 上限
+  max_tokens: 10000000              # 整个会话允许消耗的累计 token 上限
   soft_threshold: 0.75           # 软阈值（75%）：注入 nudge 提示 LLM 收尾
   hard_threshold: 1.0            # 硬阈值（100%）：硬终止
   grace_steps: 3                 # 软阈值触发后给的额外轮次，让 LLM 收尾
@@ -77,6 +77,7 @@ storage:
 
 tools:
   whitelist:
+    - "enable_tools"              # 两阶段懒加载声明工具
     - "todo_write"
     - "todo_read"
     - "working_memory"
@@ -85,12 +86,15 @@ tools:
     - "web_read"
     - "download"
     - "file_io"
+    - "date_time"
   destructive:
     - "download"                   # 通用文件下载，写文件系统
   readonly:
+    - "enable_tools"              # 声明工具，无副作用
     - "todo_read"
     - "web_search"
     - "web_read"
+    - "date_time"
 
 # MCP 服务配置
 mcp:
