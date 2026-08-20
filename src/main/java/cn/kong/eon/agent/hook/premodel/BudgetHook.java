@@ -1,9 +1,10 @@
 package cn.kong.eon.agent.hook.premodel;
 
 import cn.kong.eon.agent.context.ContextBuilder;
-import cn.kong.eon.agent.hook.AbortCategory;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
+import cn.kong.eon.agent.hook.StopCategory;
+import cn.kong.eon.agent.hook.StopReason;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
 import org.slf4j.Logger;
@@ -11,7 +12,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 预算检查（模型调用前阶段，order=10）。
- * 软阈值注入 nudge 提示收尾；硬阈值中断循环。
+ * 软阈值注入 nudge 提示收尾；硬阈值请求优雅停止，给 LLM 最后总结机会。
  */
 public class BudgetHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(BudgetHook.class);
@@ -35,10 +36,14 @@ public class BudgetHook implements Hook.PreModelHook {
         double ratio = maxBudget > 0 ? (double) used / maxBudget : 0.0;
 
         if (ratio >= budget.getHardThreshold()) {
-            log.warn("Budget HARD exceeded: {} / {} ({:.1f}%)", used, maxBudget, ratio * 100);
-            return HookResult.abort(
-                    AbortCategory.BUDGET_EXCEEDED,
-                    "Token 预算硬超限: " + used + " >= " + (long)(maxBudget * budget.getHardThreshold()));
+            log.warn("[PreModel] Budget: HARD exceeded {}% ({}/{}) → STOP",
+                    String.format("%.0f", ratio * 100), used, maxBudget);
+            // 请求优雅停止，给 LLM graceSteps 轮调用 finish
+            StopReason reason = new StopReason(
+                    StopCategory.BUDGET_EXCEEDED,
+                    "Token 预算硬超限: " + used + " >= " + (long)(maxBudget * budget.getHardThreshold()),
+                    budget.getGraceSteps());
+            return HookResult.stop(reason);
         }
 
         if (ratio >= budget.getSoftThreshold() && !softTriggered) {
@@ -50,8 +55,7 @@ public class BudgetHook implements Hook.PreModelHook {
                             + "不要再发起新的搜索或下载。",
                     used, maxBudget, ratio * 100, remainingSteps);
             state.addNudge(nudge);
-            log.info("Budget SOFT threshold reached: {} / {} ({:.1f}%), nudge injected ({} grace steps)",
-                    used, maxBudget, ratio * 100, remainingSteps);
+            log.info("[PreModel] Budget: SOFT {}% ({}/{})", String.format("%.0f", ratio * 100), used, maxBudget);
         }
 
         return HookResult.ok();

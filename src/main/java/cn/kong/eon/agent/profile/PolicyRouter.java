@@ -12,13 +12,16 @@ import org.slf4j.LoggerFactory;
  */
 public class PolicyRouter {
     private static final Logger log = LoggerFactory.getLogger(PolicyRouter.class);
+    private boolean wasTask = false;
 
     public RequestProfile route(SessionState state) {
         if (state.hasTodoBeenUsed()) {
-            log.debug("Profile: TASK (todo_write used)");
+            if (!wasTask) {
+                log.info("[Profile] upgraded: SIMPLE -> TASK (todo_write used)");
+                wasTask = true;
+            }
             return RequestProfile.TASK;
         }
-        log.debug("Profile: SIMPLE (default)");
         return RequestProfile.SIMPLE;
     }
 }

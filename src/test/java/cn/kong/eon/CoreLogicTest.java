@@ -60,6 +60,7 @@ class CoreLogicTest {
         toolRegistry.register(WebReadTool.descriptor());
         toolRegistry.register(DownloadTool.descriptor());
         toolRegistry.register(FileIoTool.descriptor());
+        toolRegistry.register(DateTimeTool.descriptor());
 
         toolContext = new ToolContext(
                 todoStore, artifactStore, insightsStore, jsonlStore, checkpointStore,
@@ -90,7 +91,7 @@ class CoreLogicTest {
 
         // Then: Navigator 应包含 Todo 和 Insights
         assertThat(navigator.isActive(state)).isTrue();
-        assertThat(result.isAbort()).isFalse();
+        assertThat(result.isContinue()).isTrue();
     }
 
     @Test
@@ -217,9 +218,9 @@ class CoreLogicTest {
     }
 
     @Test
-    void should_register_all_9_tools() {
-        // Then: 9 个工具全部注册（含 enable_tools）
-        assertThat(toolRegistry.getAll()).hasSize(9);
+    void should_register_all_10_tools() {
+        // Then: 10 个工具全部注册（含 enable_tools + date_time）
+        assertThat(toolRegistry.getAll()).hasSize(10);
         assertThat(toolRegistry.get("enable_tools")).isNotNull();
         assertThat(toolRegistry.get("todo_write")).isNotNull();
         assertThat(toolRegistry.get("todo_read")).isNotNull();
@@ -229,6 +230,7 @@ class CoreLogicTest {
         assertThat(toolRegistry.get("web_read")).isNotNull();
         assertThat(toolRegistry.get("download")).isNotNull();
         assertThat(toolRegistry.get("file_io")).isNotNull();
+        assertThat(toolRegistry.get("date_time")).isNotNull();
     }
 
     @Test
@@ -237,6 +239,7 @@ class CoreLogicTest {
         assertThat(toolRegistry.isReadonly("todo_read")).isTrue();
         assertThat(toolRegistry.isReadonly("web_search")).isTrue();
         assertThat(toolRegistry.isReadonly("web_read")).isTrue();
+        assertThat(toolRegistry.isReadonly("date_time")).isTrue();
         assertThat(toolRegistry.isDestructive("download")).isTrue();
         assertThat(toolRegistry.isDestructive("todo_read")).isFalse();
     }

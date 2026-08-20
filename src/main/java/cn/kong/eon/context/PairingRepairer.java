@@ -29,6 +29,8 @@ public class PairingRepairer {
         List<ChatMessage> result = new ArrayList<>();
         Set<String> seenToolUseIds = new HashSet<>();
         Set<String> seenToolResultIds = new HashSet<>();
+        int droppedResults = 0;
+        int insertedSynthetics = 0;
 
         // 第一遍：收集所有已存在的 tool_result ID
         for (ChatMessage msg : messages) {
@@ -50,7 +52,7 @@ public class PairingRepairer {
                         }
                     }
                     if (filtered.isEmpty()) {
-                        log.debug("Dropping duplicate AiMessage with all-seen tool_use IDs");
+                        log.debug("[Compress] PairingRepair: dropping duplicate AiMessage with all-seen tool_use IDs");
                         continue;
                     }
                     AiMessage filteredAi = ai.text() != null
@@ -61,8 +63,9 @@ public class PairingRepairer {
                     // 为缺失结果的 tool_use 插入合成错误
                     for (ToolExecutionRequest req : filtered) {
                         if (!seenToolResultIds.contains(req.id())) {
-                            log.warn("Inserting synthetic error for orphan tool_use: {} ({})",
+                            log.warn("[Compress] PairingRepair: inserting synthetic error for orphan tool_use: {} ({})",
                                     req.id(), req.name());
+                            insertedSynthetics++;
                             result.add(ToolExecutionResultMessage.from(req.id(), req.name(),
                                     "[SYNTHETIC] 工具结果缺失（可能被压缩），请重新调用此工具获取最新结果"));
                         }
@@ -73,7 +76,8 @@ public class PairingRepairer {
             } else if (msg instanceof ToolExecutionResultMessage trm) {
                 // 丢弃孤立的 tool_result
                 if (!seenToolUseIds.contains(trm.id())) {
-                    log.debug("Dropping orphan ToolExecutionResultMessage: {}", trm.id());
+                    log.debug("[Compress] PairingRepair: dropping orphan result {}", trm.id());
+                    droppedResults++;
                     continue;
                 }
                 result.add(trm);
@@ -82,6 +86,10 @@ public class PairingRepairer {
             }
         }
 
+        if (droppedResults > 0 || insertedSynthetics > 0) {
+            log.info("[Compress] PairingRepair: dropped {} orphan results, inserted {} synthetic errors",
+                    droppedResults, insertedSynthetics);
+        }
         return result;
     }
 }

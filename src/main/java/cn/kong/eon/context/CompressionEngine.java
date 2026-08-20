@@ -52,14 +52,17 @@ public class CompressionEngine {
                                       double waterLevel,
                                       int tailGuardTurns) {
         if (waterLevel >= summarizeThreshold) {
-            log.info("Water level {} >= {}, applying Snip + Prune + Summarize (Tier 1+2+3)", waterLevel, summarizeThreshold);
+            log.info("[Compress] water={} >= {} -> Tier 1+2+3 (Snip+Prune+Summarize)",
+                    String.format("%.2f", waterLevel), summarizeThreshold);
             applyPrune(messages, state, tailGuardTurns);
             applySummarize(messages, state, tailGuardTurns);
         } else if (waterLevel >= pruneThreshold) {
-            log.info("Water level {} >= {}, applying Prune (Tier 2)", waterLevel, pruneThreshold);
+            log.info("[Compress] water={} >= {} -> Tier 2 (Prune)",
+                    String.format("%.2f", waterLevel), pruneThreshold);
             applyPrune(messages, state, tailGuardTurns);
         } else if (waterLevel >= snipThreshold) {
-            log.info("Water level {} >= {}, applying Snip (Tier 1)", waterLevel, snipThreshold);
+            log.info("[Compress] water={} >= {} -> Tier 1 (Snip)",
+                    String.format("%.2f", waterLevel), snipThreshold);
             applySnip(messages, state, tailGuardTurns);
         }
         return messages;
@@ -68,6 +71,9 @@ public class CompressionEngine {
     /** Snip：截短 tool result，保留骨架 + 摘要前缀。 */
     private void applySnip(List<ChatMessage> messages, CompressionState state, int tailGuardTurns) {
         int tailStart = Math.max(0, messages.size() - tailGuardTurns * 2 - 2);
+        int snipCount = 0;
+        int totalBefore = 0;
+        int totalAfter = 0;
 
         for (int i = 0; i < tailStart && i < messages.size(); i++) {
             ChatMessage msg = messages.get(i);
@@ -87,14 +93,22 @@ public class CompressionEngine {
 
                 messages.set(i, ToolExecutionResultMessage.from(trm.id(), trm.toolName(), snippet));
                 state.markSnipped(trm.id());
-                log.debug("Snipped tool result: {} ({} -> {} chars)", trm.id(), content.length(), snippet.length());
+                log.debug("[Compress] Snip: {} ({} -> {} chars)", trm.id(), content.length(), snippet.length());
+                snipCount++;
+                totalBefore += content.length();
+                totalAfter += snippet.length();
             }
+        }
+        if (snipCount > 0) {
+            log.info("[Compress] Snip: trimmed {} tool results ({} -> {} chars)",
+                    snipCount, totalBefore, totalAfter);
         }
     }
 
     /** Prune：替换 tool result 为占位符。 */
     private void applyPrune(List<ChatMessage> messages, CompressionState state, int tailGuardTurns) {
         int tailStart = Math.max(0, messages.size() - tailGuardTurns * 2 - 2);
+        int pruneCount = 0;
 
         for (int i = 0; i < tailStart && i < messages.size(); i++) {
             ChatMessage msg = messages.get(i);
@@ -112,8 +126,12 @@ public class CompressionEngine {
 
                 messages.set(i, ToolExecutionResultMessage.from(trm.id(), trm.toolName(), placeholder));
                 state.markPruned(trm.id());
-                log.debug("Pruned tool result: {} ({} -> {} chars)", trm.id(), content.length(), placeholder.length());
+                log.debug("[Compress] Prune: {} ({} -> {} chars)", trm.id(), content.length(), placeholder.length());
+                pruneCount++;
             }
+        }
+        if (pruneCount > 0) {
+            log.info("[Compress] Prune: replaced {} tool results with placeholder", pruneCount);
         }
     }
 
@@ -125,12 +143,12 @@ public class CompressionEngine {
         int tailStart = Math.max(0, messages.size() - tailGuardTurns * 2 - 2);
 
         if (tailStart <= 0) {
-            log.debug("Summarize skipped: no messages outside tail guard");
+            log.debug("[Compress] Summarize skipped: no messages outside tail guard");
             return;
         }
 
         if (state.getSummarizedUpToIndex() >= tailStart) {
-            log.debug("Summarize skipped: already summarized up to index {}", state.getSummarizedUpToIndex());
+            log.debug("[Compress] Summarize skipped: already summarized up to index {}", state.getSummarizedUpToIndex());
             return;
         }
 
@@ -148,7 +166,7 @@ public class CompressionEngine {
         }
 
         if (dialogText.isEmpty()) {
-            log.debug("Summarize skipped: no dialog text to summarize");
+            log.debug("[Compress] Summarize skipped: no dialog text to summarize");
             return;
         }
 
@@ -177,7 +195,7 @@ public class CompressionEngine {
             String summary = response.aiMessage().text();
 
             if (summary == null || summary.isBlank()) {
-                log.warn("Summarize: LLM returned empty summary, skipping");
+                log.warn("[Compress] Summarize: LLM returned empty summary, skipping");
                 return;
             }
 
@@ -198,12 +216,12 @@ public class CompressionEngine {
 
             state.setSummarizedUpToIndex(tailStart);
 
-            log.info("Summarize applied: removed {} old messages, summary length={} chars",
-                    removeCount, summary.length());
-            log.debug("Summary preview: {}", summary.length() > 200 ? summary.substring(0, 200) + "..." : summary);
+            String summaryPreview = summary.length() > 200 ? summary.substring(0, 200) + "..." : summary;
+            log.info("[Compress] Summarize: removed {} msgs | summary: {} chars | preview: \"{}\"",
+                    removeCount, summary.length(), summaryPreview);
 
         } catch (Exception e) {
-            log.error("Summarize failed: {}", e.getMessage(), e);
+            log.error("[Compress] Summarize failed: {}", e.getMessage(), e);
         }
     }
 

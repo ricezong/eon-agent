@@ -50,7 +50,7 @@ public class LoopDetector {
 
         for (ToolExecutionRequest req : requests) {
             if (trippedTools.contains(req.name())) {
-                log.warn("Circuit breaker tripped: tool '{}' is blocked", req.name());
+                log.warn("[LoopDetector] circuit breaker tripped: tool '{}' is blocked", req.name());
                 return DetectionResult.stop("工具 " + req.name() + " 已被熔断（连续失败过多），" +
                         "请标记 blocked 或调整计划，不要再调用此工具");
             }
@@ -62,10 +62,10 @@ public class LoopDetector {
             callFingerprintCount.put(fingerprint, count);
 
             if (count >= repeatStop) {
-                log.warn("Loop detected: tool '{}' called {} times with same args", req.name(), count);
+                log.warn("[LoopDetector] loop detected: tool '{}' called {} times with same args", req.name(), count);
                 return DetectionResult.stop("重复调用同一工具同一参数 " + count + " 次，疑似死循环");
             } else if (count >= repeatWarn) {
-                log.warn("Loop warning: tool '{}' called {} times with same args", req.name(), count);
+                log.warn("[LoopDetector] loop warning: tool '{}' called {} times with same args", req.name(), count);
                 return DetectionResult.warn("工具 " + req.name() + " 已重复调用 " + count + " 次，请考虑换参数或换工具");
             }
         }
@@ -76,7 +76,7 @@ public class LoopDetector {
     public DetectionResult recordToolResult(String toolName, boolean success) {
         if (success) {
             if (consecutiveFailures > 0) {
-                log.debug("Tool '{}' succeeded, resetting failure counter (was {})", toolName, consecutiveFailures);
+                log.debug("[LoopDetector] tool '{}' succeeded, resetting failure counter (was {})", toolName, consecutiveFailures);
             }
             consecutiveFailures = 0;
             toolFailureCount.remove(toolName);
@@ -88,18 +88,18 @@ public class LoopDetector {
         int toolFails = toolFailureCount.getOrDefault(toolName, 0) + 1;
         toolFailureCount.put(toolName, toolFails);
 
-        log.warn("Tool '{}' failed: consecutiveFailures={}, toolFails={}",
+        log.warn("[LoopDetector] tool '{}' failed: consecutiveFailures={}, toolFails={}",
                 toolName, consecutiveFailures, toolFails);
 
         // 单工具熔断
         if (toolFails >= failureStopThreshold) {
             trippedTools.add(toolName);
-            log.error("Circuit breaker TRIPPED for tool '{}': {} consecutive failures", toolName, toolFails);
+            log.error("[LoopDetector] circuit breaker TRIPPED for tool '{}': {} consecutive failures", toolName, toolFails);
         }
 
         // 全局熔断
         if (consecutiveFailures >= failureStopThreshold) {
-            log.error("Global circuit breaker TRIPPED: {} consecutive failures across tools", consecutiveFailures);
+            log.error("[LoopDetector] global circuit breaker TRIPPED: {} consecutive failures across tools", consecutiveFailures);
             return DetectionResult.stop("工具连续失败 " + consecutiveFailures + " 次（熔断阈值 " +
                     failureStopThreshold + "），强制终止。请检查：1) 网络是否可用；2) 是否在编造参数绕过失败工具；" +
                     "3) 是否应该标记 blocked 并调整计划");
@@ -127,7 +127,7 @@ public class LoopDetector {
             if (uniqueSnapshots.size() == 1) {
                 stepsWithoutProgress++;
                 if (stepsWithoutProgress >= 1) {
-                    log.warn("No progress detected: todo unchanged for {} steps", noProgressSteps);
+                    log.warn("[LoopDetector] no progress: todo unchanged for {} steps", noProgressSteps);
                     return DetectionResult.warn("连续 " + noProgressSteps + " 步 Todo 无变化，请检查是否陷入循环");
                 }
             } else {

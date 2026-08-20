@@ -120,7 +120,8 @@ public class AgentBootstrap {
         toolRegistry.register(WebReadTool.descriptor());
         toolRegistry.register(DownloadTool.descriptor());
         toolRegistry.register(FileIoTool.descriptor());
-        log.info("All local tools registered (9)");
+        toolRegistry.register(DateTimeTool.descriptor());
+        log.info("All local tools registered (10)");
     }
 
     /** 连接所有已启用的 MCP 服务，注册远程工具。 */

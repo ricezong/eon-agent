@@ -70,8 +70,10 @@ public class ContextCompactHook implements Hook.PreModelHook {
         }
 
         ctx.setTranscript(compressed);
-        log.info("Context compressed: water={}% ({} -> {} messages)",
-                String.format("%.1f", waterLevel * 100), transcript.size(), compressed.size());
+        long postCompressTokens = ctx.estimateTokens();
+        log.info("[PreModel] ContextCompact: water {}% | {} -> {} msgs | est. {} -> {} tokens",
+                String.format("%.0f", waterLevel * 100), transcript.size(), compressed.size(),
+                usedTokens, postCompressTokens);
 
         return HookResult.ok();
     }

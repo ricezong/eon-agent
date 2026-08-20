@@ -39,8 +39,8 @@ public class ToolResultRenderer {
             ArtifactRef ref = artifactStore.save(toolName, rawResult, summary);
             refId = ref.getRefId();
             displayContent = summary;
-            log.info("Large result saved as artifact: {} ({} chars -> {})",
-                    refId, rawResult.length(), summary.length());
+            log.info("[Render] {} -> artifact {} ({} -> {} chars)",
+                    toolName, refId, rawResult.length(), summary.length());
         }
 
         StringBuilder sb = new StringBuilder();
