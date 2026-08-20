@@ -96,11 +96,10 @@ public class WebSearchTool implements ToolExecutor {
             return "[ERROR] 百度千帆 API Key 未配置（请检查 agent.yaml 的 web_search.api_key 或环境变量 QIANFAN_API_KEY）";
         }
 
-        int topK = DEFAULT_TOP_K;
-        Object maxObj = arguments.get("max_results");
-        if (maxObj instanceof Number n) {
-            topK = Math.min(n.intValue(), 20);
-        }
+        // ArgumentSanitizer 已保证类型为 Integer
+        int topK = arguments.containsKey("max_results")
+                ? Math.min((Integer) arguments.get("max_results"), 20)
+                : DEFAULT_TOP_K;
 
         String siteFilter = (String) arguments.get("site_filter");
         String recencyFilter = (String) arguments.get("recency_filter");

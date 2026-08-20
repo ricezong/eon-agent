@@ -57,8 +57,8 @@ public class FileIoTool implements ToolExecutor {
 
     @Override
     public String execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
-        String operation = String.valueOf(arguments.get("operation"));
-        String relativePath = String.valueOf(arguments.get("path"));
+        String operation = (String) arguments.get("operation");
+        String relativePath = (String) arguments.get("path");
 
         if (operation == null || operation.isBlank()) {
             return "[ERROR] 缺少 'operation' 参数";
@@ -119,7 +119,8 @@ public class FileIoTool implements ToolExecutor {
             return "[ERROR] write 操作需要 'content' 参数";
         }
         String content = String.valueOf(contentVal);
-        boolean append = Boolean.TRUE.equals(arguments.get("append"));
+        Boolean appendVal = (Boolean) arguments.get("append");
+        boolean append = appendVal != null && appendVal;
 
         Files.createDirectories(path.getParent());
         if (append) {

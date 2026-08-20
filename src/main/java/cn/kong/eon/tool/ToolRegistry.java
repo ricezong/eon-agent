@@ -17,6 +17,7 @@ public class ToolRegistry {
 
     private final Map<String, ToolDescriptor> tools = new LinkedHashMap<>();
     private final Set<String> whitelist;
+    private final ArgumentSanitizer sanitizer = new ArgumentSanitizer();
 
     // MCP 工具
     private final Map<String, McpClientManager> mcpToolSources = new HashMap<>();
@@ -104,6 +105,13 @@ public class ToolRegistry {
         return result;
     }
 
+    /** 根据工具 Schema 清洗参数类型，处理 LLM 输出类型不规范的问题。 */
+    public Map<String, Object> sanitizeArgs(String toolName, Map<String, Object> arguments) {
+        ToolDescriptor descriptor = tools.get(toolName);
+        if (descriptor == null) return arguments;
+        return sanitizer.sanitize(descriptor.getSpecification(), arguments);
+    }
+
     /** 执行工具（本地或 MCP）。 */
     public String execute(String name, Map<String, Object> arguments,
                           cn.kong.eon.model.SessionState state, ToolContext context) {
@@ -111,7 +119,9 @@ public class ToolRegistry {
         ToolDescriptor descriptor = tools.get(name);
         if (descriptor != null) {
             try {
-                String result = descriptor.getExecutor().execute(arguments, state, context);
+                // 根据工具 Schema 清洗参数类型（处理 LLM 输出类型不规范的问题）
+                Map<String, Object> sanitized = sanitizer.sanitize(descriptor.getSpecification(), arguments);
+                String result = descriptor.getExecutor().execute(sanitized, state, context);
                 log.debug("Local tool executed: {} -> {} chars", name, result != null ? result.length() : 0);
                 return result;
             } catch (Exception e) {

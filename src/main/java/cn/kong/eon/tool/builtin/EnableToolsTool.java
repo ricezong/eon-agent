@@ -5,8 +5,6 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,20 +42,11 @@ public class EnableToolsTool implements ToolExecutor {
         if (toolsRaw == null) {
             return "[ERROR] 缺少 'tools' 参数。请传入工具名称数组，例如：[\"web_search\", \"web_read\"]";
         }
-        // 容错：LLM 有时把数组序列化成字符串
-        List<?> list;
-        if (toolsRaw instanceof List<?> l) {
-            list = l;
-        } else if (toolsRaw instanceof String s) {
-            list = parseJsonArray(s);
-            if (list == null) {
-                return "[ERROR] 'tools' 必须是数组。当前是 String 且无法解析为 JSON 数组。"
-                        + "请传入真正的数组，例如：[\"web_search\", \"web_read\"]";
-            }
-        } else {
+
+        // ArgumentSanitizer 已将 String 类型的 JSON 数组转换为 List
+        if (!(toolsRaw instanceof List<?> list)) {
             return "[ERROR] 'tools' 必须是数组。当前类型: " + toolsRaw.getClass().getSimpleName();
         }
-
 
         if (list.isEmpty()) {
             return "[ERROR] 'tools' 不能为空";
@@ -69,25 +58,5 @@ public class EnableToolsTool implements ToolExecutor {
         }
 
         return "已声明工具: " + String.join(", ", tools) + "。下一轮将获得完整调用参数。";
-    }
-
-    /** 容错解析：支持数组字符串和单对象字符串。 */
-    private List<?> parseJsonArray(String json) {
-        if (json == null || json.isBlank()) return null;
-        String trimmed = json.trim();
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            Object parsed = mapper.readValue(trimmed, new TypeReference<Object>() {});
-            if (parsed instanceof List<?> l) {
-                return l;
-            }
-            if (parsed instanceof Map<?, ?> m) {
-                return List.of(m);
-            }
-            return null;
-        } catch (Exception e) {
-            log.debug("tools: 字符串解析为 JSON 数组失败: {}", e.getMessage());
-            return null;
-        }
     }
 }

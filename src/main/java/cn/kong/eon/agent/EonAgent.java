@@ -185,10 +185,20 @@ public class EonAgent {
                 }
 
                 if (requests == null || requests.isEmpty()) {
+                    // 检测是否因 max_tokens 截断导致工具调用丢失
+                    boolean truncated = "length".equalsIgnoreCase(response.finishReason());
+                    if (truncated) {
+                        log.warn("[LLM] output truncated (finishReason=length), tool call may be lost");
+                        state.addFormatCorrection(
+                                "上一轮输出因长度限制被截断，工具调用未完成。请重新调用工具，如果内容过长请分多次写入。");
+                        finalizeAndAppend(state);
+                        continue;
+                    }
+
                     // 已声明工具但未调用：提醒模型
                     if (state.getPendingToolMounts() != null) {
                         state.addFormatCorrection(
-                                "你已获得工具的完整调用参数但未调用。如果任务需要工具，请直接调用；如果不需要，请直接回答。");
+                                "你已获得工具的完整调用参数但未调用。如果任务需要工具，请直接调用；如果不需要，请直接回答。不要重复调用 enable_tools。");
                         finalizeAndAppend(state);
                         continue;
                     }
@@ -496,7 +506,7 @@ public class EonAgent {
     /**
      * 两阶段懒加载获取工具 Schema
      * 未声明：只挂载 enable_tools
-     * 已声明：按声明的工具名挂载（排除 enable_tools 自身）
+     * 已声明：挂载声明的工具 + enable_tools（保留声明能力，允许中途追加新工具）
      */
     private List<ToolSpecification> getToolsForProfile(SessionState state) {
         Set<String> mounts = state.getPendingToolMounts();
@@ -505,9 +515,9 @@ public class EonAgent {
             return toolRegistry.getSpecificationsByName(Set.of(ENABLE_TOOLS));
         }
 
-        // 第二轮：挂载模型声明的工具（排除 enable_tools 自身）
+        // 第二轮：挂载声明的工具 + enable_tools（保留声明能力）
         Set<String> realMounts = new LinkedHashSet<>(mounts);
-        realMounts.remove(ENABLE_TOOLS);
+        realMounts.add(ENABLE_TOOLS);
         List<ToolSpecification> specs = toolRegistry.getSpecificationsByName(realMounts);
         log.info("[Mount] lazy-load phase 2: {} -> {} specs", realMounts, specs.size());
         return specs;
@@ -519,7 +529,7 @@ public class EonAgent {
         List<ToolExecutionResult> results = new ArrayList<>();
 
         for (ToolExecutionRequest req : requests) {
-            Map<String, Object> args = parseArgs(req.arguments());
+            Map<String, Object> args = toolRegistry.sanitizeArgs(req.name(), parseArgs(req.arguments()));
             String reason = (String) args.get("reason");
 
             String rawResult = toolRegistry.execute(req.name(), args, state, toolContext);
@@ -527,9 +537,9 @@ public class EonAgent {
             // 拦截 enable_tools：从参数中提取工具名，设置 pendingToolMounts
             if (ENABLE_TOOLS.equals(req.name())) {
                 Object toolsRaw = args.get("tools");
-                if (toolsRaw instanceof List<?> list) {
+                if (toolsRaw instanceof List<?> toolList && !toolList.isEmpty()) {
                     Set<String> declaredTools = new LinkedHashSet<>();
-                    for (Object item : list) {
+                    for (Object item : toolList) {
                         String name = String.valueOf(item).trim();
                         if (toolRegistry.contains(name)) {
                             declaredTools.add(name);
@@ -539,7 +549,7 @@ public class EonAgent {
                     }
                     if (!declaredTools.isEmpty()) {
                         state.setPendingToolMounts(declaredTools);
-                        log.info("[Mount] declared: {} -> {} valid tools", toolsRaw, declaredTools);
+                        log.info("[Mount] declared: {} -> {} valid tools", toolList, declaredTools);
                     }
                 }
             }

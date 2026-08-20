@@ -7,8 +7,6 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,7 +14,7 @@ import java.util.*;
 
 /**
  * todo_write 工具：创建/更新任务清单（全量替换语义）。
- * 校验单一焦点与依赖完整性。支持多种容错（字符串元素、status 变体等）。
+ * 校验单一焦点与依赖完整性。参数类型由 ArgumentSanitizer 统一清洗。
  */
 public class TodoWriteTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(TodoWriteTool.class);
@@ -71,20 +69,8 @@ public class TodoWriteTool implements ToolExecutor {
                 return "[ERROR] 缺少 'todos' 参数。请传入对象数组，例如：[{\"id\":\"t1\",\"content\":\"搜索\",\"status\":\"pending\",\"priority\":\"high\"}]";
             }
 
-            // 容错：LLM 有时把数组序列化成字符串
-            List<?> list;
-            if (todosRaw instanceof List<?> l) {
-                list = l;
-            } else if (todosRaw instanceof String s) {
-                list = parseJsonArray(s);
-                if (list == null) {
-                    return "[ERROR] 'todos' 必须是数组。当前是 String 且无法解析为 JSON 数组。"
-                            + "请传入真正的数组，例如：[{\"id\":\"t1\",\"content\":\"搜索\",\"status\":\"pending\"}]";
-                }
-                log.info("todo_write: 'todos' 是字符串，已自动解析为数组（{} 项）", list.size());
-            } else {
-                return "[ERROR] 'todos' 必须是数组。当前类型: " + todosRaw.getClass().getSimpleName();
-            }
+            // ArgumentSanitizer 已保证类型正确
+            List<?> list = (List<?>) todosRaw;
 
             if (list.isEmpty()) {
                 context.todoStore().clear();
@@ -128,39 +114,8 @@ public class TodoWriteTool implements ToolExecutor {
         }
     }
 
-    /** 容错解析：支持数组字符串和单对象字符串。 */
-    private List<?> parseJsonArray(String json) {
-        if (json == null || json.isBlank()) return null;
-        String trimmed = json.trim();
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            Object parsed = mapper.readValue(trimmed, new TypeReference<Object>() {});
-            if (parsed instanceof List<?> l) {
-                return l;
-            }
-            if (parsed instanceof Map<?, ?> m) {
-                return List.of(m);
-            }
-            return null;
-        } catch (Exception e) {
-            log.debug("todo_write: 字符串解析为 JSON 数组失败: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    @SuppressWarnings("unchecked")
     private TodoItem convertToTodoItem(Object item, int autoId) {
-        // 字符串 → 自动转为 {content, status=pending}
-        if (item instanceof String s) {
-            log.debug("todo_write: 字符串元素自动转为对象, content={}", s);
-            TodoItem todo = new TodoItem();
-            todo.setId("t" + autoId);
-            todo.setContent(s);
-            todo.setStatus(TodoStatus.PENDING);
-            todo.setPriority("medium");
-            return todo;
-        }
-
+        // ArgumentSanitizer 已保证数组元素类型为 Map
         if (item instanceof Map<?, ?> rawMap) {
             Map<String, Object> map = new LinkedHashMap<>();
             for (Map.Entry<?, ?> e : rawMap.entrySet()) {
@@ -201,13 +156,7 @@ public class TodoWriteTool implements ToolExecutor {
             return todo;
         }
 
-        log.warn("todo_write: 未知元素类型 {}，转为字符串", item.getClass().getSimpleName());
-        TodoItem todo = new TodoItem();
-        todo.setId("t" + autoId);
-        todo.setContent(String.valueOf(item));
-        todo.setStatus(TodoStatus.PENDING);
-        todo.setPriority("medium");
-        return todo;
+        throw new IllegalStateException("Unexpected item type: " + item.getClass());
     }
 
     /** 兼容多种 status 写法。 */
