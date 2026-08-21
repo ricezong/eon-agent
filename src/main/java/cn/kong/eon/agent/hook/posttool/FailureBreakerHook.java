@@ -2,18 +2,14 @@ package cn.kong.eon.agent.hook.posttool;
 
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
-import cn.kong.eon.agent.hook.StopCategory;
-import cn.kong.eon.agent.hook.StopReason;
 import cn.kong.eon.loop.LoopDetector;
 import cn.kong.eon.model.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** 失败熔断（PostTool, order=30）。检测连续失败，达到阈值请求优雅停止。 */
+/** 失败熔断（PostTool, order=30）。检测单工具连续失败，注入 nudge 提示，不触发会话级停止。 */
 public class FailureBreakerHook implements Hook.PostToolHook {
     private static final Logger log = LoggerFactory.getLogger(FailureBreakerHook.class);
-
-    private static final int STOP_GRACE_STEPS = 2;
 
     private final LoopDetector loopDetector;
 
@@ -29,12 +25,10 @@ public class FailureBreakerHook implements Hook.PostToolHook {
     public HookResult afterToolExecution(SessionState state, String toolName, boolean success) {
         LoopDetector.DetectionResult dr = loopDetector.recordToolResult(toolName, success);
         if (dr.shouldStop()) {
-            log.warn("[PostTool] FailureBreaker: STOP - {}", dr.message());
-            StopReason reason = new StopReason(
-                    StopCategory.FAILURE_BREAKER,
-                    dr.message(),
-                    STOP_GRACE_STEPS);
-            return HookResult.stop(reason);
+            // 单工具熔断：注入 nudge 提示 LLM 不要再调用此工具，但不触发会话级优雅停止
+            log.warn("[PostTool] FailureBreaker: tool '{}' tripped - {}", toolName, dr.message());
+            state.getPendingNudges().add(dr.message());
+            return HookResult.ok();
         }
         if (dr.shouldWarn()) {
             log.info("[PostTool] FailureBreaker: WARN - {}", dr.message());

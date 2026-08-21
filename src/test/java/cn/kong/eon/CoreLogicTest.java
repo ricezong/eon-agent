@@ -541,7 +541,9 @@ class CoreLogicTest {
     }
 
     @Test
-    void should_detect_cross_tool_failure_escalation() {
+    void should_not_escalate_cross_tool_failures() {
+        // 跨工具失败不互相影响：web_search 失败 2 次 + web_read 失败 3 次
+        // 新语义：只有单工具连续失败达阈值才熔断，不存在全局计数
         LoopDetector detector = new LoopDetector(3, 5, 6, 3, 5);
 
         detector.recordToolResult("web_search", false);
@@ -550,8 +552,11 @@ class CoreLogicTest {
         detector.recordToolResult("web_read", false);
         LoopDetector.DetectionResult r5 = detector.recordToolResult("web_read", false);
 
-        assertThat(r5.shouldStop()).isTrue();
-        assertThat(r5.message()).contains("熔断");
+        // web_read 只失败 3 次，达到 WARN 但未达 STOP
+        assertThat(r5.shouldStop()).isFalse();
+        assertThat(r5.shouldWarn()).isTrue();
+        assertThat(detector.isToolTripped("web_read")).isFalse();
+        assertThat(detector.isToolTripped("web_search")).isFalse();
     }
 
     @Test

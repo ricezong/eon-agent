@@ -10,7 +10,7 @@ import java.util.*;
  * 死循环检测器。三种检测：
  * ① 重复调用——同一工具同一参数连续调用超过阈值。
  * ② 无进展——连续 N 步 Todo 状态未变化。
- * ③ 连续失败熔断——工具连续失败超过阈值（单工具 + 全局）。
+ * ③ 单工具熔断——单个工具连续失败超过阈值，熔断该工具（不影响其他工具）。
  */
 public class LoopDetector {
     private static final Logger log = LoggerFactory.getLogger(LoopDetector.class);
@@ -18,15 +18,14 @@ public class LoopDetector {
     private final int repeatWarn;                 // 重复调用告警阈值
     private final int repeatStop;                 // 重复调用停止阈值
     private final int noProgressSteps;            // 无进展告警步数
-    private final int failureWarnThreshold;       // 连续失败告警阈值
-    private final int failureStopThreshold;       // 连续失败停止阈值
+    private final int failureWarnThreshold;       // 单工具失败告警阈值
+    private final int failureStopThreshold;       // 单工具失败熔断阈值
 
-    private final Map<String, Integer> callFingerprintCount = new HashMap<>();  // 调用指纹计数
+    private final Map<String, Integer> callFingerprintCount = new HashMap<>();  // 调用指纹连续计数
     private final Deque<String> todoSnapshots = new ArrayDeque<>();             // Todo 快照队列
     private int stepsWithoutProgress = 0;                                       // 无进展步数
 
-    private int consecutiveFailures = 0;                                        // 全局连续失败数
-    private final Map<String, Integer> toolFailureCount = new HashMap<>();      // 单工具失败计数
+    private final Map<String, Integer> toolFailureCount = new HashMap<>();      // 单工具连续失败计数
     private final Set<String> trippedTools = new HashSet<>();                   // 已熔断工具集
 
     public LoopDetector(int repeatWarn, int repeatStop, int noProgressSteps) {
@@ -42,7 +41,10 @@ public class LoopDetector {
         this.failureStopThreshold = failureStopThreshold;
     }
 
-    /** 记录工具调用，检测重复调用和已熔断工具。 */
+    /**
+     * 记录工具调用，检测重复调用和已熔断工具。
+     * 熔断工具返回 WARN（提示 LLM 换方案），不返回 STOP（不阻止其他工具执行）。
+     */
     public DetectionResult recordToolCalls(List<ToolExecutionRequest> requests) {
         if (requests == null || requests.isEmpty()) {
             return DetectionResult.ok();
@@ -51,7 +53,7 @@ public class LoopDetector {
         for (ToolExecutionRequest req : requests) {
             if (trippedTools.contains(req.name())) {
                 log.warn("[LoopDetector] circuit breaker tripped: tool '{}' is blocked", req.name());
-                return DetectionResult.stop("工具 " + req.name() + " 已被熔断（连续失败过多），" +
+                return DetectionResult.warn("工具 " + req.name() + " 已被熔断（连续失败过多），" +
                         "请标记 blocked 或调整计划，不要再调用此工具");
             }
         }
@@ -72,44 +74,41 @@ public class LoopDetector {
         return DetectionResult.ok();
     }
 
-    /** 记录工具执行结果，更新失败计数器，检测熔断。 */
+    /**
+     * 记录工具执行结果，更新单工具失败计数器，检测熔断。
+     * 成功时重置该工具的失败计数和指纹计数。
+     */
     public DetectionResult recordToolResult(String toolName, boolean success) {
         if (success) {
-            if (consecutiveFailures > 0) {
-                log.debug("[LoopDetector] tool '{}' succeeded, resetting failure counter (was {})", toolName, consecutiveFailures);
-            }
-            consecutiveFailures = 0;
             toolFailureCount.remove(toolName);
             trippedTools.remove(toolName);
+            resetFingerprintsForTool(toolName);
             return DetectionResult.ok();
         }
 
-        consecutiveFailures++;
+        // 已熔断的工具不再累积计数，避免日志冗余
+        if (trippedTools.contains(toolName)) {
+            return DetectionResult.ok();
+        }
+
         int toolFails = toolFailureCount.getOrDefault(toolName, 0) + 1;
         toolFailureCount.put(toolName, toolFails);
 
-        log.warn("[LoopDetector] tool '{}' failed: consecutiveFailures={}, toolFails={}",
-                toolName, consecutiveFailures, toolFails);
+        log.warn("[LoopDetector] tool '{}' failed: toolFails={}", toolName, toolFails);
 
         // 单工具熔断
         if (toolFails >= failureStopThreshold) {
             trippedTools.add(toolName);
             log.error("[LoopDetector] circuit breaker TRIPPED for tool '{}': {} consecutive failures", toolName, toolFails);
+            return DetectionResult.stop("工具 " + toolName + " 连续失败 " + toolFails + " 次，已熔断。" +
+                    "请标记 blocked 或调整计划，不要再调用此工具，其他工具仍可正常使用");
         }
 
-        // 全局熔断
-        if (consecutiveFailures >= failureStopThreshold) {
-            log.error("[LoopDetector] global circuit breaker TRIPPED: {} consecutive failures across tools", consecutiveFailures);
-            return DetectionResult.stop("工具连续失败 " + consecutiveFailures + " 次（熔断阈值 " +
-                    failureStopThreshold + "），强制终止。请检查：1) 网络是否可用；2) 是否在编造参数绕过失败工具；" +
-                    "3) 是否应该标记 blocked 并调整计划");
-        }
-
-        if (consecutiveFailures >= failureWarnThreshold) {
-            return DetectionResult.warn("工具已连续失败 " + consecutiveFailures + " 次。" +
+        if (toolFails >= failureWarnThreshold) {
+            return DetectionResult.warn("工具 " + toolName + " 已连续失败 " + toolFails + " 次。" +
                     "请立即：1) 调用 todo_write 将当前任务标记为 blocked；2) 调整计划或换一种方式；" +
-                    "3) 不要编造参数继续尝试同一类工具。再失败 " +
-                    (failureStopThreshold - consecutiveFailures) + " 次将强制终止");
+                    "3) 不要编造参数继续尝试同一工具。再失败 " +
+                    (failureStopThreshold - toolFails) + " 次将熔断此工具");
         }
 
         return DetectionResult.ok();
@@ -137,8 +136,12 @@ public class LoopDetector {
         return DetectionResult.ok();
     }
 
-    public int getConsecutiveFailures() { return consecutiveFailures; }
     public boolean isToolTripped(String toolName) { return trippedTools.contains(toolName); }
+
+    /** 重置指定工具的指纹计数（成功调用后允许相同参数再次使用）。 */
+    private void resetFingerprintsForTool(String toolName) {
+        callFingerprintCount.entrySet().removeIf(e -> e.getKey().startsWith(toolName + "|"));
+    }
 
     public record DetectionResult(Level level, String message) {
         public static DetectionResult ok() { return new DetectionResult(Level.OK, null); }

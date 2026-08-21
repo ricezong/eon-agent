@@ -46,13 +46,24 @@ public class ToolExecutionHandler {
     }
 
     /**
-     * 执行所有待执行的工具调用。包含 finish 拦截和 todo_write 后处理。
+     * 执行所有待执行的工具调用。被熔断的工具跳过执行，返回合成错误结果。
+     * 包含 finish 拦截和 todo_write 后处理。
      */
     public List<ToolExecutionResult> execute(TurnRecord rec, SessionState state) {
         List<ToolExecutionRequest> requests = state.getPendingToolCalls();
         List<ToolExecutionResult> results = new ArrayList<>();
 
         for (ToolExecutionRequest req : requests) {
+            // 被熔断的工具跳过执行，直接返回合成错误
+            if (loopDetector.isToolTripped(req.name())) {
+                ToolOutcome tripped = ToolOutcome.failure(
+                        "工具 " + req.name() + " 已被熔断（连续失败过多），请标记 blocked 或调整计划，不要再调用此工具");
+                String rendered = resultRenderer.render(req.name(), tripped, state);
+                logger.toolExecuted(rec, req.name(), false, "(tripped)", rendered.length());
+                results.add(ToolExecutionResult.of(req.id(), req.name(), tripped, rendered));
+                continue;
+            }
+
             Map<String, Object> args = parseArgs(req.arguments());
 
             ToolOutcome outcome = toolRegistry.execute(req.name(), args, state, toolContext);

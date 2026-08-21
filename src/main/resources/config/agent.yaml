@@ -43,8 +43,8 @@ loop_detect:
   repeat_warn: 3                          # 同工具同参数重复 3 次告警
   repeat_stop: 5                          # 重复 5 次判定死循环
   no_progress_steps: 6                    # Todo 连续 6 步无变化告警
-  failure_warn: 3                         # 连续失败 3 次注入警告
-  failure_stop: 5                         # 连续失败 5 次熔断终止
+  failure_warn: 3                         # 单工具连续失败 3 次注入警告
+  failure_stop: 5                         # 单工具连续失败 5 次熔断该工具
 
 retry:
   attempts: 3                             # LLM 调用最大重试次数
