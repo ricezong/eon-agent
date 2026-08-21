@@ -25,7 +25,7 @@ public class AgentConfig {
     private final ToolsConfig tools;
     private final McpConfig mcp;
     private final WebSearchConfig webSearch;
-    private final ModeConfig mode;
+    private final boolean checkpointEnabled;
     private final BudgetConfig budget;
 
     public AgentConfig(Map<String, Object> raw) {
@@ -39,7 +39,8 @@ public class AgentConfig {
         this.tools = new ToolsConfig(getMap("tools"));
         this.mcp = new McpConfig(getMap("mcp"));
         this.webSearch = new WebSearchConfig(getMap("web_search"));
-        this.mode = new ModeConfig(getMap("mode"));
+        Map<String, Object> mode = getMap("mode");
+        this.checkpointEnabled = (boolean) mode.getOrDefault("checkpoint_enabled", false);
         this.budget = new BudgetConfig(getMap("budget"));
     }
 
@@ -104,7 +105,7 @@ public class AgentConfig {
     public ToolsConfig getTools() { return tools; }
     public McpConfig getMcp() { return mcp; }
     public WebSearchConfig getWebSearch() { return webSearch; }
-    public ModeConfig getMode() { return mode; }
+    public boolean isCheckpointEnabled() { return checkpointEnabled; }
     public BudgetConfig getBudget() { return budget; }
 
     // ===== 子配置类 =====
@@ -130,44 +131,34 @@ public class AgentConfig {
     }
 
     public static class ContextConfig {
+        // 高频配置项（从 yaml 读取）
         public final int maxTokens;
         public final double budgetRatio;
         public final String systemPromptPath;
-        public final int pinnedMaxTokens;
-        public final int insightsMaxItems;
-        public final int insightsMaxChars;
-        public final int tailGuardMinTokens;
-        public final int tailGuardMinTurns;
         public final double snipThreshold;
         public final double pruneThreshold;
         public final double summarizeThreshold;
-        public final int snipKeepChars;
-        public final int pruneKeepChars;
-        public final int summaryTriggerMessages;
-        public final int summarizeMaxInputChars;
-        public final int summarizeMaxOutputChars;
+
+        // 不常调参的配置项（固定常量，不从 yaml 读取）
+        public static final int PINNED_MAX_TOKENS = 2048;
+        public static final int INSIGHTS_MAX_ITEMS = 40;
+        public static final int INSIGHTS_MAX_CHARS = 8000;
+        public static final int TAIL_GUARD_MIN_TOKENS = 8000;
+        public static final int TAIL_GUARD_MIN_TURNS = 3;
+        public static final int SNIP_KEEP_CHARS = 80;
+        public static final int PRUNE_KEEP_CHARS = 30;
+        public static final int SUMMARY_TRIGGER_MESSAGES = 16;
+        public static final int SUMMARIZE_MAX_INPUT_CHARS = 50000;
+        public static final int SUMMARIZE_MAX_OUTPUT_CHARS = 2000;
 
         public ContextConfig(Map<String, Object> m) {
             this.maxTokens = ((Number) m.getOrDefault("max_tokens", 120000)).intValue();
             this.budgetRatio = ((Number) m.getOrDefault("budget_ratio", 0.7)).doubleValue();
             this.systemPromptPath = (String) m.getOrDefault("system_prompt_path", "prompts/system_prompt.md");
-            this.pinnedMaxTokens = ((Number) m.getOrDefault("pinned_max_tokens", 2048)).intValue();
-            Map<String, Object> insights = getSubMap(m, "insights");
-            this.insightsMaxItems = ((Number) insights.getOrDefault("max_items", 40)).intValue();
-            this.insightsMaxChars = ((Number) insights.getOrDefault("max_chars", 8000)).intValue();
-            Map<String, Object> tail = getSubMap(m, "tail_guard");
-            this.tailGuardMinTokens = ((Number) tail.getOrDefault("min_tokens", 8000)).intValue();
-            this.tailGuardMinTurns = ((Number) tail.getOrDefault("min_turns", 3)).intValue();
             Map<String, Object> comp = getSubMap(m, "compression");
             this.snipThreshold = ((Number) comp.getOrDefault("snip_threshold", 0.65)).doubleValue();
             this.pruneThreshold = ((Number) comp.getOrDefault("prune_threshold", 0.82)).doubleValue();
             this.summarizeThreshold = ((Number) comp.getOrDefault("summarize_threshold", 0.95)).doubleValue();
-            this.snipKeepChars = ((Number) comp.getOrDefault("snip_keep_chars", 80)).intValue();
-            this.pruneKeepChars = ((Number) comp.getOrDefault("prune_keep_chars", 30)).intValue();
-            this.summaryTriggerMessages = ((Number) comp.getOrDefault("summary_trigger_messages", 16)).intValue();
-            Map<String, Object> summarize = getSubMap(comp, "summarize");
-            this.summarizeMaxInputChars = ((Number) summarize.getOrDefault("max_input_chars", 50000)).intValue();
-            this.summarizeMaxOutputChars = ((Number) summarize.getOrDefault("max_output_chars", 2000)).intValue();
         }
 
         @SuppressWarnings("unchecked")
@@ -179,19 +170,9 @@ public class AgentConfig {
         public int getMaxTokens() { return maxTokens; }
         public double getBudgetRatio() { return budgetRatio; }
         public String getSystemPromptPath() { return systemPromptPath; }
-        public int getPinnedMaxTokens() { return pinnedMaxTokens; }
-        public int getInsightsMaxItems() { return insightsMaxItems; }
-        public int getInsightsMaxChars() { return insightsMaxChars; }
-        public int getTailGuardMinTokens() { return tailGuardMinTokens; }
-        public int getTailGuardMinTurns() { return tailGuardMinTurns; }
         public double getSnipThreshold() { return snipThreshold; }
         public double getPruneThreshold() { return pruneThreshold; }
         public double getSummarizeThreshold() { return summarizeThreshold; }
-        public int getSnipKeepChars() { return snipKeepChars; }
-        public int getPruneKeepChars() { return pruneKeepChars; }
-        public int getSummaryTriggerMessages() { return summaryTriggerMessages; }
-        public int getSummarizeMaxInputChars() { return summarizeMaxInputChars; }
-        public int getSummarizeMaxOutputChars() { return summarizeMaxOutputChars; }
     }
 
     public static class LoopConfig {
@@ -342,12 +323,4 @@ public class AgentConfig {
         }
     }
 
-    /** 运行时模式配置。 */
-    public static class ModeConfig {
-        public final boolean checkpointEnabled;
-
-        public ModeConfig(Map<String, Object> m) {
-            this.checkpointEnabled = (boolean) m.getOrDefault("checkpoint_enabled", false);
-        }
-    }
 }

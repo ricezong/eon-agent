@@ -1,5 +1,6 @@
 package cn.kong.eon.mcp;
 
+import cn.kong.eon.tool.ToolOutcome;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.mcp.client.DefaultMcpClient;
@@ -69,9 +70,9 @@ public class McpClientManager {
     }
 
     /** 执行 MCP 工具调用。 */
-    public String executeTool(String toolName, String arguments) {
+    public ToolOutcome executeTool(String toolName, String arguments) {
         if (mcpClient == null) {
-            return "[ERROR] MCP client not connected";
+            return ToolOutcome.failure("MCP client not connected");
         }
         try {
             ToolExecutionRequest request = ToolExecutionRequest.builder()
@@ -81,10 +82,10 @@ public class McpClientManager {
             ToolExecutionResult result = mcpClient.executeTool(request);
             String resultText = result != null ? result.resultText() : "";
             log.debug("MCP tool '{}' executed, result {} chars", toolName, resultText != null ? resultText.length() : 0);
-            return resultText != null ? resultText : "";
+            return ToolOutcome.success(resultText != null ? resultText : "");
         } catch (Exception e) {
             log.error("MCP tool execution failed: {} - {}", toolName, e.getMessage(), e);
-            return "[ERROR] MCP tool execution failed: " + e.getMessage();
+            return ToolOutcome.failure("MCP tool execution failed: " + e.getMessage());
         }
     }
 

@@ -8,7 +8,6 @@ import dev.langchain4j.data.message.ChatMessage;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /**
  * 会话级运行时状态。贯穿整个 Agent Loop，所有组件共享。
@@ -20,20 +19,16 @@ public class SessionState {
     private int turnCount;
     private TokenUsage usageAccum;
     private CompressionState compressionState;
-    private List<String> insights;
     private List<String> pendingNudges;      // 临时附加层（本轮有效）
     private List<String> formatCorrections;  // 格式纠正（本轮有效）
     private boolean finished;
     private String finishReason;
     private String lastAssistantText;
 
-    private boolean todoBeenUsed = false;    // 是否调用过 todo_write（用于升级 Profile）
+    private boolean todoBeenUsed = false;    // 是否调用过 todo_write（用于激活 TodoNavigator）
 
     /** 优雅停止状态。Hook 请求 stop 后设置，EonAgent 据此决定是否进入收尾流程。 */
     private transient StopState stopState;
-
-    /** 两阶段懒加载：模型声明的所需工具名。 */
-    private transient Set<String> pendingToolMounts;
 
     // 运行时临时字段（不序列化）
     private transient List<ChatMessage> currentMessages;
@@ -45,7 +40,6 @@ public class SessionState {
         this.turnCount = 0;
         this.usageAccum = TokenUsage.zero();
         this.compressionState = new CompressionState();
-        this.insights = new ArrayList<>();
         this.pendingNudges = new ArrayList<>();
         this.formatCorrections = new ArrayList<>();
         this.finished = false;
@@ -63,7 +57,6 @@ public class SessionState {
 
     public void incrementTurn() { this.turnCount++; }
 
-    public void addInsight(String insight) { insights.add(0, insight); }
     public void addNudge(String nudge) { pendingNudges.add(nudge); }
     public void addFormatCorrection(String correction) { formatCorrections.add(correction); }
 
@@ -83,9 +76,6 @@ public class SessionState {
 
     public CompressionState getCompressionState() { return compressionState; }
     public void setCompressionState(CompressionState compressionState) { this.compressionState = compressionState; }
-
-    public List<String> getInsights() { return insights; }
-    public void setInsights(List<String> insights) { this.insights = insights; }
 
     public List<String> getPendingNudges() { return pendingNudges; }
     public void setPendingNudges(List<String> pendingNudges) { this.pendingNudges = pendingNudges; }
@@ -116,9 +106,6 @@ public class SessionState {
 
     public List<ToolExecutionResult> getLastToolResults() { return lastToolResults; }
     public void setLastToolResults(List<ToolExecutionResult> lastToolResults) { this.lastToolResults = lastToolResults; }
-
-    public Set<String> getPendingToolMounts() { return pendingToolMounts; }
-    public void setPendingToolMounts(Set<String> pendingToolMounts) { this.pendingToolMounts = pendingToolMounts; }
 
     public StopState getStopState() { return stopState; }
     public void setStopState(StopState stopState) { this.stopState = stopState; }

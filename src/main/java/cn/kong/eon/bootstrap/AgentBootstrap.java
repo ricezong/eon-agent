@@ -4,10 +4,8 @@ import cn.kong.eon.agent.EonAgent;
 import cn.kong.eon.agent.hook.postmodel.LoopDetectHook;
 import cn.kong.eon.agent.hook.posttool.CheckpointHook;
 import cn.kong.eon.agent.hook.posttool.FailureBreakerHook;
-import cn.kong.eon.agent.hook.posttool.TodoActivationHook;
 import cn.kong.eon.agent.hook.premodel.BudgetHook;
 import cn.kong.eon.agent.hook.premodel.ContextCompactHook;
-import cn.kong.eon.agent.hook.premodel.NudgeRenderHook;
 import cn.kong.eon.agent.hook.premodel.TodoNavigatorHook;
 import cn.kong.eon.agent.hook.pretool.GateHook;
 import cn.kong.eon.config.AgentConfig;
@@ -42,8 +40,8 @@ public class AgentBootstrap {
         Path sessionDir = Path.of(config.getStorage().baseDir, sessionId);
         TodoStore todoStore = new TodoStore();
         InsightsStore insightsStore = new InsightsStore(
-                config.getContext().insightsMaxItems,
-                config.getContext().insightsMaxChars);
+config.getContext().INSIGHTS_MAX_ITEMS,
+config.getContext().INSIGHTS_MAX_CHARS);
         ArtifactStore artifactStore = new ArtifactStore(sessionDir.resolve("artifacts"));
         JsonlStore jsonlStore = new JsonlStore(sessionDir.resolve("transcript.jsonl"));
         CheckpointStore checkpointStore = new CheckpointStore(sessionDir.resolve("checkpoints"));
@@ -67,10 +65,7 @@ public class AgentBootstrap {
         // 4. LLM 层
         LlmClient llmClient = new LlmClient(config);
 
-        // 5. 创建 EonAgent
-        EonAgent agent = new EonAgent(config, llmClient, toolRegistry, resultRenderer, jsonlStore, basePrompt, toolContext);
-
-        // 6. 共享 LoopDetector（LoopDetect 和 FailureBreaker 共用状态）
+        // 5. 共享 LoopDetector（LoopDetect 和 FailureBreaker 共用状态）
         LoopDetector loopDetector = new LoopDetector(
                 config.getLoopDetect().repeatWarn,
                 config.getLoopDetect().repeatStop,
@@ -78,10 +73,12 @@ public class AgentBootstrap {
                 config.getLoopDetect().failureWarn,
                 config.getLoopDetect().failureStop);
 
+        // 6. 创建 EonAgent
+        EonAgent agent = new EonAgent(config, llmClient, toolRegistry, resultRenderer, jsonlStore, basePrompt, toolContext, loopDetector);
+
         // 7. 挂载 Hook（按执行阶段分组）
         // PreModel 阶段
         agent.addHook(new BudgetHook(config));                              // order=10
-        agent.addHook(new NudgeRenderHook());                              // order=10
         agent.addHook(new TodoNavigatorHook(todoStore, insightsStore));    // order=20
         agent.addHook(new ContextCompactHook(config, llmClient));          // order=100
 
@@ -92,14 +89,13 @@ public class AgentBootstrap {
         agent.addHook(new GateHook(toolRegistry));                   // order=20
 
         // PostTool 阶段
-        agent.addHook(new TodoActivationHook(loopDetector, todoStore));           // order=10
         agent.addHook(new FailureBreakerHook(loopDetector));               // order=30
-        agent.addHook(new CheckpointHook(config, checkpointStore, todoStore)); // order=100
+        agent.addHook(new CheckpointHook(config, checkpointStore, todoStore, insightsStore)); // order=100
 
         log.info("EonAgent built with {} hooks", agent.getHookCount());
 
         // 尝试从 checkpoint 恢复（如果配置启用且存在快照）
-        if (config.getMode().checkpointEnabled) {
+        if (config.isCheckpointEnabled()) {
             Checkpoint cp = checkpointStore.loadLatest(sessionId);
             if (cp != null) {
                 log.info("Checkpoint recovered: turn={}, session={}", cp.getTurnCount(), sessionId);
@@ -128,7 +124,6 @@ public class AgentBootstrap {
 
     /** 注册全部本地工具。 */
     private static void registerAllTools(ToolRegistry toolRegistry, AgentConfig config) {
-        toolRegistry.register(EnableToolsTool.descriptor());
         toolRegistry.register(TodoWriteTool.descriptor());
         toolRegistry.register(TodoReadTool.descriptor());
         toolRegistry.register(WorkingMemoryTool.descriptor());
@@ -138,7 +133,7 @@ public class AgentBootstrap {
         toolRegistry.register(DownloadTool.descriptor());
         toolRegistry.register(FileIoTool.descriptor());
         toolRegistry.register(DateTimeTool.descriptor());
-        log.info("All local tools registered (10)");
+        log.info("All local tools registered (9)");
     }
 
     /** 连接所有已启用的 MCP 服务，注册远程工具。 */

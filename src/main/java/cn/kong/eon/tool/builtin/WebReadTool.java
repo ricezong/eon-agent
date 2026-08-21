@@ -5,6 +5,7 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.tool.ToolOutcome;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.slf4j.Logger;
@@ -38,10 +39,10 @@ public class WebReadTool implements ToolExecutor {
     }
 
     @Override
-    public String execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         String url = (String) arguments.get("url");
         if (url == null || url.isBlank()) {
-            return "[ERROR] Missing 'url' parameter";
+            return ToolOutcome.failure("Missing 'url' parameter");
         }
 
         try {
@@ -62,11 +63,11 @@ public class WebReadTool implements ToolExecutor {
             sb.append("--- 正文内容 ---\n");
             sb.append(text);
 
-            return sb.toString();
+            return ToolOutcome.success(sb.toString());
 
         } catch (Exception e) {
             log.error("WebRead failed: {}", e.getMessage(), e);
-            return "[ERROR] 读取网页失败: " + e.getMessage();
+            return ToolOutcome.failure("读取网页失败: " + e.getMessage());
         }
     }
 

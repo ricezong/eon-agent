@@ -7,11 +7,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 工具结果渲染器。统一走八字段语义标注，绝不以原始 JSON 回填。
- *
- * 采用单阈值设计——截断即落盘：
- *   ≤ 3000 字符：完整内容直接写入消息
- *   > 3000 字符：原文落盘为 artifact，消息只留摘要（前700+后300字符）+ 引用
+ * 工具结果渲染器。
+ * ≤ 3000 字符：完整内容直接写入消息
+ * > 3000 字符：原文落盘为 artifact，消息只留摘要 + 引用
  */
 public class ToolResultRenderer {
     private static final Logger log = LoggerFactory.getLogger(ToolResultRenderer.class);
@@ -26,10 +24,10 @@ public class ToolResultRenderer {
         this.artifactStore = artifactStore;
     }
 
-    /** 渲染工具结果为语义标注。 */
-    public String render(String toolName, String toolCallId, String reason, String rawResult, SessionState state) {
-        if (rawResult == null) rawResult = "";
-        boolean success = !rawResult.startsWith("[ERROR]");
+    /** 渲染工具结果为简洁语义标注。 */
+    public String render(String toolName, ToolOutcome outcome, SessionState state) {
+        String rawResult = outcome.content();
+        boolean success = outcome.success();
 
         String refId = null;
         String displayContent = rawResult;
@@ -44,17 +42,11 @@ public class ToolResultRenderer {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("[工具执行结果: ").append(toolName).append("]\n");
-        sb.append("执行状态: ").append(success ? "成功" : "失败").append("\n");
-        sb.append("调用原因: ").append(reason != null ? reason : "(未提供)").append("\n");
-        sb.append("结果摘要: ").append(displayContent).append("\n");
+        sb.append("[工具: ").append(toolName).append(" | ").append(success ? "成功" : "失败").append("]\n");
+        sb.append(displayContent);
         if (refId != null) {
-            sb.append("完整内容引用: artifact://").append(refId).append("\n");
-            sb.append("原始大小: ").append(rawResult.length()).append(" 字符\n");
+            sb.append("\n[完整内容: artifact://").append(refId).append("]");
         }
-        sb.append("调用ID: ").append(toolCallId).append("\n");
-        sb.append("执行轮次: ").append(state.getTurnCount()).append("\n");
-
         return sb.toString();
     }
 
@@ -62,7 +54,7 @@ public class ToolResultRenderer {
     private String extractSummary(String content) {
         if (content.length() <= SUMMARY_PREFIX + SUMMARY_SUFFIX) return content;
         return content.substring(0, SUMMARY_PREFIX)
-                + "\n... [中间内容省略，完整内容已落盘，可通过 artifact:// 引用检索] ...\n"
+                + "\n... [中间内容省略，完整内容已落盘] ...\n"
                 + content.substring(content.length() - SUMMARY_SUFFIX);
     }
 }

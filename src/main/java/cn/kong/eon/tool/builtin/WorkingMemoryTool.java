@@ -5,6 +5,7 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.tool.ToolOutcome;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -31,15 +32,14 @@ public class WorkingMemoryTool implements ToolExecutor {
     }
 
     @Override
-    public String execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         String insight = (String) arguments.get("insight");
         if (insight == null || insight.isBlank()) {
-            return "[ERROR] Missing 'insight' parameter";
+            return ToolOutcome.failure("Missing 'insight' parameter");
         }
 
         context.insightsStore().add(insight);
-        state.getInsights().add(0, insight);
 
-        return "已记录关键发现：" + insight + "\n当前 Insights 共 " + context.insightsStore().size() + " 条";
+        return ToolOutcome.success("已记录关键发现：" + insight + "\n当前 Insights 共 " + context.insightsStore().size() + " 条");
     }
 }

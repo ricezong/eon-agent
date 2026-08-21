@@ -1,66 +1,48 @@
 package cn.kong.eon.agent.support;
 
 import cn.kong.eon.agent.hook.StopCategory;
-import cn.kong.eon.agent.profile.RequestProfile;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * 单轮 Turn 的结构化日志记录。
- *
- * 设计理念：executeTurn 每一步往 TurnRecord 里塞字段，
- * turn 结束后由 {@link TurnLogger#flush(TurnRecord)} 统一格式化输出。
- *
- * 这样做的好处：
- *   1. 一轮 turn 只输出一条大日志，方便阅读和检索
- *   2. 结构化字段可以在 flush 时灵活排版，不散落在各处 log.info()
- *   3. 各步骤只需要 set 对应字段，不关心格式化逻辑
+ * 收集各步骤信息，turn 结束后由 TurnLogger.flush 统一输出 2 行摘要日志。
  */
 public class TurnRecord {
 
-    // ===== Turn 级别元信息 =====
     int turnNumber;
-    RequestProfile profile;
     long usedTokens;
     long maxTokens;
-    double tokenRatio;
     StopCategory stopCategory;
     int stopGraceRemaining;
 
-    // ===== Context 阶段 =====
+    // Context
     int messageCount;
     long estimatedTokens;
     boolean hasSummary;
     int catalogToolCount;
 
-    // ===== Mount 阶段 =====
-    int mountPhase;
-    String mountDetail;
-
-    // ===== LLM 阶段 =====
+    // LLM
     String thoughtSummary;
     List<String> toolNames = new ArrayList<>();
     int llmDeltaTokens;
     long llmTotalTokens;
     boolean outputTruncated;
 
-    // ===== Tool 执行阶段 =====
+    // Tools
     final List<ToolEntry> tools = new ArrayList<>();
-    int toolResultCount;   // flush 回填的工具结果数
+    int toolResultCount;
 
-    // ===== Turn 汇总 =====
-    int turnStartTokens;
+    // Turn 汇总
     int turnDeltaTokens;
     int okCount;
     int failCount;
     double waterRatio;
     boolean finished;
 
-    // ===== Stop 事件（turn 内发生的 stop 事件，非 agent 级别）=====
+    // Stop 事件
     final List<StopEvent> stopEvents = new ArrayList<>();
-
-    // ===== 内部结构 =====
 
     record ToolEntry(String name, boolean success, String argsSummary, int renderedLen) {}
 
@@ -68,14 +50,12 @@ public class TurnRecord {
 
     record StopEvent(StopEventType type, StopCategory category, String message, int graceRemaining) {}
 
-    // ===== Setter 方法（流式风格，便于链式调用）=====
+    // ===== Setter 方法 =====
 
-    TurnRecord turnHeader(int turnNumber, RequestProfile profile, long usedTokens, long maxTokens) {
+    TurnRecord turnHeader(int turnNumber, long usedTokens, long maxTokens) {
         this.turnNumber = turnNumber;
-        this.profile = profile;
         this.usedTokens = usedTokens;
         this.maxTokens = maxTokens;
-        this.tokenRatio = maxTokens > 0 ? (double) usedTokens / maxTokens : 0.0;
         return this;
     }
 
@@ -90,12 +70,6 @@ public class TurnRecord {
         this.estimatedTokens = estimatedTokens;
         this.hasSummary = hasSummary;
         this.catalogToolCount = catalogToolCount;
-        return this;
-    }
-
-    TurnRecord mount(int phase, String detail) {
-        this.mountPhase = phase;
-        this.mountDetail = detail;
         return this;
     }
 
@@ -124,7 +98,6 @@ public class TurnRecord {
 
     TurnRecord turnDone(int turnStartTokens, long totalTokens, long maxBudget,
                         int okCount, int failCount, boolean finished) {
-        this.turnStartTokens = turnStartTokens;
         this.turnDeltaTokens = (int) (totalTokens - turnStartTokens);
         this.waterRatio = maxBudget > 0 ? (double) totalTokens / maxBudget : 0.0;
         this.okCount = okCount;

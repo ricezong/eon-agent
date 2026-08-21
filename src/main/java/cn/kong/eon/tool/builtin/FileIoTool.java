@@ -5,6 +5,7 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,15 +58,15 @@ public class FileIoTool implements ToolExecutor {
     }
 
     @Override
-    public String execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         String operation = (String) arguments.get("operation");
         String relativePath = (String) arguments.get("path");
 
         if (operation == null || operation.isBlank()) {
-            return "[ERROR] 缺少 'operation' 参数";
+            return ToolOutcome.failure("缺少 'operation' 参数");
         }
         if (relativePath == null || relativePath.isBlank()) {
-            return "[ERROR] 缺少 'path' 参数";
+            return ToolOutcome.failure("缺少 'path' 参数");
         }
 
         try {
@@ -76,13 +77,13 @@ public class FileIoTool implements ToolExecutor {
                 case "write" -> doWrite(resolved, arguments);
                 case "list" -> doList(resolved);
                 case "delete" -> doDelete(resolved);
-                default -> "[ERROR] 未知 operation: " + operation + "，支持 read/write/list/delete";
+                default -> ToolOutcome.failure("未知 operation: " + operation + "，支持 read/write/list/delete");
             };
         } catch (SecurityException e) {
-            return "[ERROR] 路径不安全: " + e.getMessage();
+            return ToolOutcome.failure("路径不安全: " + e.getMessage());
         } catch (Exception e) {
             log.error("file_io failed: op={}, path={}", operation, relativePath, e);
-            return "[ERROR] " + e.getMessage();
+            return ToolOutcome.failure(e.getMessage());
         }
     }
 
@@ -97,12 +98,12 @@ public class FileIoTool implements ToolExecutor {
         return resolved;
     }
 
-    private String doRead(Path path) throws IOException {
+    private ToolOutcome doRead(Path path) throws IOException {
         if (!Files.exists(path)) {
-            return "[ERROR] 文件不存在: " + path;
+            return ToolOutcome.failure("文件不存在: " + path);
         }
         if (Files.isDirectory(path)) {
-            return "[ERROR] 路径是目录，不是文件: " + path;
+            return ToolOutcome.failure("路径是目录，不是文件: " + path);
         }
 
         String content = Files.readString(path);
@@ -110,13 +111,13 @@ public class FileIoTool implements ToolExecutor {
         sb.append("[读取成功] ").append(path.getFileName()).append("\n");
         sb.append("路径: ").append(path).append("\n");
         sb.append("大小: ").append(Files.size(path)).append(" bytes\n\n");        sb.append(content);
-        return sb.toString();
+        return ToolOutcome.success(sb.toString());
     }
 
-    private String doWrite(Path path, Map<String, Object> arguments) throws IOException {
+    private ToolOutcome doWrite(Path path, Map<String, Object> arguments) throws IOException {
         Object contentVal = arguments.get("content");
         if (contentVal == null) {
-            return "[ERROR] write 操作需要 'content' 参数";
+            return ToolOutcome.failure("write 操作需要 'content' 参数");
         }
         String content = String.valueOf(contentVal);
         Boolean appendVal = (Boolean) arguments.get("append");
@@ -136,15 +137,15 @@ public class FileIoTool implements ToolExecutor {
         sb.append("路径: ").append(path).append("\n");
         sb.append("写入: ").append(content.length()).append(" 字符\n");
         sb.append("模式: ").append(append ? "追加" : "覆盖");
-        return sb.toString();
+        return ToolOutcome.success(sb.toString());
     }
 
-    private String doList(Path path) throws IOException {
+    private ToolOutcome doList(Path path) throws IOException {
         if (!Files.exists(path)) {
-            return "[ERROR] 路径不存在: " + path;
+            return ToolOutcome.failure("路径不存在: " + path);
         }
         if (!Files.isDirectory(path)) {
-            return "[ERROR] 路径是文件，不是目录: " + path;
+            return ToolOutcome.failure("路径是文件，不是目录: " + path);
         }
 
         StringBuilder sb = new StringBuilder();
@@ -169,20 +170,20 @@ public class FileIoTool implements ToolExecutor {
             sb.append("共 ").append(items.size()).append(" 项");
         }
 
-        return sb.toString();
+        return ToolOutcome.success(sb.toString());
     }
 
-    private String doDelete(Path path) throws IOException {
+    private ToolOutcome doDelete(Path path) throws IOException {
         if (!Files.exists(path)) {
-            return "[ERROR] 文件不存在: " + path;
+            return ToolOutcome.failure("文件不存在: " + path);
         }
         if (Files.isDirectory(path)) {
-            return "[ERROR] 不支持删除目录: " + path;
+            return ToolOutcome.failure("不支持删除目录: " + path);
         }
 
         Files.delete(path);
         log.info("file_io delete: {}", path);
 
-        return "[删除成功] " + path;
+        return ToolOutcome.success("[删除成功] " + path);
     }
 }

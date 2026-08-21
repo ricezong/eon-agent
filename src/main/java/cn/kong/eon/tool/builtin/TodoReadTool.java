@@ -7,6 +7,7 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.tool.ToolOutcome;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,10 +30,10 @@ public class TodoReadTool implements ToolExecutor {
     }
 
     @Override
-    public String execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         List<TodoItem> todos = context.todoStore().getAll();
         if (todos.isEmpty()) {
-            return "当前无任务。请先使用 todo_write 创建任务清单。";
+            return ToolOutcome.success("当前无任务。请先使用 todo_write 创建任务清单。");
         }
 
         StringBuilder sb = new StringBuilder();
@@ -53,6 +54,6 @@ public class TodoReadTool implements ToolExecutor {
         sb.append("  阻塞: ").append(blocked).append("\n");
         sb.append("  完成率: ").append(String.format("%.0f%%", 100.0 * completed / todos.size()));
 
-        return sb.toString();
+        return ToolOutcome.success(sb.toString());
     }
 }

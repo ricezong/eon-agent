@@ -229,7 +229,12 @@ public class CompressionEngine {
                     removeCount, summary.length(), summaryPreview);
 
         } catch (Exception e) {
-            log.error("[Compress] Summarize failed: {}", e.getMessage(), e);
+            log.error("[Compress] Summarize failed: {} → 降级为 Prune 旧消息", e.getMessage());
+            // 降级策略：删除已被覆盖的旧消息，防止上下文继续膨胀
+            int removeCount = tailStart;
+            messages.subList(0, removeCount).clear();
+            state.setSummarizedUpToIndex(tailStart);
+            log.info("[Compress] Fallback Prune: removed {} msgs (summarize failed)", removeCount);
         }
     }
 

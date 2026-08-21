@@ -5,6 +5,7 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -72,14 +73,14 @@ public class WebSearchTool implements ToolExecutor {
     }
 
     @Override
-    public String execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         String query = (String) arguments.get("query");
         if (query == null || query.isBlank()) {
-            return "[ERROR] Missing 'query' parameter";
+            return ToolOutcome.failure("Missing 'query' parameter");
         }
 
         if (apiKey == null || apiKey.isBlank()) {
-            return "[ERROR] 百度千帆 API Key 未配置（请检查 agent.yaml 的 web_search.api_key 或环境变量 QIANFAN_API_KEY）";
+            return ToolOutcome.failure("百度千帆 API Key 未配置（请检查 agent.yaml 的 web_search.api_key 或环境变量 QIANFAN_API_KEY）");
         }
 
         // ArgumentSanitizer 已保证类型为 Integer
@@ -96,11 +97,11 @@ public class WebSearchTool implements ToolExecutor {
 
             ObjectNode body = buildRequestBody(query, topK, siteFilter, recencyFilter);
             String responseJson = callApi(body);
-            return parseResponse(responseJson, query);
+            return ToolOutcome.success(parseResponse(responseJson, query));
 
         } catch (Exception e) {
             log.error("WebSearch(千帆) failed: {}", e.getMessage(), e);
-            return "[ERROR] 搜索失败: " + e.getMessage();
+            return ToolOutcome.failure("搜索失败: " + e.getMessage());
         }
     }
 
@@ -169,7 +170,7 @@ public class WebSearchTool implements ToolExecutor {
             String code = root.path("code").asText();
             String message = root.path("message").asText();
             log.error("千帆 API 错误: code={}, message={}", code, message);
-            return "[ERROR] 千帆 API 错误 [" + code + "]: " + message;
+            throw new RuntimeException("千帆 API 错误 [" + code + "]: " + message);
         }
 
         JsonNode references = root.path("references");

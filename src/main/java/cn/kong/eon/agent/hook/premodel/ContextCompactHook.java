@@ -34,14 +34,15 @@ public class ContextCompactHook implements Hook.PreModelHook {
 
     public ContextCompactHook(AgentConfig config, LlmClient llmClient) {
         this.config = config;
+        var ctxCfg = config.getContext();
         this.compressionEngine = new CompressionEngine(
-                config.getContext().snipThreshold,
-                config.getContext().pruneThreshold,
-                config.getContext().summarizeThreshold,
-                config.getContext().snipKeepChars,
-                config.getContext().pruneKeepChars,
-                config.getContext().summarizeMaxInputChars,
-                config.getContext().summarizeMaxOutputChars,
+                ctxCfg.snipThreshold,
+                ctxCfg.pruneThreshold,
+                ctxCfg.summarizeThreshold,
+                ctxCfg.SNIP_KEEP_CHARS,
+                ctxCfg.PRUNE_KEEP_CHARS,
+                ctxCfg.SUMMARIZE_MAX_INPUT_CHARS,
+                ctxCfg.SUMMARIZE_MAX_OUTPUT_CHARS,
                 llmClient);
         this.pairingRepairer = new PairingRepairer();
     }
@@ -61,7 +62,7 @@ public class ContextCompactHook implements Hook.PreModelHook {
         if (transcript == null || transcript.isEmpty()) return HookResult.ok();
 
         CompressionState cs = state.getCompressionState();
-        int tailGuardTurns = config.getContext().tailGuardMinTurns;
+        int tailGuardTurns = config.getContext().TAIL_GUARD_MIN_TURNS;
 
         List<ChatMessage> compressed = compressionEngine.compress(
                 new ArrayList<>(transcript), cs, waterLevel, tailGuardTurns);

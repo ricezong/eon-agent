@@ -5,6 +5,7 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,10 +58,10 @@ public class DownloadTool implements ToolExecutor {
     }
 
     @Override
-    public String execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         String url = (String) arguments.get("url");
         if (url == null || url.isBlank()) {
-            return "[ERROR] Missing 'url' parameter";
+            return ToolOutcome.failure("Missing 'url' parameter");
         }
 
         String filename = (String) arguments.get("filename");
@@ -88,7 +89,7 @@ public class DownloadTool implements ToolExecutor {
 
             int statusCode = response.statusCode();
             if (statusCode < 200 || statusCode >= 300) {
-                return "[ERROR] 下载失败，HTTP 状态码: " + statusCode;
+                return ToolOutcome.failure("下载失败，HTTP 状态码: " + statusCode);
             }
 
             long bytes;
@@ -105,11 +106,11 @@ public class DownloadTool implements ToolExecutor {
             sb.append("文件大小: ").append(FileUtils.formatSize(bytes)).append(" (").append(bytes).append(" bytes)\n");
             sb.append("Content-Type: ").append(contentType).append("\n");
 
-            return sb.toString();
+            return ToolOutcome.success(sb.toString());
 
         } catch (Exception e) {
             log.error("Download failed: {}", e.getMessage(), e);
-            return "[ERROR] 下载失败: " + e.getMessage();
+            return ToolOutcome.failure("下载失败: " + e.getMessage());
         }
     }
 

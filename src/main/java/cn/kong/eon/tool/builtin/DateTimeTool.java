@@ -5,6 +5,7 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.tool.ToolOutcome;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -37,7 +38,7 @@ public class DateTimeTool implements ToolExecutor {
     }
 
     @Override
-    public String execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         LocalDateTime now = LocalDateTime.now();
         LocalDate today = now.toLocalDate();
 
@@ -70,6 +71,6 @@ public class DateTimeTool implements ToolExecutor {
         sb.append("  今年第 ").append(dayOfYear).append(" 天\n");
         sb.append("  今年剩余: ").append(yearEnd.getDayOfYear() - dayOfYear).append(" 天\n");
 
-        return sb.toString();
+        return ToolOutcome.success(sb.toString());
     }
 }

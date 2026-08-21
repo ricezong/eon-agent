@@ -7,6 +7,7 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.tool.ToolOutcome;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,11 +63,11 @@ public class TodoWriteTool implements ToolExecutor {
     }
 
     @Override
-    public String execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         try {
             Object todosRaw = arguments.get("todos");
             if (todosRaw == null) {
-                return "[ERROR] 缺少 'todos' 参数。请传入对象数组，例如：[{\"id\":\"t1\",\"content\":\"搜索\",\"status\":\"pending\",\"priority\":\"high\"}]";
+                return ToolOutcome.failure("缺少 'todos' 参数。请传入对象数组，例如：[{\"id\":\"t1\",\"content\":\"搜索\",\"status\":\"pending\",\"priority\":\"high\"}]");
             }
 
             // ArgumentSanitizer 已保证类型正确
@@ -74,7 +75,7 @@ public class TodoWriteTool implements ToolExecutor {
 
             if (list.isEmpty()) {
                 context.todoStore().clear();
-                return "Todo 列表已清空。";
+                return ToolOutcome.success("Todo 列表已清空。");
             }
 
             List<TodoItem> todoList = new ArrayList<>();
@@ -89,19 +90,19 @@ public class TodoWriteTool implements ToolExecutor {
             }
 
             if (!context.todoStore().validateSingleFocus(todoList)) {
-                return "[ERROR] 同时最多一个 in_progress 任务。请检查 status 字段，确保只有一个 in_progress。";
+                return ToolOutcome.failure("同时最多一个 in_progress 任务。请检查 status 字段，确保只有一个 in_progress。");
             }
 
             if (!context.todoStore().validateDependencies(todoList)) {
-                return "[ERROR] depends_on 未完成的 todo 不得标 in_progress。";
+                return ToolOutcome.failure("depends_on 未完成的 todo 不得标 in_progress。");
             }
 
             List<TodoItem> result = context.todoStore().replaceAll(todoList, state.getTurnCount());
 
-            return renderTodoList(result);
+            return ToolOutcome.success(renderTodoList(result));
         } catch (Exception e) {
             log.error("todo_write failed", e);
-            return "[ERROR] " + e.getMessage();
+            return ToolOutcome.failure(e.getMessage());
         }
     }
 

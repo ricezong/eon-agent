@@ -105,15 +105,8 @@ public class ToolRegistry {
         return result;
     }
 
-    /** 根据工具 Schema 清洗参数类型，处理 LLM 输出类型不规范的问题。 */
-    Map<String, Object> sanitizeArgs(String toolName, Map<String, Object> arguments) {
-        ToolDescriptor descriptor = tools.get(toolName);
-        if (descriptor == null) return arguments;
-        return sanitizer.sanitize(descriptor.getSpecification(), arguments);
-    }
-
     /** 执行工具（本地或 MCP）。 */
-    public String execute(String name, Map<String, Object> arguments,
+    public ToolOutcome execute(String name, Map<String, Object> arguments,
                           cn.kong.eon.model.SessionState state, ToolContext context) {
         // 本地工具
         ToolDescriptor descriptor = tools.get(name);
@@ -121,12 +114,12 @@ public class ToolRegistry {
             try {
                 // 根据工具 Schema 清洗参数类型（处理 LLM 输出类型不规范的问题）
                 Map<String, Object> sanitized = sanitizer.sanitize(descriptor.getSpecification(), arguments);
-                String result = descriptor.getExecutor().execute(sanitized, state, context);
-                log.debug("Local tool executed: {} -> {} chars", name, result != null ? result.length() : 0);
+                ToolOutcome result = descriptor.getExecutor().execute(sanitized, state, context);
+                log.debug("Local tool executed: {} -> success={} {} chars", name, result.success(), result.content().length());
                 return result;
             } catch (Exception e) {
                 log.error("Local tool execution failed: {}", name, e);
-                return "[ERROR] Tool execution failed: " + e.getMessage();
+                return ToolOutcome.failure("Tool execution failed: " + e.getMessage());
             }
         }
 
@@ -135,16 +128,16 @@ public class ToolRegistry {
         if (mcpManager != null) {
             try {
                 String argsJson = convertArgsToJson(arguments);
-                String result = mcpManager.executeTool(name, argsJson);
-                log.debug("MCP tool executed: {} -> {} chars", name, result != null ? result.length() : 0);
+                ToolOutcome result = mcpManager.executeTool(name, argsJson);
+                log.debug("MCP tool executed: {} -> success={} {} chars", name, result.success(), result.content().length());
                 return result;
             } catch (Exception e) {
                 log.error("MCP tool execution failed: {}", name, e);
-                return "[ERROR] MCP tool execution failed: " + e.getMessage();
+                return ToolOutcome.failure("MCP tool execution failed: " + e.getMessage());
             }
         }
 
-        return "[ERROR] Tool not found: " + name;
+        return ToolOutcome.failure("Tool not found: " + name);
     }
 
     /** 获取工具权限（MCP 工具默认 READONLY）。 */
@@ -202,8 +195,7 @@ public class ToolRegistry {
             return "{}";
         }
         try {
-            return new com.fasterxml.jackson.databind.ObjectMapper()
-                    .writeValueAsString(arguments);
+            return cn.kong.eon.util.JsonMapper.get().writeValueAsString(arguments);
         } catch (Exception e) {
             log.warn("Failed to convert args to JSON: {}", arguments, e);
             return "{}";

@@ -1,6 +1,7 @@
 package cn.kong.eon.tool;
 
 import cn.kong.eon.model.ToolPermission;
+import cn.kong.eon.util.JsonMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.model.chat.request.json.*;
 
@@ -32,6 +33,44 @@ public class ToolDescriptor {
     public ToolPermission getPermission() { return permission; }
     public ToolSpecification getSpecification() { return specification; }
     public ToolExecutor getExecutor() { return executor; }
+
+    /**
+     * 提取工具调用的关键参数摘要，用于日志展示。
+     * 默认实现：取前 80 字符的 JSON 摘要。可被子类覆盖。
+     */
+    public String summarizeArgs(Map<String, Object> args) {
+        if (args == null || args.isEmpty()) return "(none)";
+        String summary = switch (name) {
+            case "web_search" -> {
+                Object q = args.get("query");
+                yield q != null ? "{query: \"" + truncate(String.valueOf(q), 60) + "\"}" : args.toString();
+            }
+            case "web_read", "download" -> {
+                Object u = args.get("url");
+                yield u != null ? "{url: \"" + truncate(String.valueOf(u), 60) + "\"}" : args.toString();
+            }
+            case "finish" -> {
+                Object g = args.get("goal_achieved");
+                yield "{goal_achieved: " + g + "}";
+            }
+            case "todo_write" -> {
+                Object t = args.get("todos");
+                int count = (t instanceof List<?> l) ? l.size() : 0;
+                yield "{todos: " + count + " items}";
+            }
+            case "file_io" -> {
+                Object op = args.get("operation");
+                Object p = args.get("path");
+                yield "{op: " + op + ", path: \"" + truncate(String.valueOf(p), 50) + "\"}";
+            }
+            default -> truncate(args.toString(), 80);
+        };
+        return truncate(summary, 80);
+    }
+
+    private static String truncate(String s, int maxLen) {
+        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
+    }
 
     /**
      * 构建工具 Schema，自动注入 reason 必填字段。

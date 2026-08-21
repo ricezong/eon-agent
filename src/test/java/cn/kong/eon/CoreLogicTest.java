@@ -7,6 +7,7 @@ import cn.kong.eon.loop.LoopDetector;
 import cn.kong.eon.model.*;
 import cn.kong.eon.store.*;
 import cn.kong.eon.tool.ToolContext;
+import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.tool.ToolRegistry;
 import cn.kong.eon.tool.ToolResultRenderer;
 import cn.kong.eon.tool.builtin.*;
@@ -51,7 +52,6 @@ class CoreLogicTest {
         CheckpointStore checkpointStore = new CheckpointStore(sessionDir.resolve("checkpoints"));
 
         toolRegistry = new ToolRegistry(config.getTools().whitelist);
-        toolRegistry.register(EnableToolsTool.descriptor());
         toolRegistry.register(TodoWriteTool.descriptor());
         toolRegistry.register(TodoReadTool.descriptor());
         toolRegistry.register(WorkingMemoryTool.descriptor());
@@ -218,10 +218,9 @@ class CoreLogicTest {
     }
 
     @Test
-    void should_register_all_10_tools() {
-        // Then: 10 个工具全部注册（含 enable_tools + date_time）
-        assertThat(toolRegistry.getAll()).hasSize(10);
-        assertThat(toolRegistry.get("enable_tools")).isNotNull();
+    void should_register_all_9_tools() {
+        // Then: 9 个工具全部注册
+        assertThat(toolRegistry.getAll()).hasSize(9);
         assertThat(toolRegistry.get("todo_write")).isNotNull();
         assertThat(toolRegistry.get("todo_read")).isNotNull();
         assertThat(toolRegistry.get("working_memory")).isNotNull();
@@ -235,7 +234,6 @@ class CoreLogicTest {
 
     @Test
     void should_classify_tool_permissions() {
-        assertThat(toolRegistry.isReadonly("enable_tools")).isTrue();
         assertThat(toolRegistry.isReadonly("todo_read")).isTrue();
         assertThat(toolRegistry.isReadonly("web_search")).isTrue();
         assertThat(toolRegistry.isReadonly("web_read")).isTrue();
@@ -251,14 +249,12 @@ class CoreLogicTest {
         SessionState state = SessionState.create("test-render", "test");
 
         // When: 渲染一个普通结果
-        String rendered = renderer.render("web_search", "call-001",
-                "搜索下载源", "搜索完成，找到 5 条结果", state);
+        String rendered = renderer.render("web_search",
+                ToolOutcome.success("搜索完成，找到 5 条结果"), state);
 
-        // Then: 应包含八字段语义标注的关键字段
-        assertThat(rendered).contains("[工具执行结果: web_search]");
-        assertThat(rendered).contains("执行状态: 成功");
-        assertThat(rendered).contains("调用原因: 搜索下载源");
-        assertThat(rendered).contains("调用ID: call-001");
+        // Then: 应包含简化标注的关键字段
+        assertThat(rendered).contains("[工具: web_search | 成功]");
+        assertThat(rendered).contains("搜索完成，找到 5 条结果");
     }
 
     @Test
@@ -269,13 +265,12 @@ class CoreLogicTest {
         String largeContent = "x".repeat(8001);  // 超过 3000 字符落盘阈值
 
         // When: 渲染一个大结果
-        String rendered = renderer.render("web_read", "call-002",
-                "读取网页", largeContent, state);
+        String rendered = renderer.render("web_read",
+                ToolOutcome.success(largeContent), state);
 
         // Then: 应落盘为 artifact，上下文只留摘要 + 引用
         assertThat(rendered).contains("artifact://art_");
-        assertThat(rendered).contains("完整内容引用");
-        assertThat(rendered).contains("原始大小: 8001 字符");
+        assertThat(rendered).contains("[工具: web_read | 成功]");
         assertThat(artifactStore.listAll()).hasSize(1);
     }
 
@@ -287,8 +282,8 @@ class CoreLogicTest {
         String content = "x".repeat(2000);  // 低于落盘阈值 3000，不应落盘
 
         // When: 渲染结果
-        String rendered = renderer.render("web_read", "call-003",
-                "读取网页", content, state);
+        String rendered = renderer.render("web_read",
+                ToolOutcome.success(content), state);
 
         // Then: 完整内容应在消息中，无 artifact 引用，无截断标记
         assertThat(rendered).doesNotContain("artifact://");
@@ -313,11 +308,12 @@ class CoreLogicTest {
         );
 
         // When: 执行 todo_write
-        String result = toolRegistry.execute("todo_write", args, state, toolContext);
+        ToolOutcome result = toolRegistry.execute("todo_write", args, state, toolContext);
 
         // Then: Todo 应被写入
-        assertThat(result).contains("当前任务清单");
-        assertThat(result).contains("t1");
+        assertThat(result.success()).isTrue();
+        assertThat(result.content()).contains("当前任务清单");
+        assertThat(result.content()).contains("t1");
         assertThat(todoStore.size()).isEqualTo(1);
     }
 
@@ -356,11 +352,11 @@ class CoreLogicTest {
                 )
         );
 
-        String result = toolRegistry.execute("todo_write", args, state, toolContext);
+        ToolOutcome result = toolRegistry.execute("todo_write", args, state, toolContext);
 
-        assertThat(result).contains("当前任务清单");
-        assertThat(result).contains("搜索下载源");
-        assertThat(result).contains("提取链接");
+        assertThat(result.content()).contains("当前任务清单");
+        assertThat(result.content()).contains("搜索下载源");
+        assertThat(result.content()).contains("提取链接");
         assertThat(todoStore.size()).isEqualTo(3);
         todoStore.getAll().forEach(t ->
                 assertThat(t.getStatus()).isEqualTo(TodoStatus.PENDING));
@@ -377,9 +373,9 @@ class CoreLogicTest {
                 )
         );
 
-        String result = toolRegistry.execute("todo_write", args, state, toolContext);
+        ToolOutcome result = toolRegistry.execute("todo_write", args, state, toolContext);
 
-        assertThat(result).contains("当前任务清单");
+        assertThat(result.content()).contains("当前任务清单");
         assertThat(todoStore.size()).isEqualTo(2);
         assertThat(todoStore.get("1")).isNotNull();
         assertThat(todoStore.get("2")).isNotNull();
@@ -435,9 +431,9 @@ class CoreLogicTest {
                 )
         );
 
-        String result = toolRegistry.execute("todo_write", args, state, toolContext);
+        ToolOutcome result = toolRegistry.execute("todo_write", args, state, toolContext);
 
-        assertThat(result).contains("搜索资源");
+        assertThat(result.content()).contains("搜索资源");
     }
 
     @Test
@@ -456,9 +452,9 @@ class CoreLogicTest {
                 "todos", java.util.List.of()
         );
 
-        String result = toolRegistry.execute("todo_write", args, state, toolContext);
+        ToolOutcome result = toolRegistry.execute("todo_write", args, state, toolContext);
 
-        assertThat(result).contains("已清空");
+        assertThat(result.content()).contains("已清空");
         assertThat(todoStore.size()).isEqualTo(0);
     }
 
@@ -476,10 +472,10 @@ class CoreLogicTest {
         // 模拟 LLM 传字符串格式的 JSON 数组，由 ArgumentSanitizer 自动转换为 List
         args.put("todos", todosJsonString);
 
-        String result = toolRegistry.execute("todo_write", args, state, toolContext);
+        ToolOutcome result = toolRegistry.execute("todo_write", args, state, toolContext);
 
-        assertThat(result).contains("当前任务清单");
-        assertThat(result).doesNotContain("[ERROR]");
+        assertThat(result.success()).isTrue();
+        assertThat(result.content()).contains("当前任务清单");
         assertThat(todoStore.size()).isEqualTo(3);
         assertThat(todoStore.get("t1").getContent()).contains("搜索抖音");
         assertThat(todoStore.get("t1").getStatus()).isEqualTo(TodoStatus.IN_PROGRESS);
@@ -494,39 +490,11 @@ class CoreLogicTest {
         // 非法字符串，ArgumentSanitizer 无法解析为 JSON 数组，工具侧强转会抛异常
         args.put("todos", "这不是JSON数组");
 
-        String result = toolRegistry.execute("todo_write", args, state, toolContext);
+        ToolOutcome result = toolRegistry.execute("todo_write", args, state, toolContext);
 
-        // ToolRegistry.execute 的 catch 块捕获 ClassCastException 并返回 [ERROR]
-        assertThat(result).contains("[ERROR]");
+        // ToolRegistry.execute 的 catch 块捕获异常并返回 failure
+        assertThat(result.success()).isFalse();
         assertThat(todoStore.size()).isEqualTo(0);
-    }
-
-    // ==================== enable_tools 工具测试 ====================
-
-    @Test
-    void should_execute_enable_tools() {
-        SessionState state = SessionState.create("test-req-tools", "test");
-        java.util.Map<String, Object> args = java.util.Map.of(
-                "tools", java.util.List.of("web_search", "web_read")
-        );
-
-        String result = toolRegistry.execute("enable_tools", args, state, toolContext);
-
-        assertThat(result).contains("已声明工具");
-        assertThat(result).contains("web_search");
-        assertThat(result).contains("web_read");
-    }
-
-    @Test
-    void should_reject_empty_enable_tools() {
-        SessionState state = SessionState.create("test-req-empty", "test");
-        java.util.Map<String, Object> args = java.util.Map.of(
-                "tools", java.util.List.of()
-        );
-
-        String result = toolRegistry.execute("enable_tools", args, state, toolContext);
-
-        assertThat(result).contains("[ERROR]");
     }
 
     // ==================== 连续失败熔断器测试 ====================
