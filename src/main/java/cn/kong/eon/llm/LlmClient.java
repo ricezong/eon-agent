@@ -95,7 +95,8 @@ public class LlmClient {
             }
         }
 
-        throw new RuntimeException("LLM_STALLED: model failed after " + retryConfig.attempts + " attempts", lastException);
+        log.error("LLM_STALLED: model failed after {} attempts", retryConfig.attempts, lastException);
+        throw new LlmStalledException("LLM 调用连续失败 " + retryConfig.attempts + " 次，模型不可用");
     }
 
     private long calculateDelay(int attempt) {

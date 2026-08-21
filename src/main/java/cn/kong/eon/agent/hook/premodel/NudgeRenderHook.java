@@ -1,6 +1,6 @@
 package cn.kong.eon.agent.hook.premodel;
 
-import cn.kong.eon.agent.context.ContextBuilder;
+import cn.kong.eon.context.ContextBuilder;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.model.SessionState;
@@ -8,7 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 运行时提醒渲染（模型调用前阶段，order=10）。
+ * 运行时提醒渲染（模型调用前阶段，order=15）。
  * 把 pendingNudges 和 formatCorrections 渲染到 ContextBuilder 的 runtimeNudges 字段。
  */
 public class NudgeRenderHook implements Hook.PreModelHook {
@@ -16,7 +16,7 @@ public class NudgeRenderHook implements Hook.PreModelHook {
 
     @Override public String name() { return "NudgeRender"; }
     @Override public boolean isActive(SessionState state) { return true; }
-    @Override public int order() { return 10; }
+    @Override public int order() { return 15; }
 
     @Override
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {

@@ -9,6 +9,10 @@ import org.slf4j.LoggerFactory;
  *   - 未调用 todo_write → SIMPLE
  *   - 已调用 todo_write → TASK（TodoNavigator 激活）
  * 单向升级，不可降级。
+ *
+ * 当前 SIMPLE/TASK 两者对工具挂载和上下文构建完全相同，
+ * TASK profile 的唯一效果是激活 TodoNavigatorHook。
+ * 保留 PolicyRouter 是为未来 SIMPLE/TASK 差异化行为预留扩展点。
  */
 public class PolicyRouter {
     private static final Logger log = LoggerFactory.getLogger(PolicyRouter.class);

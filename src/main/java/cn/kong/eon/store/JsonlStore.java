@@ -1,5 +1,6 @@
 package cn.kong.eon.store;
 
+import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
@@ -25,7 +26,7 @@ public class JsonlStore {
 
     public JsonlStore(Path jsonlFile) {
         this.jsonlFile = jsonlFile;
-        this.mapper = new ObjectMapper();
+        this.mapper = JsonMapper.get();
         try {
             Files.createDirectories(jsonlFile.getParent());
             if (Files.exists(jsonlFile)) {
@@ -49,13 +50,14 @@ public class JsonlStore {
         }
     }
 
-    public List<ChatMessage> readAll() {
+    /** 返回消息快照（浅拷贝，修改不影响原始账本）。 */
+    public synchronized List<ChatMessage> snapshot() {
         return new ArrayList<>(messages);
     }
 
-    public int size() { return messages.size(); }
+    public synchronized int size() { return messages.size(); }
 
-    public void clear() {
+    public synchronized void clear() {
         messages.clear();
         try {
             Files.deleteIfExists(jsonlFile);
@@ -104,6 +106,7 @@ public class JsonlStore {
     public static class SerializedMessage {
         public String type;       // system / user / ai / tool
         public String content;
+        public String name;           // UserMessage 的 name 属性（如 tool_catalog, navigator）
         public String toolCallId;
         public String toolName;
         public List<ToolCallRef> toolCalls;
@@ -118,6 +121,7 @@ public class JsonlStore {
             } else if (msg instanceof UserMessage m) {
                 sm.type = "user";
                 sm.content = m.singleText();
+                sm.name = m.name();
             } else if (msg instanceof AiMessage m) {
                 sm.type = "ai";
                 sm.content = m.text();
@@ -143,7 +147,12 @@ public class JsonlStore {
         public ChatMessage toChatMessage() {
             return switch (type) {
                 case "system" -> SystemMessage.from(content);
-                case "user" -> UserMessage.from(content != null ? content : "");
+                case "user" -> {
+                    UserMessage um = name != null
+                            ? UserMessage.from(name, content != null ? content : "")
+                            : UserMessage.from(content != null ? content : "");
+                    yield um;
+                }
                 case "ai" -> {
                     AiMessage ai;
                     if (toolCalls != null && !toolCalls.isEmpty()) {

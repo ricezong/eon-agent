@@ -14,6 +14,7 @@ import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.loop.LoopDetector;
 import cn.kong.eon.mcp.McpClientManager;
+import cn.kong.eon.model.Checkpoint;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.store.*;
 import cn.kong.eon.tool.ToolContext;
@@ -49,7 +50,7 @@ public class AgentBootstrap {
 
         // 2. Tool 层
         ToolRegistry toolRegistry = new ToolRegistry(config.getTools().whitelist);
-        registerAllTools(toolRegistry);
+        registerAllTools(toolRegistry, config);
 
         // 2.1 MCP 服务
         List<McpClientManager> mcpManagers = connectMcpServers(config, toolRegistry);
@@ -88,35 +89,51 @@ public class AgentBootstrap {
         agent.addHook(new LoopDetectHook(loopDetector));                   // order=30
 
         // PreTool 阶段
-        agent.addHook(new GateHook(toolRegistry, true));                   // order=20
+        agent.addHook(new GateHook(toolRegistry));                   // order=20
 
         // PostTool 阶段
-        agent.addHook(new TodoActivationHook());                           // order=10
+        agent.addHook(new TodoActivationHook(loopDetector, todoStore));           // order=10
         agent.addHook(new FailureBreakerHook(loopDetector));               // order=30
-        agent.addHook(new CheckpointHook(config, checkpointStore, todoStore::getAll)); // order=100
+        agent.addHook(new CheckpointHook(config, checkpointStore, todoStore)); // order=100
 
         log.info("EonAgent built with {} hooks", agent.getHookCount());
+
+        // 尝试从 checkpoint 恢复（如果配置启用且存在快照）
+        if (config.getMode().checkpointEnabled) {
+            Checkpoint cp = checkpointStore.loadLatest(sessionId);
+            if (cp != null) {
+                log.info("Checkpoint recovered: turn={}, session={}", cp.getTurnCount(), sessionId);
+                if (cp.getTodoSnapshot() != null && !cp.getTodoSnapshot().isEmpty()) {
+                    todoStore.replaceAll(cp.getTodoSnapshot(), cp.getTurnCount());
+                }
+            }
+        }
 
         // 注册 JVM 关闭钩子
         if (!mcpManagers.isEmpty()) {
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 for (McpClientManager mgr : mcpManagers) {
-                    mgr.close();
+                    try {
+                        mgr.close();
+                        log.info("MCP server closed: {}", mgr.getServerKey());
+                    } catch (Exception e) {
+                        log.warn("Failed to close MCP server: {}", mgr.getServerKey(), e);
+                    }
                 }
-            }));
+            }, "MCP-ShutdownHook"));
         }
 
         return agent;
     }
 
     /** 注册全部本地工具。 */
-    private static void registerAllTools(ToolRegistry toolRegistry) {
+    private static void registerAllTools(ToolRegistry toolRegistry, AgentConfig config) {
         toolRegistry.register(EnableToolsTool.descriptor());
         toolRegistry.register(TodoWriteTool.descriptor());
         toolRegistry.register(TodoReadTool.descriptor());
         toolRegistry.register(WorkingMemoryTool.descriptor());
         toolRegistry.register(FinishTool.descriptor());
-        toolRegistry.register(WebSearchTool.descriptor());
+        toolRegistry.register(WebSearchTool.descriptor(config.getWebSearch().apiKey));
         toolRegistry.register(WebReadTool.descriptor());
         toolRegistry.register(DownloadTool.descriptor());
         toolRegistry.register(FileIoTool.descriptor());

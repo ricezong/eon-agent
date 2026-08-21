@@ -106,7 +106,7 @@ public class ToolRegistry {
     }
 
     /** 根据工具 Schema 清洗参数类型，处理 LLM 输出类型不规范的问题。 */
-    public Map<String, Object> sanitizeArgs(String toolName, Map<String, Object> arguments) {
+    Map<String, Object> sanitizeArgs(String toolName, Map<String, Object> arguments) {
         ToolDescriptor descriptor = tools.get(toolName);
         if (descriptor == null) return arguments;
         return sanitizer.sanitize(descriptor.getSpecification(), arguments);

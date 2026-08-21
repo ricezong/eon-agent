@@ -1,5 +1,6 @@
 package cn.kong.eon.tool;
 
+import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.model.chat.request.json.JsonArraySchema;
@@ -26,7 +27,7 @@ import java.util.*;
 public class ArgumentSanitizer {
     private static final Logger log = LoggerFactory.getLogger(ArgumentSanitizer.class);
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = JsonMapper.get();
 
     /**
      * 根据工具 Schema 清洗参数。

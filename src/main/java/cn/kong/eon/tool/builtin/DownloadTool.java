@@ -5,6 +5,7 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,6 +28,12 @@ public class DownloadTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(DownloadTool.class);
 
     private static final int TIMEOUT_SECONDS = 120;
+
+    /** 复用 HttpClient（避免每次请求创建新连接池）。 */
+    private static final HttpClient SHARED_CLIENT = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.ALWAYS)
+            .connectTimeout(Duration.ofSeconds(30))
+            .build();
 
     public static ToolDescriptor descriptor() {
         Map<String, Map<String, Object>> props = new LinkedHashMap<>();
@@ -68,10 +75,7 @@ public class DownloadTool implements ToolExecutor {
 
             log.info("Download: url='{}' -> '{}'", url, targetPath);
 
-            HttpClient client = HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.ALWAYS)
-                    .connectTimeout(Duration.ofSeconds(30))
-                    .build();
+            HttpClient client = SHARED_CLIENT;
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
@@ -98,7 +102,7 @@ public class DownloadTool implements ToolExecutor {
             sb.append("[下载成功]\n");
             sb.append("URL: ").append(url).append("\n");
             sb.append("保存路径: ").append(targetPath.toAbsolutePath()).append("\n");
-            sb.append("文件大小: ").append(formatSize(bytes)).append(" (").append(bytes).append(" bytes)\n");
+            sb.append("文件大小: ").append(FileUtils.formatSize(bytes)).append(" (").append(bytes).append(" bytes)\n");
             sb.append("Content-Type: ").append(contentType).append("\n");
 
             return sb.toString();
@@ -120,12 +124,5 @@ public class DownloadTool implements ToolExecutor {
         } catch (Exception e) {
             return "download_" + System.currentTimeMillis() + ".txt";
         }
-    }
-
-    private String formatSize(long bytes) {
-        if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
-        if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
-        return String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024));
     }
 }

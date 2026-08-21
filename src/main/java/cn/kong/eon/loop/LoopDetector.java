@@ -137,15 +137,6 @@ public class LoopDetector {
         return DetectionResult.ok();
     }
 
-    public void reset() {
-        callFingerprintCount.clear();
-        todoSnapshots.clear();
-        stepsWithoutProgress = 0;
-        consecutiveFailures = 0;
-        toolFailureCount.clear();
-        trippedTools.clear();
-    }
-
     public int getConsecutiveFailures() { return consecutiveFailures; }
     public boolean isToolTripped(String toolName) { return trippedTools.contains(toolName); }
 

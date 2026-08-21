@@ -1,5 +1,7 @@
 package cn.kong.eon.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
@@ -9,6 +11,8 @@ import java.util.*;
  * Agent 配置加载器。从 agent.yaml 加载配置，提供类型安全的访问方法。
  */
 public class AgentConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(AgentConfig.class);
 
     private final Map<String, Object> raw;
 
@@ -60,6 +64,37 @@ public class AgentConfig {
         return v instanceof Map ? (Map<String, Object>) v : Map.of();
     }
 
+    /**
+     * 解析环境变量引用。支持：
+     *   ${VAR}           — 直接引用
+     *   ${VAR:-default}  — 带默认值
+     * 非 ${...} 格式的值原样返回。
+     * 环境变量不存在且无默认值时，记录 WARN 并返回空字符串。
+     */
+    static String resolveEnv(String value) {
+        if (value == null) return "";
+        if (!value.startsWith("${") || !value.endsWith("}")) return value;
+
+        String inner = value.substring(2, value.length() - 1);
+        String envName;
+        String defaultValue = null;
+
+        int sepIdx = inner.indexOf(":-");
+        if (sepIdx >= 0) {
+            envName = inner.substring(0, sepIdx);
+            defaultValue = inner.substring(sepIdx + 2);
+        } else {
+            envName = inner;
+        }
+
+        String envValue = System.getenv(envName);
+        if (envValue != null) return envValue;
+        if (defaultValue != null) return defaultValue;
+
+        log.warn("Environment variable '{}' not set, using empty string", envName);
+        return "";
+    }
+
     public LlmConfig getLlm() { return llm; }
     public ContextConfig getContext() { return context; }
     public LoopConfig getLoop() { return loop; }
@@ -86,22 +121,11 @@ public class AgentConfig {
         public LlmConfig(Map<String, Object> m) {
             this.provider = (String) m.getOrDefault("provider", "deepseek");
             this.baseUrl = (String) m.getOrDefault("base_url", "https://api.deepseek.com/v1");
-            this.apiKey = resolveEnv((String) m.getOrDefault("api_key", ""));
+            this.apiKey = AgentConfig.resolveEnv((String) m.getOrDefault("api_key", ""));
             this.modelName = (String) m.getOrDefault("model_name", "deepseek-chat");
             this.temperature = ((Number) m.getOrDefault("temperature", 0.0)).doubleValue();
             this.timeout = ((Number) m.getOrDefault("timeout", 120)).intValue();
             this.maxTokens = ((Number) m.getOrDefault("max_tokens", 4096)).intValue();
-        }
-
-        /** 支持 ${ENV_VAR} 语法引用环境变量。 */
-        private static String resolveEnv(String value) {
-            if (value == null) return "";
-            if (value.startsWith("${") && value.endsWith("}")) {
-                String envName = value.substring(2, value.length() - 1);
-                String envValue = System.getenv(envName);
-                return envValue != null ? envValue : "";
-            }
-            return value;
         }
     }
 
@@ -311,20 +335,10 @@ public class AgentConfig {
         public final String recencyFilter;
 
         public WebSearchConfig(Map<String, Object> m) {
-            this.apiKey = resolveEnv((String) m.getOrDefault("api_key", ""));
+            this.apiKey = AgentConfig.resolveEnv((String) m.getOrDefault("api_key", ""));
             this.searchSource = (String) m.getOrDefault("search_source", "baidu_search_v2");
             this.topK = ((Number) m.getOrDefault("top_k", 10)).intValue();
             this.recencyFilter = (String) m.getOrDefault("recency_filter", "year");
-        }
-
-        private static String resolveEnv(String value) {
-            if (value == null) return "";
-            if (value.startsWith("${") && value.endsWith("}")) {
-                String envName = value.substring(2, value.length() - 1);
-                String envValue = System.getenv(envName);
-                return envValue != null ? envValue : "";
-            }
-            return value;
         }
     }
 

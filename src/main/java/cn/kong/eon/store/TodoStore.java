@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -75,7 +76,9 @@ public class TodoStore {
                 t.getStatus() == TodoStatus.COMPLETED || t.getStatus() == TodoStatus.CANCELLED);
     }
 
+    private final AtomicInteger idCounter = new AtomicInteger(0);
+
     private String generateId() {
-        return "t" + System.currentTimeMillis() % 100000;
+        return "t" + idCounter.incrementAndGet();
     }
 }

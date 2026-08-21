@@ -5,6 +5,7 @@ import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.store.CheckpointStore;
+import cn.kong.eon.store.TodoStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,12 +18,12 @@ public class CheckpointHook implements Hook.PostToolHook {
 
     private final AgentConfig config;
     private final CheckpointStore checkpointStore;
-    private final TodoStoreAccessor todoStoreAccessor;
+    private final TodoStore todoStore;
 
-    public CheckpointHook(AgentConfig config, CheckpointStore checkpointStore, TodoStoreAccessor todoStoreAccessor) {
+    public CheckpointHook(AgentConfig config, CheckpointStore checkpointStore, TodoStore todoStore) {
         this.config = config;
         this.checkpointStore = checkpointStore;
-        this.todoStoreAccessor = todoStoreAccessor;
+        this.todoStore = todoStore;
     }
 
     @Override public String name() { return "Checkpoint"; }
@@ -36,7 +37,7 @@ public class CheckpointHook implements Hook.PostToolHook {
         checkpointStore.save(
                 state.getSessionId(),
                 state.getTurnCount(),
-                todoStoreAccessor.getAll(),
+                todoStore.getAll(),
                 state.getUsageAccum(),
                 state.getCompressionState(),
                 state.getInsights()
@@ -44,10 +45,5 @@ public class CheckpointHook implements Hook.PostToolHook {
         log.info("Checkpoint saved: turn={}", state.getTurnCount());
 
         return HookResult.ok();
-    }
-
-    /** TodoStore 访问器接口。 */
-    public interface TodoStoreAccessor {
-        java.util.List<cn.kong.eon.model.TodoItem> getAll();
     }
 }

@@ -1,6 +1,6 @@
 package cn.kong.eon.agent.hook.premodel;
 
-import cn.kong.eon.agent.context.ContextBuilder;
+import cn.kong.eon.context.ContextBuilder;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.hook.StopCategory;
@@ -59,9 +59,5 @@ public class BudgetHook implements Hook.PreModelHook {
         }
 
         return HookResult.ok();
-    }
-
-    public void reset() {
-        this.softTriggered = false;
     }
 }

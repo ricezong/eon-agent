@@ -1,6 +1,7 @@
 package cn.kong.eon.store;
 
 import cn.kong.eon.model.ArtifactRef;
+import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
@@ -28,8 +29,7 @@ public class ArtifactStore {
 
     public ArtifactStore(Path artifactDir) {
         this.artifactDir = artifactDir;
-        this.mapper = new ObjectMapper();
-        this.mapper.enable(SerializationFeature.INDENT_OUTPUT);
+        this.mapper = JsonMapper.get().copy().enable(SerializationFeature.INDENT_OUTPUT);
         try {
             Files.createDirectories(artifactDir);
         } catch (IOException e) {
@@ -72,17 +72,18 @@ public class ArtifactStore {
     public List<ArtifactRef> listAll() { return new ArrayList<>(refs.values()); }
 
     /** 在 artifact 内容中搜索关键词。 */
-    public String search(String refId, String pattern) {
+    /** 在 artifact 内容中搜索包含关键词的行。 */
+    public String searchLines(String refId, String keyword) {
         String content = readContent(refId);
         if (content == null) return "Artifact not found: " + refId;
 
         StringBuilder sb = new StringBuilder();
         String[] lines = content.split("\n");
         for (int i = 0; i < lines.length; i++) {
-            if (lines[i].toLowerCase().contains(pattern.toLowerCase())) {
+            if (lines[i].toLowerCase().contains(keyword.toLowerCase())) {
                 sb.append(String.format("Line %d: %s%n", i + 1, lines[i].trim()));
             }
         }
-        return sb.length() > 0 ? sb.toString() : "No matches for pattern: " + pattern;
+        return sb.length() > 0 ? sb.toString() : "No matches for keyword: " + keyword;
     }
 }

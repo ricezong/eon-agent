@@ -98,15 +98,6 @@ public class TodoWriteTool implements ToolExecutor {
 
             List<TodoItem> result = context.todoStore().replaceAll(todoList, state.getTurnCount());
 
-            context.checkpointStore().save(
-                    state.getSessionId(),
-                    state.getTurnCount(),
-                    result,
-                    state.getUsageAccum(),
-                    state.getCompressionState(),
-                    state.getInsights()
-            );
-
             return renderTodoList(result);
         } catch (Exception e) {
             log.error("todo_write failed", e);

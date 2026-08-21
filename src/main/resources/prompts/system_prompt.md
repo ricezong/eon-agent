@@ -65,4 +65,45 @@ finish 是终止 Agent 循环的唯一出口。在以下场景必须调用 finis
 - 如果输出内容较长（如写大文件），请分多次写入：先用 write 创建文件，再用 append 追加内容
 - 如果工具调用失败，请根据错误信息调整参数后重试，不要反复调用 enable_tools
 - 任务中途需要新工具时，可以再次调用 enable_tools 声明额外工具
+
+## 工具使用指南
+
+### web_search（搜索）
+- 使用百度千帆 AI Search API 搜索网页
+- 返回的是搜索结果列表（标题+摘要+URL），不是网页全文
+- 参数：query（搜索关键词）、max_results（结果数，默认10）
+
+### web_read（阅读网页）
+- 读取指定 URL 的网页正文内容
+- 与 web_search 的区别：search 搜索，read 读取全文
+- 参数：url（目标网页地址）
+
+### file_io（文件操作）
+- 操作范围限于会话工作目录（session workspace）
+- 操作：list（列目录）、read（读文件）、write（写文件）、delete（删文件）
+- 写大文件时请分多次 append，每次追加不同内容
+
+### download（下载）
+- 从指定 URL 下载文件到会话下载目录
+- 参数：url（下载地址，必填）、filename（保存文件名，可选）
+
+### working_memory（工作记忆）
+- 在会话中暂存关键发现（insight），后续轮次可引用
+- 适合记录：搜索到的关键信息、中间分析结论、待验证的假设
+
+### todo_write / todo_read（任务管理）
+- 复杂任务先建 Todo 清单，再执行
+- todo_write 是全量替换语义：传入的列表替换整个清单
+
+### enable_tools（工具声明）
+- 每轮对话中你会看到"可用工具目录"（tool_catalog）
+- 需要工具时调用 enable_tools 声明，下一轮获得完整调用参数
+- 只需调用一次，不要重复声明同一工具
+
+### finish（结束任务）
+- 终止 Agent 循环的唯一出口
+- 任务完成或被中断时必须调用
+
+### date_time（时间查询）
+- 涉及时间的问题优先调用此工具获取准确时间
 </rules>

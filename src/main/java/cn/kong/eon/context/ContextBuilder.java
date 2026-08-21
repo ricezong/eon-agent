@@ -1,4 +1,4 @@
-package cn.kong.eon.agent.context;
+package cn.kong.eon.context;
 
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -64,7 +64,11 @@ public class ContextBuilder {
         return result;
     }
 
-    /** 粗略估算 token 数（字符数/4）。 */
+    /**
+     * 粗略估算 token 数。
+     * 中文字符约 0.5-1 token/字，英文约 0.25 token/字符，
+     * 取 chars/2 作为中英混合场景的折中估算。
+     */
     public long estimateTokens() {
         long chars = 0;
         if (systemPrompt != null) chars += systemPrompt.length();
@@ -77,7 +81,7 @@ public class ContextBuilder {
         if (tailGuard != null) {
             for (ChatMessage msg : tailGuard) chars += extractText(msg).length();
         }
-        return chars / 4;
+        return chars / 2;
     }
 
     private String extractText(ChatMessage msg) {

@@ -5,6 +5,7 @@ import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -108,8 +109,7 @@ public class FileIoTool implements ToolExecutor {
         StringBuilder sb = new StringBuilder();
         sb.append("[读取成功] ").append(path.getFileName()).append("\n");
         sb.append("路径: ").append(path).append("\n");
-        sb.append("大小: ").append(Files.size(path)).append(" bytes\n\n");
-        sb.append(content);
+        sb.append("大小: ").append(Files.size(path)).append(" bytes\n\n");        sb.append(content);
         return sb.toString();
     }
 
@@ -161,14 +161,14 @@ public class FileIoTool implements ToolExecutor {
                     long size = Files.isRegularFile(item) ? Files.size(item) : 0;
                     sb.append(type).append("  ").append(name);
                     if (size > 0) {
-                        sb.append("  (").append(formatSize(size)).append(")");
+                        sb.append("  (").append(FileUtils.formatSize(size)).append(")");
                     }
                     sb.append("\n");
                 }
             }
+            sb.append("共 ").append(items.size()).append(" 项");
         }
 
-        sb.append("共 ").append(sb.toString().split("\n").length - 1).append(" 项");
         return sb.toString();
     }
 
@@ -184,12 +184,5 @@ public class FileIoTool implements ToolExecutor {
         log.info("file_io delete: {}", path);
 
         return "[删除成功] " + path;
-    }
-
-    private String formatSize(long bytes) {
-        if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
-        if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
-        return String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024));
     }
 }

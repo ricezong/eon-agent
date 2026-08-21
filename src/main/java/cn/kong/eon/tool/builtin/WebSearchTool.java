@@ -1,11 +1,11 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -31,32 +31,18 @@ public class WebSearchTool implements ToolExecutor {
     private static final int TIMEOUT_SECONDS = 30;
     private static final int DEFAULT_TOP_K = 10;
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = JsonMapper.get();
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
             .build();
 
     private final String apiKey;
 
-    public WebSearchTool() {
-        this.apiKey = loadApiKeyFromConfig();
-    }
-
     public WebSearchTool(String apiKey) {
-        this.apiKey = apiKey != null ? apiKey : loadApiKeyFromConfig();
+        this.apiKey = apiKey != null ? apiKey : "";
     }
 
-    private static String loadApiKeyFromConfig() {
-        try {
-            AgentConfig config = AgentConfig.loadFromClasspath("config/agent.yaml");
-            String key = config.getWebSearch().apiKey;
-            return key != null ? key : "";
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    public static ToolDescriptor descriptor() {
+    public static ToolDescriptor descriptor(String apiKey) {
         Map<String, Map<String, Object>> props = new LinkedHashMap<>();
         props.put("query", Map.of(
                 "type", "string",
@@ -81,7 +67,7 @@ public class WebSearchTool implements ToolExecutor {
                 desc,
                 ToolPermission.READONLY,
                 ToolDescriptor.buildSpec("web_search", desc, props),
-                new WebSearchTool()
+                new WebSearchTool(apiKey)
         );
     }
 

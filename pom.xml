@@ -122,7 +122,7 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.5.0</version>
                 <configuration>
-                    <mainClass>cn.kong.eon.bootstrap.AgentMain</mainClass>
+                    <mainClass>cn.kong.eon.bootstrap.AgentBootstrap</mainClass>
                 </configuration>
             </plugin>
         </plugins>

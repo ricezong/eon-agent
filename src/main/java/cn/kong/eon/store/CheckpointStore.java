@@ -4,6 +4,7 @@ import cn.kong.eon.model.Checkpoint;
 import cn.kong.eon.model.CompressionState;
 import cn.kong.eon.model.TodoItem;
 import cn.kong.eon.model.TokenUsage;
+import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
@@ -28,8 +29,7 @@ public class CheckpointStore {
 
     public CheckpointStore(Path checkpointDir) {
         this.checkpointDir = checkpointDir;
-        this.mapper = new ObjectMapper();
-        this.mapper.enable(SerializationFeature.INDENT_OUTPUT);
+        this.mapper = JsonMapper.get().copy().enable(SerializationFeature.INDENT_OUTPUT);
         this.mapper.findAndRegisterModules();
         try {
             Files.createDirectories(checkpointDir);

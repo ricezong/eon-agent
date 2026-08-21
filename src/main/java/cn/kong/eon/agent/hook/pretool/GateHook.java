@@ -6,6 +6,8 @@ import cn.kong.eon.agent.hook.StopCategory;
 import cn.kong.eon.agent.hook.StopReason;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.tool.ToolRegistry;
+import cn.kong.eon.util.JsonMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,11 +24,9 @@ public class GateHook implements Hook.PreToolHook {
     private static final int STOP_GRACE_STEPS = 2;
 
     private final ToolRegistry toolRegistry;
-    private final boolean autoApprove;
 
-    public GateHook(ToolRegistry toolRegistry, boolean autoApprove) {
+    public GateHook(ToolRegistry toolRegistry) {
         this.toolRegistry = toolRegistry;
-        this.autoApprove = autoApprove;
     }
 
     @Override public String name() { return "Gate"; }
@@ -42,11 +42,9 @@ public class GateHook implements Hook.PreToolHook {
                 log.warn("[PreTool] Gate: destructive '{}' approved | args: {} | turn: {}",
                         req.name(), req.arguments(), state.getTurnCount());
 
-                if (!autoApprove) {
-                    // 生产环境可接入审批流
-                }
-
-                if (req.arguments() == null || !req.arguments().contains("url")) {
+                // 用 JSON 解析提取 url 字段，而非字符串 contains
+                String url = extractUrl(req.arguments());
+                if (url == null || url.isBlank()) {
                     log.warn("[PreTool] Gate: REJECTED '{}' missing 'url' → STOP", req.name());
                     StopReason reason = new StopReason(
                             StopCategory.GATE_REJECTED,
@@ -57,5 +55,18 @@ public class GateHook implements Hook.PreToolHook {
             }
         }
         return HookResult.ok();
+    }
+
+    /** 从 JSON 参数中提取 url 字段值。 */
+    private String extractUrl(String argumentsJson) {
+        if (argumentsJson == null || argumentsJson.isBlank()) return null;
+        try {
+            JsonNode node = JsonMapper.get().readTree(argumentsJson);
+            if (node.has("url")) return node.get("url").asText();
+            return null;
+        } catch (Exception e) {
+            log.warn("[PreTool] Gate: failed to parse arguments: {}", argumentsJson);
+            return null;
+        }
     }
 }

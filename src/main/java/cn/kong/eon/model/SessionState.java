@@ -18,7 +18,6 @@ public class SessionState {
     private String sessionId;
     private String userOriginalInput;        // 用户原始请求（永不裁剪）
     private int turnCount;
-    private int userTurnCount;
     private TokenUsage usageAccum;
     private CompressionState compressionState;
     private List<String> insights;
@@ -44,7 +43,6 @@ public class SessionState {
 
     public SessionState() {
         this.turnCount = 0;
-        this.userTurnCount = 0;
         this.usageAccum = TokenUsage.zero();
         this.compressionState = new CompressionState();
         this.insights = new ArrayList<>();
@@ -64,17 +62,10 @@ public class SessionState {
     }
 
     public void incrementTurn() { this.turnCount++; }
-    public void decrementTurn() { if (this.turnCount > 0) this.turnCount--; }
-    public void incrementUserTurn() { this.userTurnCount++; }
 
     public void addInsight(String insight) { insights.add(0, insight); }
     public void addNudge(String nudge) { pendingNudges.add(nudge); }
     public void addFormatCorrection(String correction) { formatCorrections.add(correction); }
-
-    public void clearTemporary() {
-        pendingNudges.clear();
-        formatCorrections.clear();
-    }
 
     // --- getters / setters ---
 
@@ -86,9 +77,6 @@ public class SessionState {
 
     public int getTurnCount() { return turnCount; }
     public void setTurnCount(int turnCount) { this.turnCount = turnCount; }
-
-    public int getUserTurnCount() { return userTurnCount; }
-    public void setUserTurnCount(int userTurnCount) { this.userTurnCount = userTurnCount; }
 
     public TokenUsage getUsageAccum() { return usageAccum; }
     public void setUsageAccum(TokenUsage usageAccum) { this.usageAccum = usageAccum; }
@@ -147,7 +135,6 @@ public class SessionState {
     public static class StopState {
         private StopReason reason;
         private int remainingGraceSteps;
-        private boolean forced;
 
         public static StopState none() {
             return new StopState();
@@ -156,7 +143,6 @@ public class SessionState {
         public void request(StopReason reason) {
             this.reason = reason;
             this.remainingGraceSteps = reason.getGraceSteps();
-            this.forced = false;
         }
 
         /** 消耗一个 grace step，返回是否还有剩余。 */
@@ -167,12 +153,7 @@ public class SessionState {
             return remainingGraceSteps > 0;
         }
 
-        public void force() {
-            this.forced = true;
-        }
-
         public boolean isActive() { return reason != null; }
-        public boolean isForced() { return forced; }
         public StopReason getReason() { return reason; }
         public int getRemainingGraceSteps() { return remainingGraceSteps; }
     }

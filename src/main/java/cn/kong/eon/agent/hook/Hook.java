@@ -1,6 +1,6 @@
 package cn.kong.eon.agent.hook;
 
-import cn.kong.eon.agent.context.ContextBuilder;
+import cn.kong.eon.context.ContextBuilder;
 import cn.kong.eon.llm.LlmResponse;
 import cn.kong.eon.model.SessionState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;

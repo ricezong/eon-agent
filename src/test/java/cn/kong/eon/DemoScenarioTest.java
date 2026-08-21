@@ -14,11 +14,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 斗破苍穹下载场景测试。
  *
- * 注意：此测试需要 DEEPSEEK_API_KEY 环境变量。
+ * 注意：此测试需要 LLM_API_KEY 环境变量。
  * 工具为真实实现（web_search/web_read/download 真实调用网络）。
  * 若无 API Key，测试将跳过。
  */
-@EnabledIfEnvironmentVariable(named = "DEEPSEEK_API_KEY", matches = ".+")
+@EnabledIfEnvironmentVariable(named = "LLM_API_KEY", matches = ".+")
 class DemoScenarioTest {
     private static final Logger log = LoggerFactory.getLogger(DemoScenarioTest.class);
 

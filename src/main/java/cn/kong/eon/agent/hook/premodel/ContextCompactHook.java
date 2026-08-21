@@ -1,6 +1,6 @@
 package cn.kong.eon.agent.hook.premodel;
 
-import cn.kong.eon.agent.context.ContextBuilder;
+import cn.kong.eon.context.ContextBuilder;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.config.AgentConfig;
@@ -24,6 +24,10 @@ import java.util.List;
 public class ContextCompactHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(ContextCompactHook.class);
 
+    @Override public String name() { return "ContextCompact"; }
+    @Override public boolean isActive(SessionState state) { return true; }
+    @Override public int order() { return 100; }  // 压缩必须在其他 PreModel Hook 之后执行
+
     private final AgentConfig config;
     private final CompressionEngine compressionEngine;
     private final PairingRepairer pairingRepairer;
@@ -41,9 +45,6 @@ public class ContextCompactHook implements Hook.PreModelHook {
                 llmClient);
         this.pairingRepairer = new PairingRepairer();
     }
-
-    @Override public String name() { return "ContextCompact"; }
-    @Override public boolean isActive(SessionState state) { return true; }
 
     @Override
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {

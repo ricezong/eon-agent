@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * MCP 服务连接测试。
- * 验证能连接 http://124.223.110.114:8081/mcp 并获取工具列表。
+ * 验证能连接 agent.yaml 中配置的 MCP 服务并获取工具列表。
  *
  * 注意：此测试需要网络连通性，MCP 服务需在线。
  * 若网络不通会跳过（不报错）。
@@ -22,11 +22,13 @@ class McpConnectionTest {
     private static final Logger log = LoggerFactory.getLogger(McpConnectionTest.class);
 
     private static final String MCP_SERVER_KEY = "novel-mcp-server";
-    private static final String MCP_SERVER_URL = "http://124.223.110.114:8081/mcp";
 
     @Test
     void should_connect_to_mcp_server_and_list_tools() {
-        McpClientManager manager = new McpClientManager(MCP_SERVER_KEY, MCP_SERVER_URL);
+        AgentConfig config = AgentConfig.loadFromClasspath("config/agent.yaml");
+        AgentConfig.McpServerConfig server = config.getMcp().servers.get(MCP_SERVER_KEY);
+
+        McpClientManager manager = new McpClientManager(MCP_SERVER_KEY, server.url);
 
         try {
             manager.connect();
@@ -56,7 +58,7 @@ class McpConnectionTest {
         assertThat(config.getMcp().servers).containsKey(MCP_SERVER_KEY);
 
         AgentConfig.McpServerConfig server = config.getMcp().servers.get(MCP_SERVER_KEY);
-        assertThat(server.url).isEqualTo(MCP_SERVER_URL);
+        assertThat(server.url).isNotBlank();
         assertThat(server.enabled).isTrue();
         assertThat(server.permission).isEqualTo("READONLY");
 

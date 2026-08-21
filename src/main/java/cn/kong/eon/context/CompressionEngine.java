@@ -46,7 +46,15 @@ public class CompressionEngine {
         this.llmClient = llmClient;
     }
 
-    /** 根据水位执行压缩：先 Snip → 再 Prune → 最后 Summarize。 */
+    /**
+     * 根据水位执行压缩：先 Snip → 再 Prune → 最后 Summarize。
+     *
+     * 注意：此方法直接修改传入的 messages 列表（原地操作）。
+     * 调用方应在调用前创建副本（如 new ArrayList<>(transcript)），
+     * 以确保原始账本（JsonlStore）不受影响。
+     *
+     * @return 传入的 messages 列表（已压缩）
+     */
     public List<ChatMessage> compress(List<ChatMessage> messages,
                                       CompressionState state,
                                       double waterLevel,

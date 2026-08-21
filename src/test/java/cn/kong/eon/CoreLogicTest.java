@@ -56,7 +56,7 @@ class CoreLogicTest {
         toolRegistry.register(TodoReadTool.descriptor());
         toolRegistry.register(WorkingMemoryTool.descriptor());
         toolRegistry.register(FinishTool.descriptor());
-        toolRegistry.register(WebSearchTool.descriptor());
+        toolRegistry.register(WebSearchTool.descriptor(config.getWebSearch().apiKey));
         toolRegistry.register(WebReadTool.descriptor());
         toolRegistry.register(DownloadTool.descriptor());
         toolRegistry.register(FileIoTool.descriptor());
@@ -85,8 +85,8 @@ class CoreLogicTest {
         // When: 用 TodoNavigatorHook 渲染 Navigator
         TodoNavigatorHook navigator =
                 new TodoNavigatorHook(todoStore, insightsStore);
-        cn.kong.eon.agent.context.ContextBuilder ctx =
-                new cn.kong.eon.agent.context.ContextBuilder();
+        cn.kong.eon.context.ContextBuilder ctx =
+                new cn.kong.eon.context.ContextBuilder();
         cn.kong.eon.agent.hook.HookResult result = navigator.beforeModelCall(state, ctx);
 
         // Then: Navigator 应包含 Todo 和 Insights
@@ -100,8 +100,8 @@ class CoreLogicTest {
         SessionState state = SessionState.create("test-cache", "test");
 
         // When: 用 ContextBuilder 组装
-        cn.kong.eon.agent.context.ContextBuilder ctx =
-                new cn.kong.eon.agent.context.ContextBuilder();
+        cn.kong.eon.context.ContextBuilder ctx =
+                new cn.kong.eon.context.ContextBuilder();
         ctx.setSystemPrompt("你是 Eon Agent");
         List<ChatMessage> messages = ctx.build();
 
@@ -121,8 +121,8 @@ class CoreLogicTest {
         // When: 用 TodoNavigatorHook 渲染
         TodoNavigatorHook navigator =
                 new TodoNavigatorHook(todoStore, insightsStore);
-        cn.kong.eon.agent.context.ContextBuilder ctx =
-                new cn.kong.eon.agent.context.ContextBuilder();
+        cn.kong.eon.context.ContextBuilder ctx =
+                new cn.kong.eon.context.ContextBuilder();
         navigator.beforeModelCall(state, ctx);
 
         // Then: 验证 Navigator 内容包含 Todo 和 Insights（不包含用户原始请求，避免重复）
