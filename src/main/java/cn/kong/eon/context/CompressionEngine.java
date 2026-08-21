@@ -12,10 +12,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 压缩引擎。三级递进压缩，决策单调推进：
- *   Snip (Tier 1) — 截短旧 tool result，保留骨架 + 摘要前缀
- *   Prune (Tier 2) — 替换为占位符（隐含 Snip）
- *   Summarize (Tier 3) — LLM 生成摘要，删除旧消息（会破坏配对，需 PairingRepairer 修复）
+ * 压缩引擎。三级递进压缩：
+ * Snip — 截短旧 tool result，保留骨架 + 摘要前缀。
+ * Prune — 替换为占位符（隐含 Snip）。
+ * Summarize — LLM 生成摘要，删除旧消息（会破坏配对，需 PairingRepairer 修复）。
  */
 public class CompressionEngine {
     private static final Logger log = LoggerFactory.getLogger(CompressionEngine.class);
@@ -47,13 +47,7 @@ public class CompressionEngine {
     }
 
     /**
-     * 根据水位执行压缩：先 Snip → 再 Prune → 最后 Summarize。
-     *
-     * 注意：此方法直接修改传入的 messages 列表（原地操作）。
-     * 调用方应在调用前创建副本（如 new ArrayList<>(transcript)），
-     * 以确保原始账本（JsonlStore）不受影响。
-     *
-     * @return 传入的 messages 列表（已压缩）
+     * 根据水位执行压缩：先 Snip → 再 Prune → 最后 Summarize。原地修改 messages 列表。
      */
     public List<ChatMessage> compress(List<ChatMessage> messages,
                                       CompressionState state,

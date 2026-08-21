@@ -15,10 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.util.List;
 
-/**
- * LLM 客户端封装，使用 LangChain4j 的 OpenAiChatModel（兼容 DeepSeek 等）。
- * 支持超时检测与指数退避重试。
- */
+/** LLM 客户端封装，使用 LangChain4j OpenAiChatModel，支持指数退避重试。 */
 public class LlmClient {
     private static final Logger log = LoggerFactory.getLogger(LlmClient.class);
 

@@ -6,22 +6,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Todo 任务项。核心字段：id / content / status / priority。
- * 扩展：depends_on / artifacts / notes / block_reason。
+ * Todo 任务项。核心字段：id/content/status/priority。扩展：depends_on/artifacts/notes/block_reason。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class TodoItem {
-    private String id;
-    private String content;
-    private TodoStatus status;
-    private String priority;            // high / medium / low
-    private String parentId;
-    private List<String> dependsOn;
+    private String id;                  // 任务 ID
+    private String content;             // 任务内容
+    private TodoStatus status;          // 任务状态
+    private String priority;            // 优先级：high/medium/low
+    private String parentId;            // 父任务 ID
+    private List<String> dependsOn;     // 依赖任务 ID 列表
     private List<String> artifacts;     // 关联的 artifact refId
-    private String notes;
-    private String blockReason;         // blocked 时必填
-    private int version;                // 乐观锁
-    private int lastModifiedTurn;
+    private String notes;               // 备注
+    private String blockReason;         // 阻塞原因（blocked 时必填）
+    private int version;                // 乐观锁版本
+    private int lastModifiedTurn;       // 最后修改轮次
 
     public TodoItem() {
         this.dependsOn = new ArrayList<>();

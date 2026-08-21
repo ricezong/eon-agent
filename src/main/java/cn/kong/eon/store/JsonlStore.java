@@ -14,8 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Append-Only JSONL 消息存储。原始账本，永不修改，用于审计和回滚。
- * 每条消息一行 JSON。
+ * Append-Only JSONL 消息存储。原始账本，永不修改，每条消息一行 JSON。
  */
 public class JsonlStore {
     private static final Logger log = LoggerFactory.getLogger(JsonlStore.class);
@@ -104,12 +103,12 @@ public class JsonlStore {
 
     /** JSONL 序列化中间结构。 */
     public static class SerializedMessage {
-        public String type;       // system / user / ai / tool
-        public String content;
-        public String name;           // UserMessage 的 name 属性（如 tool_catalog, navigator）
-        public String toolCallId;
-        public String toolName;
-        public List<ToolCallRef> toolCalls;
+        public String type;       // 消息类型：system/user/ai/tool
+        public String content;    // 消息内容
+        public String name;           // UserMessage 的 name 属性
+        public String toolCallId;     // 工具调用 ID
+        public String toolName;       // 工具名称
+        public List<ToolCallRef> toolCalls;  // 工具调用列表
 
         public SerializedMessage() {}
 

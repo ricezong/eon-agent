@@ -10,16 +10,9 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
- * Hook 统一调度器。用一个泛型方法替换 EonAgent 中 4 个几乎相同的 fire*Hooks 方法。
- *
- * 调度逻辑统一为：
- *   遍历 hooks → isActive 检查 → 调用 hook → 判断 isStop → handleStop
- *
- * stop 策略由 hook 类型决定：
- *   - PreModel 阶段：stop 后继续遍历后续 hook（BudgetHook stop 后 ContextCompactHook 仍需执行）
- *   - 其他阶段：stop 后 finalize + skip，跳过后续 hook
- *
- * 返回 {@link FireResult}：EXIT（退出循环）/ SKIP（跳过后续，stop 已 finalize）/ CONTINUE（继续）。
+ * Hook 统一调度器。遍历 hooks → isActive → 调用 → 判断 isStop → handleStop。
+ * PreModel 阶段 stop 后继续遍历后续 hook；其他阶段 stop 后 finalize + skip。
+ * 返回 {@link FireResult}：EXIT/SKIP/CONTINUE，无 null 歧义。
  */
 public class HookDispatcher {
 
@@ -41,8 +34,7 @@ public class HookDispatcher {
     }
 
     /**
-     * 调度 PreModel Hook 列表。
-     * PreModel 特有语义：stop 后不 finalize、不 skip，继续遍历后续 hook。
+     * 调度 PreModel Hook。stop 后不 finalize、不 skip，继续遍历后续 hook。
      */
     public static <H extends Hook.PreModelHook> FireResult dispatchPreModel(
             List<H> hooks,
@@ -61,8 +53,7 @@ public class HookDispatcher {
     }
 
     /**
-     * 调度 Hook 列表（stop 后 finalize + skip，跳过后续 hook）。
-     * 适用于 PostModel / PreTool / PostTool。
+     * 调度 Hook（PostModel/PreTool/PostTool）。stop 后 finalize + skip，跳过后续 hook。
      */
     public static <H extends Hook> FireResult dispatch(
             List<H> hooks,

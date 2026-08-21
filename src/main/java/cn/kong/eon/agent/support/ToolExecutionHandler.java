@@ -1,7 +1,5 @@
 package cn.kong.eon.agent.support;
 
-import cn.kong.eon.agent.support.TurnLogger;
-import cn.kong.eon.agent.support.TurnRecord;
 import cn.kong.eon.loop.LoopDetector;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolExecutionResult;
@@ -15,12 +13,13 @@ import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 工具执行处理器。封装工具执行全流程：
- *   参数解析 → 执行 → finish 拦截 → todo_write 后处理 → 结果渲染 → 日志
- * 从 EonAgent 抽取，让主循环不再关注工具执行细节。
+ * 参数解析 → 执行 → finish 拦截 → todo_write 后处理 → 结果渲染 → 日志。
  */
 public class ToolExecutionHandler {
     private static final Logger log = LoggerFactory.getLogger(ToolExecutionHandler.class);
@@ -47,9 +46,7 @@ public class ToolExecutionHandler {
     }
 
     /**
-     * 执行所有待执行的工具调用。
-     * 包含 finish 拦截（设置 finished 后停止后续工具执行）。
-     * 工具执行日志写入 rec，由 TurnLogger 统一 flush。
+     * 执行所有待执行的工具调用。包含 finish 拦截和 todo_write 后处理。
      */
     public List<ToolExecutionResult> execute(TurnRecord rec, SessionState state) {
         List<ToolExecutionRequest> requests = state.getPendingToolCalls();

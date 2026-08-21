@@ -1,8 +1,6 @@
 package cn.kong.eon.util;
 
-/**
- * 文件相关工具方法。
- */
+/** 文件相关工具方法。 */
 public final class FileUtils {
     private FileUtils() {}
 

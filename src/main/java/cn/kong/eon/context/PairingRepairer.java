@@ -13,12 +13,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 配对修复器。保证 tool_use/tool_result 消息配对完整。
- * 四条规则：
- *   1. 匹配的 tool_result 移到 tool_use 之后
- *   2. 丢弃孤立的 tool_result（无对应 tool_use）
- *   3. 为缺失结果的 tool_use 插入合成错误消息
- *   4. 按 tool_use_id 去重
+ * 配对修复器。保证 tool_use/tool_result 消息配对完整：
+ * 匹配的 tool_result 移到 tool_use 之后；丢弃孤立 tool_result；
+ * 为缺失结果的 tool_use 插入合成错误消息；按 tool_use_id 去重。
  */
 public class PairingRepairer {
     private static final Logger log = LoggerFactory.getLogger(PairingRepairer.class);

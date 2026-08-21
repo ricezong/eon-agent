@@ -21,16 +21,13 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * download 工具：通用文件下载（破坏性操作）。
- * 使用 Java HttpClient 下载文件到本地。
- */
+/** download 工具：通用文件下载（破坏性操作）。 */
 public class DownloadTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(DownloadTool.class);
 
     private static final int TIMEOUT_SECONDS = 120;
 
-    /** 复用 HttpClient（避免每次请求创建新连接池）。 */
+    /** 复用 HttpClient，避免每次请求创建新连接池。 */
     private static final HttpClient SHARED_CLIENT = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .connectTimeout(Duration.ofSeconds(30))

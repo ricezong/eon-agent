@@ -14,10 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
-/**
- * 门禁校验（工具执行前阶段，order=20）。
- * 检查破坏性工具调用的必要参数。校验失败时请求优雅停止，给 LLM 总结机会。
- */
+/** 门禁校验（PreTool, order=20）。检查破坏性工具的必要参数，校验失败请求优雅停止。 */
 public class GateHook implements Hook.PreToolHook {
     private static final Logger log = LoggerFactory.getLogger(GateHook.class);
 

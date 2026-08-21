@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * Hook 基础接口。每个 Hook 只属于一个执行阶段，通过 order 控制阶段内顺序。
- * 引擎按执行阶段分组调度：PreModel → PostModel → PreTool → PostTool
+ * 引擎按阶段分组调度：PreModel → PostModel → PreTool → PostTool。
  */
 public interface Hook {
 

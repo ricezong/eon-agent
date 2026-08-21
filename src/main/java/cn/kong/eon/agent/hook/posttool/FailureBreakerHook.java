@@ -9,10 +9,7 @@ import cn.kong.eon.model.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * 失败熔断（工具执行后阶段，order=30）。
- * 检测连续失败，触发熔断时请求优雅停止，给 LLM 总结机会。
- */
+/** 失败熔断（PostTool, order=30）。检测连续失败，达到阈值请求优雅停止。 */
 public class FailureBreakerHook implements Hook.PostToolHook {
     private static final Logger log = LoggerFactory.getLogger(FailureBreakerHook.class);
 

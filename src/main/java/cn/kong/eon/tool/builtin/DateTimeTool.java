@@ -14,10 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * date_time 工具：获取当前系统日期和时间。
- * 当用户提问与时间相关（如"今天""现在""这周""几号"等）时，应优先调用此工具获取准确时间。
- */
+/** date_time 工具：获取当前系统日期和时间。 */
 public class DateTimeTool implements ToolExecutor {
 
     public static ToolDescriptor descriptor() {

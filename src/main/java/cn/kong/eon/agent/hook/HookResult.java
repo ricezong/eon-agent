@@ -1,15 +1,8 @@
 package cn.kong.eon.agent.hook;
 
 /**
- * Hook 执行返回值。
- * <ul>
- *   <li>{@link #ok()} — 继续，一切正常</li>
- *   <li>{@link #stop(StopReason)} — 请求优雅停止：注入收尾指令让 LLM 调用 finish 总结，
- *       超过 graceSteps 仍不调用则硬终止</li>
- * </ul>
- *
- * <p>所有"需要终止"的场景统一走 stop，
- * 由 EonAgent 控制流决定是给 LLM 最后一次总结机会还是直接硬终止。</p>
+ * Hook 执行返回值。ok() 继续，stop() 请求优雅停止。
+ * 所有终止场景统一走 stop，由 EonAgent 决定是给 LLM 最后一次总结机会还是直接硬终止。
  */
 public final class HookResult {
 
@@ -27,9 +20,7 @@ public final class HookResult {
     }
 
     /**
-     * 请求优雅停止。EonAgent 会注入收尾 nudge，给 LLM graceSteps 轮调用 finish 的机会。
-     *
-     * @param stopReason 停止原因（含类别、消息、graceSteps）
+     * 请求优雅停止。EonAgent 注入收尾 nudge，给 LLM graceSteps 轮调用 finish 的机会。
      */
     public static HookResult stop(StopReason stopReason) {
         return new HookResult(Action.STOP, stopReason);

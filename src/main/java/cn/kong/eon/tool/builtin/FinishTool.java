@@ -1,8 +1,10 @@
 package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.model.SessionState;
+import cn.kong.eon.model.TodoItem;
 import cn.kong.eon.model.TodoStatus;
 import cn.kong.eon.model.ToolPermission;
+import cn.kong.eon.store.TodoStore;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -15,15 +17,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * finish 工具：任务总结与循环终止。
- *
- * 职责：仅做状态控制（标记 finished），summary 由大模型生成，直接作为最终输出返回。
- * 不再额外拼接进度统计、消耗信息等格式化输出——这些应由大模型在 summary 中自行总结。
- *
- * 调用时机：
- *   1. 任务正常完成 — 用户请求的工作已做完
- *   2. 用户明确要求总结 — 用户说"总结一下"/"汇报进度"等
- *   3. 任务被中断需要收尾 — 收到预算告警/熔断/循环检测等 stop nudge 后
+ * finish 工具：复杂任务的总结与循环终止。
+ * 仅做状态控制（标记 finished），summary 由大模型生成并直接作为最终输出。
+ * 简单问答或简单工具任务无需调用 finish，LLM 直接回复文本即可退出循环。
  */
 public class FinishTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(FinishTool.class);
@@ -41,7 +37,8 @@ public class FinishTool implements ToolExecutor {
                 "required", true
         ));
         String desc = "总结任务并终止循环。summary 内容将作为最终输出返回给用户。"
-                + "适用场景：1) 任务正常完成；2) 用户要求总结；3) 收到中断通知时立即调用。";
+                + "适用场景：1) 复杂任务（含 Todo）全部完成；2) 用户要求总结进度；3) 收到中断通知时立即调用。"
+                + "注意：简单问答或简单工具任务无需调用 finish，直接回复文本即可结束。";
         return new ToolDescriptor(
                 "finish",
                 desc,
@@ -60,14 +57,27 @@ public class FinishTool implements ToolExecutor {
 
         boolean goalAchieved = Boolean.TRUE.equals(arguments.get("goal_achieved"));
 
+        // 拦截：Todo 存在且未全部完成时，不允许 goal_achieved=true
+        List<TodoItem> todos = context.todoStore().getAll();
+        if (goalAchieved && !todos.isEmpty() && !context.todoStore().allCompleted()) {
+            String pending = TodoStore.formatPending(todos);
+            String progress = TodoStore.formatProgress(todos);
+            log.warn("Finish blocked: goal_achieved=true but todos not all completed. {}", progress);
+            return ToolOutcome.failure(
+                    "Todo 尚未全部完成，不能标记 goal_achieved=true。\n"
+                    + "当前进度: " + progress + "\n"
+                    + "未完成任务:\n" + pending
+                    + "请继续执行未完成的任务，或者将 goal_achieved 设为 false 并说明原因。");
+        }
+
         // 设置结束状态
         state.setFinished(true);
         state.setFinishReason(goalAchieved ? "GOAL_ACHIEVED" : "TASK_ENDED");
         state.setLastAssistantText(summary);
 
-        long completed = context.todoStore().getAll().stream()
+        long completed = todos.stream()
                 .filter(t -> t.getStatus() == TodoStatus.COMPLETED).count();
-        int total = context.todoStore().getAll().size();
+        int total = todos.size();
         log.info("Finish called: goalAchieved={}, todos={}/{}, tokens={}",
                 goalAchieved, completed, total, state.getUsageAccum().getTotalTokens());
 

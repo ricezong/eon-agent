@@ -13,10 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
-/**
- * todo_write 工具：创建/更新任务清单（全量替换语义）。
- * 校验单一焦点与依赖完整性。参数类型由 ArgumentSanitizer 统一清洗。
- */
+/** todo_write 工具：创建/更新任务清单（全量替换语义）。校验单一焦点与依赖完整性。 */
 public class TodoWriteTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(TodoWriteTool.class);
 

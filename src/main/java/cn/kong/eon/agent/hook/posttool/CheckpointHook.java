@@ -10,10 +10,7 @@ import cn.kong.eon.store.TodoStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Checkpoint 管理（工具执行后阶段，order=100）。
- * 配置启用时，在 todo_write 调用后保存快照。
- */
+/** Checkpoint 管理（PostTool, order=100）。todo_write 成功后保存快照。 */
 public class CheckpointHook implements Hook.PostToolHook {
     private static final Logger log = LoggerFactory.getLogger(CheckpointHook.class);
 

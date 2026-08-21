@@ -6,8 +6,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * 压缩状态。记录哪些消息已被 Snip / Prune / Summarize。
- * 压缩决策单调推进——同一消息一旦被 Snip，不会回退为完整。
+ * 压缩状态。记录哪些消息已被 Snip/Prune/Summarize，压缩决策单调推进。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CompressionState {

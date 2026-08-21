@@ -8,26 +8,26 @@ import java.util.*;
 
 /**
  * 死循环检测器。三种检测：
- *   ① 重复调用——同一工具同一参数连续调用超过阈值
- *   ② 无进展——连续 N 步 Todo 状态未变化
- *   ③ 连续失败熔断——工具连续失败超过阈值（单工具 + 全局）
+ * ① 重复调用——同一工具同一参数连续调用超过阈值。
+ * ② 无进展——连续 N 步 Todo 状态未变化。
+ * ③ 连续失败熔断——工具连续失败超过阈值（单工具 + 全局）。
  */
 public class LoopDetector {
     private static final Logger log = LoggerFactory.getLogger(LoopDetector.class);
 
-    private final int repeatWarn;
-    private final int repeatStop;
-    private final int noProgressSteps;
-    private final int failureWarnThreshold;
-    private final int failureStopThreshold;
+    private final int repeatWarn;                 // 重复调用告警阈值
+    private final int repeatStop;                 // 重复调用停止阈值
+    private final int noProgressSteps;            // 无进展告警步数
+    private final int failureWarnThreshold;       // 连续失败告警阈值
+    private final int failureStopThreshold;       // 连续失败停止阈值
 
-    private final Map<String, Integer> callFingerprintCount = new HashMap<>();
-    private final Deque<String> todoSnapshots = new ArrayDeque<>();
-    private int stepsWithoutProgress = 0;
+    private final Map<String, Integer> callFingerprintCount = new HashMap<>();  // 调用指纹计数
+    private final Deque<String> todoSnapshots = new ArrayDeque<>();             // Todo 快照队列
+    private int stepsWithoutProgress = 0;                                       // 无进展步数
 
-    private int consecutiveFailures = 0;
-    private final Map<String, Integer> toolFailureCount = new HashMap<>();
-    private final Set<String> trippedTools = new HashSet<>();
+    private int consecutiveFailures = 0;                                        // 全局连续失败数
+    private final Map<String, Integer> toolFailureCount = new HashMap<>();      // 单工具失败计数
+    private final Set<String> trippedTools = new HashSet<>();                   // 已熔断工具集
 
     public LoopDetector(int repeatWarn, int repeatStop, int noProgressSteps) {
         this(repeatWarn, repeatStop, noProgressSteps, 3, 5);

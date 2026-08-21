@@ -1,16 +1,6 @@
 package cn.kong.eon.agent.hook;
 
-/**
- * 优雅停止原因。携带终止类别、可读消息和 grace steps。
- *
- * <p>EonAgent 收到 stop 后：
- * <ol>
- *   <li>注入收尾 nudge（包含此 reason）到 pendingNudges</li>
- *   <li>设置 state.stopState = REQUESTED，记录 graceSteps</li>
- *   <li>继续循环，给 LLM 调用 finish 的机会</li>
- *   <li>超过 graceSteps 仍未 finish，则用此 reason 做硬终止</li>
- * </ol>
- */
+/** 优雅停止原因。携带终止类别、可读消息和 grace steps。 */
 public final class StopReason {
 
     private final StopCategory category;
@@ -19,7 +9,7 @@ public final class StopReason {
 
     /**
      * @param category   终止类别
-     * @param message     可读原因（会展示给用户）
+     * @param message     可读原因（展示给用户）
      * @param graceSteps 给 LLM 调用 finish 的额外轮次；0 表示立即硬终止
      */
     public StopReason(StopCategory category, String message, int graceSteps) {

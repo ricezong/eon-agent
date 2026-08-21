@@ -8,8 +8,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Insights 滚动存储。模型通过 working_memory 工具写入关键发现。
- * 上限 40 条 / 8000 字符，超出淘汰最旧的。
+ * Insights 滚动存储。模型通过 working_memory 写入关键发现，上限 40 条/8000 字符，超出淘汰最旧。
  */
 public class InsightsStore {
     private static final Logger log = LoggerFactory.getLogger(InsightsStore.class);

@@ -15,14 +15,8 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
- * 参数类型清洗器。根据工具 Schema 中声明的类型，对 LLM 返回的参数做统一类型转换。
- *
- * 解决的问题：LLM 有时不按 Schema 传参，例如：
- *   - 声明 array，实际传 "[\"a\", \"b\"]"（JSON 字符串）
- *   - 声明 boolean，实际传 "false"（字符串）
- *   - 声明 integer，实际传 "10"（字符串）
- *
- * 清洗后，各工具可直接按声明类型取值，无需各自容错。
+ * 参数类型清洗器。根据工具 Schema 声明的类型，对 LLM 返回的参数做统一类型转换。
+ * 解决 LLM 不按 Schema 传参的问题（如声明 array 实际传 JSON 字符串）。
  */
 public class ArgumentSanitizer {
     private static final Logger log = LoggerFactory.getLogger(ArgumentSanitizer.class);
@@ -30,11 +24,7 @@ public class ArgumentSanitizer {
     private final ObjectMapper mapper = JsonMapper.get();
 
     /**
-     * 根据工具 Schema 清洗参数。
-     *
-     * @param spec  工具的 ToolSpecification（含参数类型声明）
-     * @param args  LLM 返回的原始参数 Map
-     * @return 清洗后的新 Map（不修改原 Map）
+     * 根据工具 Schema 清洗参数，返回清洗后的新 Map（不修改原 Map）。
      */
     public Map<String, Object> sanitize(ToolSpecification spec, Map<String, Object> args) {
         if (args == null || args.isEmpty()) return args;

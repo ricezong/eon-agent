@@ -10,10 +10,7 @@ import cn.kong.eon.model.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * 预算检查（模型调用前阶段，order=10）。
- * 软阈值注入 nudge 提示收尾；硬阈值请求优雅停止，给 LLM 最后总结机会。
- */
+/** 预算检查（PreModel, order=10）。软阈值注入收尾 nudge，硬阈值请求优雅停止。 */
 public class BudgetHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(BudgetHook.class);
 

@@ -13,10 +13,8 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 /**
- * Turn 日志器。收集式设计：executeTurn 每一步将信息写入 TurnRecord，
- * turn 结束后调用 flush 统一输出 2 行摘要日志（header + done）。
- *
- * agent 级别日志（启动/完成/硬终止）立即打印。
+ * Turn 日志器。收集式设计：各步骤写入 TurnRecord，turn 结束后 flush 输出 2 行摘要日志。
+ * Agent 级别日志（启动/完成/硬终止）立即打印。
  */
 public class TurnLogger {
     private static final Logger log = LoggerFactory.getLogger(TurnLogger.class);

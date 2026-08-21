@@ -7,14 +7,14 @@ import java.time.Instant;
 /** Checkpoint 快照，崩溃后从最新 checkpoint 恢复。 */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class Checkpoint {
-    private String checkpointId;
-    private String sessionId;
-    private int turnCount;
-    private java.util.List<TodoItem> todoSnapshot;
-    private TokenUsage usageAccum;
-    private CompressionState compressionState;
-    private java.util.List<String> insightsSnapshot;
-    private Instant createdAt;
+    private String checkpointId;     // 快照 ID
+    private String sessionId;        // 会话 ID
+    private int turnCount;           // 轮次
+    private java.util.List<TodoItem> todoSnapshot;  // Todo 快照
+    private TokenUsage usageAccum;   // 累计 token
+    private CompressionState compressionState;      // 压缩状态
+    private java.util.List<String> insightsSnapshot; // Insights 快照
+    private Instant createdAt;       // 创建时间
 
     public Checkpoint() {}
 

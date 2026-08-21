@@ -13,10 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
-/**
- * 循环检测（模型调用后阶段，order=30）。
- * 检测重复工具调用模式。达到 stop 阈值时请求优雅停止，给 LLM 最后总结机会。
- */
+/** 循环检测（PostModel, order=30）。检测重复工具调用模式，达到阈值请求优雅停止。 */
 public class LoopDetectHook implements Hook.PostModelHook {
     private static final Logger log = LoggerFactory.getLogger(LoopDetectHook.class);
 

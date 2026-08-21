@@ -8,8 +8,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 工具结果渲染器。
- * ≤ 3000 字符：完整内容直接写入消息
- * > 3000 字符：原文落盘为 artifact，消息只留摘要 + 引用
+ * ≤3000 字符：完整内容直接写入消息。
+ * >3000 字符：原文落盘为 artifact，消息只留摘要 + 引用。
  */
 public class ToolResultRenderer {
     private static final Logger log = LoggerFactory.getLogger(ToolResultRenderer.class);

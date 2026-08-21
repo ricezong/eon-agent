@@ -7,26 +7,24 @@ import org.yaml.snakeyaml.Yaml;
 import java.io.InputStream;
 import java.util.*;
 
-/**
- * Agent 配置加载器。从 agent.yaml 加载配置，提供类型安全的访问方法。
- */
+/** Agent 配置加载器。从 agent.yaml 加载配置，提供类型安全的访问方法。 */
 public class AgentConfig {
 
     private static final Logger log = LoggerFactory.getLogger(AgentConfig.class);
 
-    private final Map<String, Object> raw;
+    private final Map<String, Object> raw;  // 原始 YAML 数据
 
-    private final LlmConfig llm;
-    private final ContextConfig context;
-    private final LoopConfig loop;
-    private final LoopDetectConfig loopDetect;
-    private final RetryConfig retry;
-    private final StorageConfig storage;
-    private final ToolsConfig tools;
-    private final McpConfig mcp;
-    private final WebSearchConfig webSearch;
-    private final boolean checkpointEnabled;
-    private final BudgetConfig budget;
+    private final LlmConfig llm;            // LLM 配置
+    private final ContextConfig context;    // 上下文配置
+    private final LoopConfig loop;          // 循环配置
+    private final LoopDetectConfig loopDetect; // 循环检测配置
+    private final RetryConfig retry;        // 重试配置
+    private final StorageConfig storage;    // 存储配置
+    private final ToolsConfig tools;        // 工具配置
+    private final McpConfig mcp;            // MCP 配置
+    private final WebSearchConfig webSearch; // 搜索配置
+    private final boolean checkpointEnabled; // 是否启用 Checkpoint
+    private final BudgetConfig budget;      // 预算配置
 
     public AgentConfig(Map<String, Object> raw) {
         this.raw = raw;
@@ -66,11 +64,7 @@ public class AgentConfig {
     }
 
     /**
-     * 解析环境变量引用。支持：
-     *   ${VAR}           — 直接引用
-     *   ${VAR:-default}  — 带默认值
-     * 非 ${...} 格式的值原样返回。
-     * 环境变量不存在且无默认值时，记录 WARN 并返回空字符串。
+     * 解析环境变量引用。支持 ${VAR} 和 ${VAR:-default}。
      */
     static String resolveEnv(String value) {
         if (value == null) return "";
@@ -111,13 +105,13 @@ public class AgentConfig {
     // ===== 子配置类 =====
 
     public static class LlmConfig {
-        public final String provider;
-        public final String baseUrl;
-        public final String apiKey;
-        public final String modelName;
-        public final double temperature;
-        public final int timeout;
-        public final int maxTokens;
+        public final String provider;       // 提供商标识
+        public final String baseUrl;        // API 基础地址
+        public final String apiKey;         // API Key
+        public final String modelName;      // 模型名称
+        public final double temperature;    // 采样温度
+        public final int timeout;           // 请求超时（秒）
+        public final int maxTokens;         // 单次响应最大输出 token
 
         public LlmConfig(Map<String, Object> m) {
             this.provider = (String) m.getOrDefault("provider", "deepseek");
@@ -132,24 +126,24 @@ public class AgentConfig {
 
     public static class ContextConfig {
         // 高频配置项（从 yaml 读取）
-        public final int maxTokens;
-        public final double budgetRatio;
-        public final String systemPromptPath;
-        public final double snipThreshold;
-        public final double pruneThreshold;
-        public final double summarizeThreshold;
+        public final int maxTokens;           // 上下文窗口大小
+        public final double budgetRatio;      // 输入 token 占比上限
+        public final String systemPromptPath; // 系统提示词路径
+        public final double snipThreshold;    // 截短水位
+        public final double pruneThreshold;   // 占位符水位
+        public final double summarizeThreshold; // 摘要水位
 
-        // 不常调参的配置项（固定常量，不从 yaml 读取）
-        public static final int PINNED_MAX_TOKENS = 2048;
-        public static final int INSIGHTS_MAX_ITEMS = 40;
-        public static final int INSIGHTS_MAX_CHARS = 8000;
-        public static final int TAIL_GUARD_MIN_TOKENS = 8000;
-        public static final int TAIL_GUARD_MIN_TURNS = 3;
-        public static final int SNIP_KEEP_CHARS = 80;
-        public static final int PRUNE_KEEP_CHARS = 30;
-        public static final int SUMMARY_TRIGGER_MESSAGES = 16;
-        public static final int SUMMARIZE_MAX_INPUT_CHARS = 50000;
-        public static final int SUMMARIZE_MAX_OUTPUT_CHARS = 2000;
+        // 固定常量（不从 yaml 读取）
+        public static final int PINNED_MAX_TOKENS = 2048;          // Navigator 最大 token
+        public static final int INSIGHTS_MAX_ITEMS = 40;           // Insights 最大条数
+        public static final int INSIGHTS_MAX_CHARS = 8000;         // Insights 最大字符数
+        public static final int TAIL_GUARD_MIN_TOKENS = 8000;      // 尾部保护最小 token
+        public static final int TAIL_GUARD_MIN_TURNS = 3;          // 尾部保护最小轮次
+        public static final int SNIP_KEEP_CHARS = 80;              // Snip 保留字符数
+        public static final int PRUNE_KEEP_CHARS = 30;             // Prune 保留字符数
+        public static final int SUMMARY_TRIGGER_MESSAGES = 16;     // 摘要触发消息数
+        public static final int SUMMARIZE_MAX_INPUT_CHARS = 50000; // 摘要输入上限
+        public static final int SUMMARIZE_MAX_OUTPUT_CHARS = 2000; // 摘要输出上限
 
         public ContextConfig(Map<String, Object> m) {
             this.maxTokens = ((Number) m.getOrDefault("max_tokens", 120000)).intValue();
@@ -176,8 +170,8 @@ public class AgentConfig {
     }
 
     public static class LoopConfig {
-        public final int maxSteps;
-        public final int absoluteMaxSteps;
+        public final int maxSteps;           // 正常模式最大步数
+        public final int absoluteMaxSteps;   // stop 期间绝对上限
 
         public LoopConfig(Map<String, Object> m) {
             this.maxSteps = ((Number) m.getOrDefault("max_steps", 30)).intValue();
@@ -190,10 +184,10 @@ public class AgentConfig {
 
     /** 会话级 Token 预算配置。 */
     public static class BudgetConfig {
-        public final int maxTokens;
-        public final double softThreshold;
-        public final double hardThreshold;
-        public final int graceSteps;
+        public final int maxTokens;          // 累计 token 上限
+        public final double softThreshold;   // 软阈值：注入收尾 nudge
+        public final double hardThreshold;   // 硬阈值：触发优雅停止
+        public final int graceSteps;         // 触发后额外轮次
 
         public BudgetConfig(Map<String, Object> m) {
             this.maxTokens = ((Number) m.getOrDefault("max_tokens", 500000)).intValue();
@@ -209,11 +203,11 @@ public class AgentConfig {
     }
 
     public static class LoopDetectConfig {
-        public final int repeatWarn;
-        public final int repeatStop;
-        public final int noProgressSteps;
-        public final int failureWarn;
-        public final int failureStop;
+        public final int repeatWarn;         // 重复调用告警阈值
+        public final int repeatStop;         // 重复调用停止阈值
+        public final int noProgressSteps;    // 无进展告警步数
+        public final int failureWarn;        // 连续失败告警阈值
+        public final int failureStop;        // 连续失败停止阈值
 
         public LoopDetectConfig(Map<String, Object> m) {
             this.repeatWarn = ((Number) m.getOrDefault("repeat_warn", 3)).intValue();
@@ -231,10 +225,10 @@ public class AgentConfig {
     }
 
     public static class RetryConfig {
-        public final int attempts;
-        public final long minDelayMs;
-        public final long maxDelayMs;
-        public final double jitter;
+        public final int attempts;           // 最大重试次数
+        public final long minDelayMs;        // 退避起始延迟
+        public final long maxDelayMs;        // 退避最大延迟
+        public final double jitter;          // 抖动系数
 
         public RetryConfig(Map<String, Object> m) {
             this.attempts = ((Number) m.getOrDefault("attempts", 3)).intValue();
@@ -250,7 +244,7 @@ public class AgentConfig {
     }
 
     public static class StorageConfig {
-        public final String baseDir;
+        public final String baseDir;         // 会话数据根目录
 
         public StorageConfig(Map<String, Object> m) {
             this.baseDir = (String) m.getOrDefault("base_dir", "./data");
@@ -258,9 +252,9 @@ public class AgentConfig {
     }
 
     public static class ToolsConfig {
-        public final Set<String> whitelist;
-        public final Set<String> destructive;
-        public final Set<String> readonly;
+        public final Set<String> whitelist;  // 允许注册的本地工具
+        public final Set<String> destructive; // 破坏性工具
+        public final Set<String> readonly;   // 只读工具
 
         @SuppressWarnings("unchecked")
         public ToolsConfig(Map<String, Object> m) {
@@ -272,7 +266,7 @@ public class AgentConfig {
 
     /** MCP 服务配置，支持多服务。 */
     public static class McpConfig {
-        public final Map<String, McpServerConfig> servers;
+        public final Map<String, McpServerConfig> servers;  // 服务列表
 
         @SuppressWarnings("unchecked")
         public McpConfig(Map<String, Object> m) {
@@ -295,10 +289,10 @@ public class AgentConfig {
     }
 
     public static class McpServerConfig {
-        public final String key;
-        public final String url;
-        public final boolean enabled;
-        public final String permission;
+        public final String key;             // 服务标识
+        public final String url;             // 服务端点
+        public final boolean enabled;        // 是否启用
+        public final String permission;     // 默认权限
 
         public McpServerConfig(String key, Map<String, Object> m) {
             this.key = key;
@@ -310,10 +304,10 @@ public class AgentConfig {
 
     /** 百度千帆 AI Search 配置。 */
     public static class WebSearchConfig {
-        public final String apiKey;
-        public final String searchSource;
-        public final int topK;
-        public final String recencyFilter;
+        public final String apiKey;          // API Key
+        public final String searchSource;    // 搜索源
+        public final int topK;               // 返回结果数
+        public final String recencyFilter;   // 时间过滤
 
         public WebSearchConfig(Map<String, Object> m) {
             this.apiKey = AgentConfig.resolveEnv((String) m.getOrDefault("api_key", ""));

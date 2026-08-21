@@ -17,8 +17,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 上下文压缩（模型调用前阶段，order=100）。
- * 检测水位：≥snip 截短 → ≥prune 占位符 → ≥summarize LLM 摘要并删旧消息。
+ * 上下文压缩（PreModel, order=100）。
+ * 三级递进：≥snip 截短工具结果 → ≥prune 替换为占位符 → ≥summarize LLM 摘要并删旧消息。
  * Summarize 后执行 PairingRepairer 修复配对断裂。
  */
 public class ContextCompactHook implements Hook.PreModelHook {

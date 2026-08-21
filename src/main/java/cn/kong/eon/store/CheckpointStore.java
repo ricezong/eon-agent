@@ -17,15 +17,13 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Checkpoint 存储。崩溃后从最新 checkpoint 恢复。
- */
+/** Checkpoint 存储。崩溃后从最新 checkpoint 恢复。 */
 public class CheckpointStore {
     private static final Logger log = LoggerFactory.getLogger(CheckpointStore.class);
 
-    private final Path checkpointDir;
-    private final ObjectMapper mapper;
-    private final AtomicInteger counter = new AtomicInteger(0);
+    private final Path checkpointDir;                          // checkpoint 存储目录
+    private final ObjectMapper mapper;                         // JSON 序列化
+    private final AtomicInteger counter = new AtomicInteger(0); // 自增 ID 计数器
 
     public CheckpointStore(Path checkpointDir) {
         this.checkpointDir = checkpointDir;

@@ -18,10 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Stream;
 
-/**
- * file_io 工具：文件读写。支持 read/write/list/delete。
- * 路径相对于 workDir，禁止路径穿越（..）。
- */
+/** file_io 工具：文件读写。支持 read/write/list/delete，路径相对于 workDir。 */
 public class FileIoTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(FileIoTool.class);
 

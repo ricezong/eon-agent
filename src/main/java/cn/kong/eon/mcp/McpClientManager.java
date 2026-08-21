@@ -14,10 +14,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * MCP 客户端管理器。负责连接 MCP 服务、获取工具列表、执行工具调用。
- * MCP 工具的 ToolSpecification 直接复用 MCP 服务返回的 schema。
- */
+/** MCP 客户端管理器。负责连接 MCP 服务、获取工具列表、执行工具调用。 */
 public class McpClientManager {
     private static final Logger log = LoggerFactory.getLogger(McpClientManager.class);
 

@@ -29,9 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 
-/**
- * Agent 组装器：构建 EonAgent + 挂载 Hook + 连接 MCP 服务。
- */
+/** Agent 组装器：构建 EonAgent + 挂载 Hook + 连接 MCP 服务。 */
 public class AgentBootstrap {
     private static final Logger log = LoggerFactory.getLogger(AgentBootstrap.class);
 

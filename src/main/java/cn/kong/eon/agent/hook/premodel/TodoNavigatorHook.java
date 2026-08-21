@@ -13,9 +13,8 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 /**
- * Todo 导航渲染（模型调用前阶段，order=20）。
- * todo_write 调用后激活，渲染 Todo 列表 + Insights 到 ContextBuilder。
- * 用户原始请求已在 transcript 第一条 UserMessage 中，不在此重复注入。
+ * Todo 导航渲染（PreModel, order=20）。
+ * todo_write 调用后激活，渲染 Todo 列表 + Insights 到上下文。
  */
 public class TodoNavigatorHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(TodoNavigatorHook.class);

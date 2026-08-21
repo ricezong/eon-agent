@@ -8,24 +8,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 上下文构建器。分层组装最终发送给 LLM 的 messages。
- *
- * 物理顺序：
- *   System Prompt → Summary → Transcript → ToolCatalog
- *   → Navigator → RuntimeNudges → TailGuard
- *
+ * 上下文构建器。分层组装发送给 LLM 的 messages。
+ * 物理顺序：System Prompt → Summary → Transcript → ToolCatalog → Navigator → RuntimeNudges → TailGuard。
  * System Prompt 不拼接动态内容，保证 KV Cache 前缀稳定。
- * Hook 通过 beforeModelCall 注入内容，EonAgent 调用 build() 生成最终 messages。
  */
 public class ContextBuilder {
 
-    private String systemPrompt;
-    private String summary;
-    private String navigator;
-    private String toolCatalog;
-    private String runtimeNudges;
-    private List<ChatMessage> transcript;
-    private List<ChatMessage> tailGuard;
+    private String systemPrompt;    // 系统提示词
+    private String summary;         // 历史对话摘要
+    private String navigator;       // Todo 列表 + Insights 导航
+    private String toolCatalog;     // 可用工具目录
+    private String runtimeNudges;   // 运行时提醒（本轮有效）
+    private List<ChatMessage> transcript;  // 对话历史
+    private List<ChatMessage> tailGuard;   // 尾部保护消息
 
     public ContextBuilder setSystemPrompt(String systemPrompt) { this.systemPrompt = systemPrompt; return this; }
     public ContextBuilder setSummary(String summary) { this.summary = summary; return this; }
@@ -64,11 +59,7 @@ public class ContextBuilder {
         return result;
     }
 
-    /**
-     * 粗略估算 token 数。
-     * 中文字符约 0.5-1 token/字，英文约 0.25 token/字符，
-     * 取 chars/2 作为中英混合场景的折中估算。
-     */
+    /** 粗略估算 token 数：chars/2 作为中英混合折中。 */
     public long estimateTokens() {
         long chars = 0;
         if (systemPrompt != null) chars += systemPrompt.length();

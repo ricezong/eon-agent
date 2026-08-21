@@ -11,8 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
- * Todo 存储。进程内存 Map，随 Checkpoint 落盘。
- * 核心语义：全量替换、单一焦点约束、永不物理删除。
+ * Todo 存储。进程内存 Map，随 Checkpoint 落盘。核心语义：全量替换、单一焦点约束。
  */
 public class TodoStore {
     private static final Logger log = LoggerFactory.getLogger(TodoStore.class);

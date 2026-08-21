@@ -29,39 +29,30 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
- * Agent 单入口统一引擎。
- *
- * Core Loop: 路由 → 组装上下文 → PreModel → 调用 LLM → 解析 → 返回/扩展
- * Extension Loop: PreTool → 执行工具 → PostTool → 回填 → 回到 Core Loop
- *
- * 职责委托：
- *   - 日志输出 → {@link TurnLogger}
- *   - 工具执行 → {@link ToolExecutionHandler}
- *   - Hook 调度 → {@link HookDispatcher}
+ * Agent 统一引擎。Core Loop 组装上下文并调用 LLM，Extension Loop 执行工具后回到 Core Loop。
+ * 职责委托：日志→{@link TurnLogger}，工具执行→{@link ToolExecutionHandler}，Hook 调度→{@link HookDispatcher}。
  */
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
 
 
-    private final AgentConfig config;
-    private final LlmClient llmClient;
-    private final ToolRegistry toolRegistry;
-    private final JsonlStore jsonlStore;
-    private final String basePrompt;
-    private final ToolContext toolContext;
+    private final AgentConfig config;       // 配置
+    private final LlmClient llmClient;      // LLM 客户端
+    private final ToolRegistry toolRegistry; // 工具注册表
+    private final JsonlStore jsonlStore;    // 消息存储
+    private final String basePrompt;        // 系统提示词
+    private final ToolContext toolContext;  // 工具执行上下文
 
-    private final TurnLogger logger;
-    private final ToolExecutionHandler toolHandler;
+    private final TurnLogger logger;        // 日志器
+    private final ToolExecutionHandler toolHandler; // 工具执行处理器
 
-    // Hook 预分组：按阶段分别维护有序列表
-    private final List<Hook.PreModelHook> preModelHooks = new ArrayList<>();
-    private final List<Hook.PostModelHook> postModelHooks = new ArrayList<>();
-    private final List<Hook.PreToolHook> preToolHooks = new ArrayList<>();
-    private final List<Hook.PostToolHook> postToolHooks = new ArrayList<>();
+    private final List<Hook.PreModelHook> preModelHooks = new ArrayList<>();   // 模型调用前 Hook
+    private final List<Hook.PostModelHook> postModelHooks = new ArrayList<>(); // 模型调用后 Hook
+    private final List<Hook.PreToolHook> preToolHooks = new ArrayList<>();     // 工具执行前 Hook
+    private final List<Hook.PostToolHook> postToolHooks = new ArrayList<>();   // 工具执行后 Hook
     private int totalHookCount = 0;
 
-    /** 当前 Turn 的日志收集器。非 null 时表示正在执行 turn，null 表示在 turn 之外。 */
-    private TurnRecord currentRec;
+    private TurnRecord currentRec;  // 当前 Turn 的日志收集器，null 表示在 turn 之外
 
     public EonAgent(AgentConfig config,
                     LlmClient llmClient,
@@ -151,10 +142,7 @@ public class EonAgent {
         return state.getTurnCount() < effectiveMax;
     }
 
-    /**
-     * 执行单个 Turn，返回 {@link TurnAction} 表达循环控制语义。
-     * try-finally 确保 flushTurn 一定被执行，无需在每个返回点手动调用。
-     */
+    /** 执行单个 Turn。try-finally 确保 flushTurn 一定被执行。 */
     private TurnAction executeTurn(SessionState state, int turnStartTokens) {
         TurnRecord rec = logger.newRecord();
         this.currentRec = rec;
@@ -226,7 +214,7 @@ public class EonAgent {
         this.currentRec = null;
     }
 
-    /** Extension Loop: PreTool → Execute → PostTool */
+    /** Extension Loop: PreTool → Execute → PostTool。 */
     private FireResult executeExtensionLoop(TurnRecord rec, SessionState state, List<ToolExecutionRequest> requests) {
         FireResult preTool = firePreToolHooks(state, requests);
         if (preTool instanceof FireResult.Exit) return preTool;
@@ -272,11 +260,7 @@ public class EonAgent {
 
     // ===== 优雅停止子流程 =====
 
-    /**
-     * 消耗一个 grace step。返回 {@link TurnAction.Exit} 表示应退出循环（硬终止），
-     * {@link TurnAction.Continue} 表示继续循环。
-     * 统一处理两种场景：LLM 未调用任何工具 / LLM 调用了非 finish 工具。
-     */
+    /** 消耗一个 grace step，返回 Exit 表示硬终止，Continue 表示继续循环。 */
     private TurnAction consumeGraceStep(TurnRecord rec, SessionState state, String reason) {
         boolean hasMore = state.getStopState().consumeGraceStep();
         logger.graceConsumed(rec, reason, state.getStopState().getRemainingGraceSteps());
@@ -317,7 +301,6 @@ public class EonAgent {
      * graceSteps=0 直接硬终止；已在 stop 中则追加 nudge 提醒，不重置 grace。
      *
      * @param rec 当前 TurnRecord，null 表示在 turn 之外（maxSteps/异常等场景）
-     * @return {@link FireResult.Exit} 表示应退出循环；{@link FireResult.Continue} 表示继续循环
      */
     private FireResult handleStop(TurnRecord rec, SessionState state, StopReason reason) {
         if (reason.getGraceSteps() <= 0) {
@@ -356,10 +339,7 @@ public class EonAgent {
         return formatTerminationOutput(state, reason);
     }
 
-    /**
-     * 拼接硬终止输出：终止原因 + 消耗统计。
-     * Todo 进度、关键发现等由大模型在 grace period 自行总结，此处不重复拼接。
-     */
+    /** 拼接硬终止输出：终止原因 + 消耗统计。 */
     private String formatTerminationOutput(SessionState state, StopReason reason) {
         return "任务终止: " + reason.getCategory().getDisplayName() + "\n"
                 + "原因: " + reason.getMessage() + "\n"
@@ -373,7 +353,7 @@ public class EonAgent {
         }
     }
 
-    // ===== Hook 调度（统一委托 HookDispatcher）=====
+    // ===== Hook 调度（委托 HookDispatcher）=====
 
     private FireResult firePreModelHooks(SessionState state, ContextBuilder ctx) {
         // PreModel 的 stop 语义：handleStop 返回 Continue 后继续遍历后续 hook
@@ -442,6 +422,7 @@ public class EonAgent {
         ctx.setRuntimeNudges(sb.toString());
     }
 
+    /** 校验工具是否存在，不存在则注入格式纠正提示。 */
     private void validateToolExistence(SessionState state, List<ToolExecutionRequest> requests) {
         for (ToolExecutionRequest req : requests) {
             if (!toolRegistry.contains(req.name())) {
@@ -449,7 +430,6 @@ public class EonAgent {
             }
         }
     }
-
 
     /** 回填 AI 消息和工具结果到 JSONL，清理临时状态。 */
     private void finalizeAndAppend(TurnRecord rec, SessionState state) {

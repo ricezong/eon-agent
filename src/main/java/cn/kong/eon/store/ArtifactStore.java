@@ -16,16 +16,14 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Artifact 存储。大文本工具结果落盘，上下文只保留引用。
- */
+/** Artifact 存储。大文本工具结果落盘，上下文只保留引用。 */
 public class ArtifactStore {
     private static final Logger log = LoggerFactory.getLogger(ArtifactStore.class);
 
-    private final Path artifactDir;
-    private final ObjectMapper mapper;
-    private final Map<String, ArtifactRef> refs = new ConcurrentHashMap<>();
-    private final AtomicInteger counter = new AtomicInteger(0);
+    private final Path artifactDir;                            // artifact 存储目录
+    private final ObjectMapper mapper;                         // JSON 序列化
+    private final Map<String, ArtifactRef> refs = new ConcurrentHashMap<>();  // 引用注册表
+    private final AtomicInteger counter = new AtomicInteger(0); // 自增 ID 计数器
 
     public ArtifactStore(Path artifactDir) {
         this.artifactDir = artifactDir;
@@ -71,7 +69,6 @@ public class ArtifactStore {
     public ArtifactRef get(String refId) { return refs.get(refId); }
     public List<ArtifactRef> listAll() { return new ArrayList<>(refs.values()); }
 
-    /** 在 artifact 内容中搜索关键词。 */
     /** 在 artifact 内容中搜索包含关键词的行。 */
     public String searchLines(String refId, String keyword) {
         String content = readContent(refId);

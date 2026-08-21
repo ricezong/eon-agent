@@ -8,20 +8,16 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
-/**
- * 工具注册表。统一管理本地工具和 MCP 工具的元数据与执行。
- * 本地工具通过 ToolDescriptor 注册；MCP 工具通过 registerMcpTools() 注册，委托 McpClientManager 执行。
- */
+/** 工具注册表。统一管理本地工具和 MCP 工具的元数据与执行。 */
 public class ToolRegistry {
     private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
 
-    private final Map<String, ToolDescriptor> tools = new LinkedHashMap<>();
-    private final Set<String> whitelist;
-    private final ArgumentSanitizer sanitizer = new ArgumentSanitizer();
+    private final Map<String, ToolDescriptor> tools = new LinkedHashMap<>();  // 本地工具
+    private final Set<String> whitelist;                                       // 白名单
+    private final ArgumentSanitizer sanitizer = new ArgumentSanitizer();        // 参数清洗器
 
-    // MCP 工具
-    private final Map<String, McpClientManager> mcpToolSources = new HashMap<>();
-    private final Map<String, ToolSpecification> mcpToolSpecs = new HashMap<>();
+    private final Map<String, McpClientManager> mcpToolSources = new HashMap<>();  // MCP 工具来源
+    private final Map<String, ToolSpecification> mcpToolSpecs = new HashMap<>();   // MCP 工具 Schema
 
     public ToolRegistry(Set<String> whitelist) {
         this.whitelist = whitelist != null ? whitelist : new HashSet<>();
@@ -174,7 +170,7 @@ public class ToolRegistry {
     public Collection<ToolDescriptor> getAll() { return tools.values(); }
     public int getMcpToolCount() { return mcpToolSpecs.size(); }
 
-    /** 获取工具目录摘要（名称 + 描述），用于 SIMPLE 模式懒加载。 */
+    /** 获取工具目录摘要（名称 + 描述），注入上下文供 LLM 选择工具。 */
     public String getCatalogSummary() {
         StringBuilder sb = new StringBuilder("可用工具目录：\n");
         for (ToolDescriptor desc : tools.values()) {

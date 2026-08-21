@@ -9,32 +9,29 @@ import dev.langchain4j.data.message.ChatMessage;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 会话级运行时状态。贯穿整个 Agent Loop，所有组件共享。
- */
+/** 会话级运行时状态，贯穿整个 Agent Loop，所有组件共享。 */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class SessionState {
     private String sessionId;
-    private String userOriginalInput;        // 用户原始请求（永不裁剪）
-    private int turnCount;
-    private TokenUsage usageAccum;
-    private CompressionState compressionState;
-    private List<String> pendingNudges;      // 临时附加层（本轮有效）
+    private String userOriginalInput;        // 用户原始请求
+    private int turnCount;                   // 当前轮次
+    private TokenUsage usageAccum;           // 累计 token 用量
+    private CompressionState compressionState; // 压缩状态
+    private List<String> pendingNudges;      // 运行时提醒（本轮有效）
     private List<String> formatCorrections;  // 格式纠正（本轮有效）
-    private boolean finished;
-    private String finishReason;
-    private String lastAssistantText;
+    private boolean finished;                // 是否已结束
+    private String finishReason;             // 结束原因
+    private String lastAssistantText;        // 最近一轮助手文本
 
-    private boolean todoBeenUsed = false;    // 是否调用过 todo_write（用于激活 TodoNavigator）
+    private boolean todoBeenUsed = false;    // 是否调用过 todo_write（激活 TodoNavigator）
 
-    /** 优雅停止状态。Hook 请求 stop 后设置，EonAgent 据此决定是否进入收尾流程。 */
-    private transient StopState stopState;
+    private transient StopState stopState;   // 优雅停止状态
 
     // 运行时临时字段（不序列化）
-    private transient List<ChatMessage> currentMessages;
-    private transient LlmResponse lastResponse;
-    private transient List<ToolExecutionRequest> pendingToolCalls;
-    private transient List<ToolExecutionResult> lastToolResults;
+    private transient List<ChatMessage> currentMessages;    // 当前轮构建的 messages
+    private transient LlmResponse lastResponse;            // 最近一轮 LLM 响应
+    private transient List<ToolExecutionRequest> pendingToolCalls;  // 待执行的工具调用
+    private transient List<ToolExecutionResult> lastToolResults;   // 上一轮工具执行结果
 
     public SessionState() {
         this.turnCount = 0;
@@ -116,8 +113,7 @@ public class SessionState {
     }
 
     /**
-     * 优雅停止状态。
-     * NONE → REQUESTED（Hook 触发）→ GRACE_PERIOD（给 LLM finish 机会）→ FORCED（硬终止）
+     * 优雅停止状态：NONE → REQUESTED → GRACE_PERIOD → FORCED。
      */
     public static class StopState {
         private StopReason reason;

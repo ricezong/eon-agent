@@ -7,12 +7,12 @@ import java.time.Instant;
 /** Artifact 引用记录。大文本工具结果落盘后，上下文只保留此引用。 */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ArtifactRef {
-    private String refId;
-    private String source;
-    private String summary;
-    private long sizeChars;
-    private String filePath;
-    private Instant createdAt;
+    private String refId;      // 引用 ID
+    private String source;     // 来源工具名
+    private String summary;    // 摘要
+    private long sizeChars;    // 原始字符数
+    private String filePath;   // 落盘文件路径
+    private Instant createdAt; // 创建时间
 
     public ArtifactRef() {}
 

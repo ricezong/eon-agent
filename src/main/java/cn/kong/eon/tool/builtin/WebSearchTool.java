@@ -22,9 +22,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * web_search 工具：使用百度千帆 AI Search API 搜索网页。
- */
+/** web_search 工具：使用百度千帆 AI Search API 搜索网页。 */
 public class WebSearchTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(WebSearchTool.class);
 
