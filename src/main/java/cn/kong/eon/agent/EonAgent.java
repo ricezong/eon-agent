@@ -1,25 +1,27 @@
 package cn.kong.eon.agent;
 
-import cn.kong.eon.context.ContextBuilder;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.hook.StopCategory;
 import cn.kong.eon.agent.hook.StopReason;
 import cn.kong.eon.agent.profile.PolicyRouter;
 import cn.kong.eon.agent.profile.RequestProfile;
+import cn.kong.eon.agent.support.HookDispatcher;
+import cn.kong.eon.agent.support.HookDispatcher.FireResult;
+import cn.kong.eon.agent.support.ToolExecutionHandler;
+import cn.kong.eon.agent.support.TurnLogger;
+import cn.kong.eon.agent.support.TurnRecord;
 import cn.kong.eon.config.AgentConfig;
+import cn.kong.eon.context.ContextBuilder;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.llm.LlmResponse;
 import cn.kong.eon.model.SessionState;
-import cn.kong.eon.model.TodoItem;
-import cn.kong.eon.model.TodoStatus;
+import cn.kong.eon.model.TerminationFormatter;
 import cn.kong.eon.model.ToolExecutionResult;
 import cn.kong.eon.store.JsonlStore;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolRegistry;
 import cn.kong.eon.tool.ToolResultRenderer;
-import cn.kong.eon.util.JsonMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.*;
@@ -31,19 +33,14 @@ import java.util.*;
 /**
  * Agent 单入口统一引擎。
  *
- * Core Loop: 路由 → 组装上下文 → PreModel → build → 调用 LLM → 解析 → 返回/扩展
+ * Core Loop: 路由 → 组装上下文 → PreModel → 调用 LLM → 解析 → 返回/扩展
  * Extension Loop: PreTool → 执行工具 → PostTool → 回填 → 回到 Core Loop
  *
- * System Prompt 完全冻结（basePrompt），tool_catalog 作为独立消息注入，保证 KV Cache 前缀稳定。
- * Profile 两档：SIMPLE（默认）、TASK（todo_write 后升级，TodoNavigator 激活）。两者均走两阶段懒加载。
- *
- * Hook 调度：按执行阶段预分组（PreModel/PostModel/PreTool/PostTool），
- * 注册时分别加入对应列表并按 order() 排序，调度时直接遍历。
- *
- * 优雅停止机制：
- *   Hook 通过 HookResult.stop(StopReason) 请求停止。
- *   EonAgent 收到后注入收尾 nudge，给 LLM graceSteps 轮调用 finish 总结的机会。
- *   超过 graceSteps 仍未 finish，则用 formatForcedTermination 做硬终止（含进度信息）。
+ * 职责委托：
+ *   - 日志输出 → {@link TurnLogger}（收集式：每步写入 TurnRecord，turn 结束统一 flush）
+ *   - 工具执行 → {@link ToolExecutionHandler}
+ *   - 终止格式化 → {@link TerminationFormatter}
+ *   - Hook 调度 → {@link HookDispatcher}
  */
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
@@ -54,11 +51,14 @@ public class EonAgent {
     private final AgentConfig config;
     private final LlmClient llmClient;
     private final ToolRegistry toolRegistry;
-    private final ToolResultRenderer resultRenderer;
     private final JsonlStore jsonlStore;
     private final String basePrompt;
-    private final PolicyRouter policyRouter;
     private final ToolContext toolContext;
+
+    private final PolicyRouter policyRouter = new PolicyRouter();
+    private final TurnLogger logger;
+    private final ToolExecutionHandler toolHandler;
+    private final TerminationFormatter terminationFormatter = new TerminationFormatter();
 
     // Hook 预分组：按阶段分别维护有序列表
     private final List<Hook.PreModelHook> preModelHooks = new ArrayList<>();
@@ -66,6 +66,9 @@ public class EonAgent {
     private final List<Hook.PreToolHook> preToolHooks = new ArrayList<>();
     private final List<Hook.PostToolHook> postToolHooks = new ArrayList<>();
     private int totalHookCount = 0;
+
+    /** 当前 Turn 的日志收集器。非 null 时表示正在执行 turn，null 表示在 turn 之外。 */
+    private TurnRecord currentRec;
 
     public EonAgent(AgentConfig config,
                     LlmClient llmClient,
@@ -77,11 +80,11 @@ public class EonAgent {
         this.config = config;
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
-        this.resultRenderer = resultRenderer;
         this.jsonlStore = jsonlStore;
         this.basePrompt = basePrompt;
-        this.policyRouter = new PolicyRouter();
         this.toolContext = toolContext;
+        this.logger = new TurnLogger(config);
+        this.toolHandler = new ToolExecutionHandler(toolRegistry, resultRenderer, toolContext, logger);
     }
 
     public void addHook(Hook hook) {
@@ -138,17 +141,13 @@ public class EonAgent {
         return handleMaxSteps(state);
     }
 
-    /** 初始化运行状态。 */
     private void initRun(SessionState state) {
-        log.info("║ EonAgent 启动 ║ session={} ║ maxSteps={} ║ budget={} tokens ║",
-                state.getSessionId(), config.getLoop().maxSteps, config.getBudget().getMaxTokens());
-        log.info("║ 用户请求: {}", state.getUserOriginalInput());
+        logger.agentStart(state);
         state.setStopState(SessionState.StopState.none());
         state.setPendingToolMounts(null);
         jsonlStore.append(UserMessage.from(state.getUserOriginalInput()));
     }
 
-    /** 循环条件判断。 */
     private boolean shouldContinue(SessionState state) {
         return state.getTurnCount() < config.getLoop().maxSteps
                 || (state.isStopRequested() && state.getTurnCount() < config.getLoop().absoluteMaxSteps);
@@ -156,22 +155,26 @@ public class EonAgent {
 
     /**
      * 执行单个 Turn，返回非 null 表示应退出循环。
+     * 每一步将日志信息写入 TurnRecord，turn 结束时统一 flush。
      */
     private String executeTurn(SessionState state, int turnStartTokens) {
-        RequestProfile profile = policyRouter.route(state);
-        logTurnHeader(state, profile);
+        TurnRecord rec = logger.newRecord();
+        this.currentRec = rec;
 
-        // 1. 组装上下文 + PreModel
-        ContextBuilder ctx = buildContext(state, profile);
-        String preModelStop = firePreModelHooks(state, ctx);
-        if (preModelStop != null) return preModelStop;
+        RequestProfile profile = policyRouter.route(state);
+        logger.turnHeader(rec, state, profile);
+
+        // 1. 组装上下文 + PreModel Hooks
+        ContextBuilder ctx = buildContext(state);
+        FireResult preModel = firePreModelHooks(state, ctx);
+        if (preModel.exitResult() != null) { flushTurn(rec); return preModel.exitResult(); }
 
         // 2. 构建 messages + 获取工具 Schema
         List<ChatMessage> messages = ctx.build();
         state.setCurrentMessages(messages);
-        logContextInfo(ctx, messages, state);
+        logger.contextInfo(rec, ctx, messages, state, toolRegistry.getAllToolNames().size());
 
-        List<ToolSpecification> tools = getToolsForProfile(state);
+        List<ToolSpecification> tools = getToolsForProfile(rec, state);
         if (state.isStopRequested()) tools = ensureFinishMounted(tools);
 
         // 3. 调用 LLM
@@ -183,423 +186,266 @@ public class EonAgent {
         String thought = response.aiMessage().text() != null ? response.aiMessage().text() : "";
         state.setLastAssistantText(thought);
         List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
-        logLlmResponse(thought, requests, deltaTokens, state);
+        logger.llmResponse(rec, thought, requests, deltaTokens, state);
 
-        // 4. 无工具调用时的处理
+        // 4. 无工具调用
         if (requests == null || requests.isEmpty()) {
-            return handleNoToolCalls(state, thought);
+            String result = handleNoToolCalls(rec, state, thought);
+            flushTurn(rec);
+            return result;
         }
 
-        // 5. 校验工具存在 + PostModel
+        // 5. PostModel Hooks (循环检测等)
         validateToolExistence(state, requests);
         state.setPendingToolCalls(requests);
-        HookFireResult postModelResult = firePostModelHooks(state, response);
-        if (postModelResult.exitResult() != null) return postModelResult.exitResult();
-        if (postModelResult.skipped()) return null; // PostModel stop 已 finalize，继续循环
+        FireResult postModel = firePostModelHooks(state, response);
+        if (postModel.exitResult() != null) { flushTurn(rec); return postModel.exitResult(); }
+        if (postModel.skipped()) { flushTurn(rec); return null; }
 
-        // 6. Extension Loop: PreTool + Execute + PostTool
-        String extensionStop = executeExtensionLoop(state, requests);
-        if (extensionStop != null) return extensionStop;
+        // 6. Extension Loop: PreTool → Execute → PostTool
+        FireResult extension = executeExtensionLoop(rec, state, requests);
+        if (extension.exitResult() != null) { flushTurn(rec); return extension.exitResult(); }
 
         // 7. 回填 + finish 检测
-        finalizeAndAppend(state);
-        logTurnDone(state, turnStartTokens);
+        finalizeAndAppend(rec, state);
+        logger.turnDone(rec, state, turnStartTokens);
 
         if (state.isFinished()) {
-            log.info("║ EonAgent 完成 ║ turns={} ║ tokens={} ║ finish=true ║",
-                    state.getTurnCount(), state.getUsageAccum().getTotalTokens());
+            flushTurn(rec);
+            logger.agentFinish(state);
             return state.getLastAssistantText();
         }
 
-        // 8. stop 期间非 finish 工具消耗 grace
+        // 8. stop 期间消耗 grace（非 finish 工具 / 无工具调用 两种场景统一处理）
         if (state.isStopRequested()) {
-            return handleStopGraceConsumption(state);
+            String graceResult = consumeGraceStep(rec, state, "LLM called non-finish tool");
+            flushTurn(rec);
+            return graceResult;
         }
 
-        return null; // 继续循环
+        flushTurn(rec);
+        return null;
     }
 
-    /** 执行 Extension Loop（PreTool → Execute → PostTool），返回非 null 表示应退出循环。 */
-    private String executeExtensionLoop(SessionState state, List<ToolExecutionRequest> requests) {
-        // PreTool 阶段
-        HookFireResult preToolResult = firePreToolHooks(state, requests);
-        if (preToolResult.exitResult() != null) return preToolResult.exitResult();
-        if (preToolResult.skipped()) return null; // PreTool stop 已 finalize，继续循环
+    /** flush 当前 turn 日志并清理引用。 */
+    private void flushTurn(TurnRecord rec) {
+        logger.flush(rec);
+        this.currentRec = null;
+    }
 
-        // 执行工具
-        List<ToolExecutionResult> results = executeTools(state);
+    /** Extension Loop: PreTool → Execute → PostTool */
+    private FireResult executeExtensionLoop(TurnRecord rec, SessionState state, List<ToolExecutionRequest> requests) {
+        FireResult preTool = firePreToolHooks(state, requests);
+        if (preTool.exitResult() != null) return preTool;
+        if (preTool.skipped()) return FireResult.cont();
 
-        // PostTool 阶段
+        List<ToolExecutionResult> results = toolHandler.execute(rec, state);
+
         for (int i = 0; i < requests.size(); i++) {
-            ToolExecutionRequest req = requests.get(i);
             ToolExecutionResult result = results.get(i);
             boolean success = !result.content().startsWith("[ERROR]");
-            HookFireResult postToolResult = firePostToolHooks(state, req.name(), success);
-            if (postToolResult.exitResult() != null) return postToolResult.exitResult();
-            if (postToolResult.skipped()) break; // 中断 PostTool 遍历，继续到 finalizeAndAppend
+            FireResult postTool = firePostToolHooks(state, requests.get(i).name(), success);
+            if (postTool.exitResult() != null) return postTool;
+            if (postTool.skipped()) break;
         }
 
-        return null; // 继续循环
+        return FireResult.cont();
     }
 
-    /** 处理无工具调用的情况，返回非 null 表示应退出循环。 */
-    private String handleNoToolCalls(SessionState state, String thought) {
-        // 检测是否因 max_tokens 截断导致工具调用丢失
-        boolean truncated = "length".equalsIgnoreCase(state.getLastResponse().finishReason());
-        if (truncated) {
-            log.warn("[LLM] output truncated (finishReason=length), tool call may be lost");
+    /** 处理无工具调用的情况。 */
+    private String handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
+        // 截断检测
+        if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
+            logger.outputTruncated(rec);
             state.addFormatCorrection(
                     "上一轮输出因长度限制被截断，工具调用未完成。请重新调用工具，如果内容过长请分多次写入。");
-            finalizeAndAppend(state);
-            return null; // 继续循环
+            finalizeAndAppend(rec, state);
+            return null;
         }
 
         // 已声明工具但未调用：提醒模型
         if (state.getPendingToolMounts() != null) {
             state.addFormatCorrection(
                     "你已获得工具的完整调用参数但未调用。如果任务需要工具，请直接调用；如果不需要，请直接回答。不要重复调用 enable_tools。");
-            finalizeAndAppend(state);
-            return null; // 继续循环
+            finalizeAndAppend(rec, state);
+            return null;
         }
 
-        // stop 期间 LLM 未调用 finish：消耗 grace step
+        // stop 期间 LLM 未调 finish：消耗 grace step
         if (state.isStopRequested()) {
-            boolean hasMore = state.getStopState().consumeGraceStep();
-            log.warn("[STOP] grace consumed (LLM did not call finish) | remaining: {}",
-                    state.getStopState().getRemainingGraceSteps());
-            if (!hasMore) {
-                return formatForcedTermination(state, state.getStopState().getReason());
-            }
+            String graceResult = consumeGraceStep(rec, state, "LLM did not call finish");
+            if (graceResult != null) return graceResult;
             state.addFormatCorrection(
                     "请立即调用 finish 工具进行总结。这是最后的机会，否则任务将被强制终止。");
-            finalizeAndAppend(state);
-            return null; // 继续循环
+            finalizeAndAppend(rec, state);
+            return null;
         }
 
-        // 聊天结束
-        finalizeAndAppend(state);
+        // 正常聊天结束
+        finalizeAndAppend(rec, state);
         return thought;
     }
 
-    /** stop 期间 LLM 调用了非 finish 工具：消耗 grace step。返回非 null 表示应退出循环。 */
-    private String handleStopGraceConsumption(SessionState state) {
+    // ===== 优雅停止子流程 =====
+
+    /**
+     * 消耗一个 grace step。返回非 null 表示应退出循环（硬终止）。
+     * 统一处理两种场景：LLM 未调用任何工具 / LLM 调用了非 finish 工具。
+     */
+    private String consumeGraceStep(TurnRecord rec, SessionState state, String reason) {
         boolean hasMore = state.getStopState().consumeGraceStep();
-        log.warn("[STOP] grace consumed (LLM called non-finish tool) | remaining: {}",
-                state.getStopState().getRemainingGraceSteps());
+        logger.graceConsumed(rec, reason, state.getStopState().getRemainingGraceSteps());
         if (!hasMore) {
-            return formatForcedTermination(state, state.getStopState().getReason());
+            return forceTerminate(state, state.getStopState().getReason());
         }
-        return null; // 继续循环
+        return null;
     }
 
-    /** 异常捕获后的 stop 流程，返回非 null 表示应退出循环。 */
     private String handleLoopException(SessionState state, Exception e) {
         log.error("Agent loop unexpected error: {}", e.getMessage(), e);
-        StopReason reason = new StopReason(
-                StopCategory.UNEXPECTED_ERROR,
-                e.getMessage(),
-                config.getBudget().getGraceSteps());
-        return handleStop(state, reason);
+        // 异常发生在 turn 内部，currentRec 可能已创建
+        TurnRecord rec = this.currentRec;
+        if (rec != null) {
+            return handleStop(rec, state, new StopReason(
+                    StopCategory.UNEXPECTED_ERROR, e.getMessage(), config.getBudget().getGraceSteps()));
+        }
+        // turn 外部异常，直接处理
+        return handleStop(null, state, new StopReason(
+                StopCategory.UNEXPECTED_ERROR, e.getMessage(), config.getBudget().getGraceSteps()));
     }
 
-    /** 达到最大步数的 stop 流程。 */
     private String handleMaxSteps(SessionState state) {
         log.warn("[STOP] max steps reached: {}", config.getLoop().maxSteps);
         StopReason reason = new StopReason(
                 StopCategory.MAX_STEPS_REACHED,
                 "达到最大步数限制 (" + config.getLoop().maxSteps + ")",
                 config.getBudget().getGraceSteps());
-        String stopResult = handleStop(state, reason);
-        if (stopResult != null) return stopResult;
-        return formatForcedTermination(state, reason);
+        // maxSteps 在 while 循环外触发，无 TurnRecord
+        String stopResult = handleStop(null, state, reason);
+        return stopResult != null ? stopResult : forceTerminate(state, reason);
     }
-
-    // ===== Hook 调度 =====
-
-    private String firePreModelHooks(SessionState state, ContextBuilder ctx) {
-        for (Hook.PreModelHook hook : preModelHooks) {
-            if (!hook.isActive(state)) continue;
-            HookResult r = hook.beforeModelCall(state, ctx);
-            if (r.isStop()) {
-                String stopResult = handleStop(state, r.getStopReason());
-                if (stopResult != null) return stopResult;
-                // stop 已注入 nudge，继续循环让 LLM 调用 finish
-            }
-        }
-        return null;
-    }
-
-    /** 返回非 null 表示应退出循环。设置 skipped=true 表示 stop 已 finalize，需跳过工具执行。 */
-    private record HookFireResult(String exitResult, boolean skipped) {
-        static HookFireResult cont() { return new HookFireResult(null, false); }
-        static HookFireResult exit(String r) { return new HookFireResult(r, false); }
-        static HookFireResult skip() { return new HookFireResult(null, true); }
-    }
-
-    private HookFireResult firePostModelHooks(SessionState state, LlmResponse response) {
-        for (Hook.PostModelHook hook : postModelHooks) {
-            if (!hook.isActive(state)) continue;
-            HookResult r = hook.afterModelCall(state, response);
-            if (r.isStop()) {
-                String stopResult = handleStop(state, r.getStopReason());
-                if (stopResult != null) return HookFireResult.exit(stopResult);
-                // stop 请求已注入 nudge，跳过工具执行，回填后继续循环
-                finalizeIfPending(state);
-                return HookFireResult.skip();
-            }
-        }
-        return HookFireResult.cont();
-    }
-
-    private HookFireResult firePreToolHooks(SessionState state, List<ToolExecutionRequest> requests) {
-        for (Hook.PreToolHook hook : preToolHooks) {
-            if (!hook.isActive(state)) continue;
-            HookResult r = hook.beforeToolExecution(state, requests);
-            if (r.isStop()) {
-                String stopResult = handleStop(state, r.getStopReason());
-                if (stopResult != null) return HookFireResult.exit(stopResult);
-                // stop 请求已注入 nudge，跳过工具执行，回填后继续循环
-                finalizeIfPending(state);
-                return HookFireResult.skip();
-            }
-        }
-        return HookFireResult.cont();
-    }
-
-    /** PostTool stop 不跳过 finalizeAndAppend，但需中断后续工具的 PostTool 遍历。 */
-    private HookFireResult firePostToolHooks(SessionState state, String toolName, boolean success) {
-        for (Hook.PostToolHook hook : postToolHooks) {
-            if (!hook.isActive(state)) continue;
-            HookResult r = hook.afterToolExecution(state, toolName, success);
-            if (r.isStop()) {
-                String stopResult = handleStop(state, r.getStopReason());
-                if (stopResult != null) return HookFireResult.exit(stopResult);
-                // stop 请求已注入 nudge，中断 PostTool 遍历
-                // PostTool stop 不 finalize（不跳过后续的 finalizeAndAppend）
-                return HookFireResult.skip();
-            }
-        }
-        return HookFireResult.cont();
-    }
-
-    // ===== 优雅停止子流程 =====
 
     /**
      * 处理 stop 请求：注入收尾 nudge，进入 grace period。
-     * 如果 graceSteps=0，直接硬终止。
-     * 如果已经处于 stop 中（升级原因），更新 reason 但不重置 grace steps。
-     * 返回 null 表示继续循环，非 null 表示应退出。
+     * graceSteps=0 直接硬终止；已在 stop 中则升级原因但不重置 grace。
+     *
+     * @param rec 当前 TurnRecord，null 表示在 turn 之外（maxSteps/异常等场景），stop 事件立即打印
      */
-    private String handleStop(SessionState state, StopReason reason) {
+    private String handleStop(TurnRecord rec, SessionState state, StopReason reason) {
         if (reason.getGraceSteps() <= 0) {
-            return formatForcedTermination(state, reason);
+            return forceTerminate(state, reason);
         }
 
         if (!state.isStopRequested()) {
             state.getStopState().request(reason);
             state.addNudge(reason.toNudgeText());
-            log.warn("[STOP] requested: {} | msg: {} | grace: {}",
-                    reason.getCategory(), reason.getMessage(), reason.getGraceSteps());
-            finalizeIfPending(state);
-            return null;
-        } else {
-            if (state.getStopState().getRemainingGraceSteps() <= 0) {
-                return formatForcedTermination(state, reason);
+            if (rec != null) {
+                logger.stopRequested(rec, reason.getCategory(), reason.getMessage(), reason.getGraceSteps());
+            } else {
+                log.warn("[STOP] requested: {} | msg: {} | grace: {}",
+                        reason.getCategory(), reason.getMessage(), reason.getGraceSteps());
             }
-            state.addNudge(reason.toNudgeText());
+            finalizeIfPending(rec, state);
+            return null;
+        }
+
+        // 已在 stop 中，升级原因
+        if (state.getStopState().getRemainingGraceSteps() <= 0) {
+            return forceTerminate(state, reason);
+        }
+        state.addNudge(reason.toNudgeText());
+        if (rec != null) {
+            logger.stopEscalated(rec, reason.getCategory(), reason.getMessage());
+        } else {
             log.warn("[STOP] escalated: {} | msg: {}", reason.getCategory(), reason.getMessage());
-            finalizeIfPending(state);
-            return null;
         }
+        finalizeIfPending(rec, state);
+        return null;
     }
 
-    /** 如果有未提交的 AI 消息/工具结果，先回填到 JSONL。 */
-    private void finalizeIfPending(SessionState state) {
+    private String forceTerminate(SessionState state, StopReason reason) {
+        logger.stopForced(reason.getCategory().name(), state.getTurnCount(), state.getUsageAccum().getTotalTokens());
+        return terminationFormatter.formatForcedTermination(
+                reason.getCategory().getDisplayName(), reason.getMessage(),
+                toolContext.todoStore().getAll(), state.getInsights(),
+                state.getTurnCount(), state.getUsageAccum().getTotalTokens(),
+                state.getUsageAccum().getPromptTokens(), state.getUsageAccum().getCompletionTokens());
+    }
+
+    private void finalizeIfPending(TurnRecord rec, SessionState state) {
         if (state.getPendingToolCalls() != null || state.getLastToolResults() != null) {
-            finalizeAndAppend(state);
+            finalizeAndAppend(rec, state);
         }
     }
 
-    /**
-     * 硬终止：构建包含原因、进度、待做任务的结构化输出。
-     */
-    private String formatForcedTermination(SessionState state, StopReason reason) {
-        log.warn("[STOP] forced termination: {} | turns={} | tokens={}",
-                reason.getCategory(), state.getTurnCount(), state.getUsageAccum().getTotalTokens());
+    // ===== Hook 调度（统一委托 HookDispatcher）=====
 
-        StringBuilder sb = new StringBuilder();
-
-        // 1. 终止原因
-        sb.append("════════════════════════════════════════\n");
-        sb.append("  任务终止: ").append(reason.getCategory().getDisplayName()).append("\n");
-        sb.append("  原因: ").append(reason.getMessage()).append("\n");
-        sb.append("════════════════════════════════════════\n\n");
-
-        // 2. 任务进度
-        List<TodoItem> todos = toolContext.todoStore().getAll();
-        if (!todos.isEmpty()) {
-            long completed = todos.stream()
-                    .filter(t -> t.getStatus() == TodoStatus.COMPLETED).count();
-            long inProgress = todos.stream()
-                    .filter(t -> t.getStatus() == TodoStatus.IN_PROGRESS).count();
-            long pending = todos.stream()
-                    .filter(t -> t.getStatus() == TodoStatus.PENDING).count();
-            long blocked = todos.stream()
-                    .filter(t -> t.getStatus() == TodoStatus.BLOCKED).count();
-
-            sb.append("【任务进度】").append(completed).append("/").append(todos.size())
-                    .append(" 已完成（").append(inProgress).append(" 进行中, ")
-                    .append(pending).append(" 待办, ").append(blocked).append(" 阻塞）\n\n");
-
-            sb.append("【任务清单】\n");
-            for (TodoItem t : todos) {
-                sb.append("  ").append(t.toString()).append("\n");
-            }
-            sb.append("\n");
-
-            // 3. 待做任务
-            List<TodoItem> todoPending = todos.stream()
-                    .filter(t -> t.getStatus() != TodoStatus.COMPLETED
-                            && t.getStatus() != TodoStatus.CANCELLED)
-                    .toList();
-            if (!todoPending.isEmpty()) {
-                sb.append("【待做任务】\n");
-                for (TodoItem t : todoPending) {
-                    sb.append("  - ").append(t.getContent());
-                    if (t.getStatus() == TodoStatus.BLOCKED && t.getBlockReason() != null) {
-                        sb.append(" [阻塞原因: ").append(t.getBlockReason()).append("]");
-                    }
-                    sb.append("\n");
-                }
-                sb.append("\n");
-            }
-        } else {
-            sb.append("【任务进度】无 Todo 列表（任务未通过 todo_write 建立计划）\n");
-            sb.append("已执行轮次: ").append(state.getTurnCount()).append("\n\n");
-        }
-
-        // 4. 关键发现
-        List<String> insights = state.getInsights();
-        if (insights != null && !insights.isEmpty()) {
-            sb.append("【关键发现】\n");
-            int idx = 1;
-            for (String insight : insights) {
-                sb.append("  ").append(idx++).append(". ").append(insight).append("\n");
-            }
-            sb.append("\n");
-        }
-
-        // 5. Token 消耗
-        sb.append("【消耗统计】总 Token: ").append(state.getUsageAccum().getTotalTokens())
-                .append(" (prompt=").append(state.getUsageAccum().getPromptTokens())
-                .append(", completion=").append(state.getUsageAccum().getCompletionTokens())
-                .append(")\n");
-        sb.append("执行轮次: ").append(state.getTurnCount()).append("\n");
-
-        return sb.toString();
+    private FireResult firePreModelHooks(SessionState state, ContextBuilder ctx) {
+        // PreModel 的 stop 语义：handleStop 返回 null 后继续遍历后续 hook
+        // （BudgetHook stop 后，NudgeRenderHook/ContextCompactHook 仍需执行）
+        return HookDispatcher.dispatch(
+                preModelHooks, state,
+                (hook, s) -> hook.beforeModelCall(s, ctx),
+                reason -> handleStop(currentRec, state, reason),
+                () -> {},  // PreModel 不需要 finalize（LLM 还没调用，无 pending 数据）
+                true       // continueAfterStop: stop 后继续遍历
+        );
     }
 
-    // ===== 日志方法 =====
-
-    private void logTurnHeader(SessionState state, RequestProfile profile) {
-        long usedTokens = state.getUsageAccum().getTotalTokens();
-        long maxBudget = config.getBudget().getMaxTokens();
-        double ratio = maxBudget > 0 ? (double) usedTokens / maxBudget : 0.0;
-        String stopSuffix = state.isStopRequested()
-                ? " | stop: " + state.getStopState().getReason().getCategory()
-                + "(grace=" + state.getStopState().getRemainingGraceSteps() + ")"
-                : "";
-        log.info("========== Turn {} [{}] | tokens: {}/{} ({}%){} ==========",
-                state.getTurnCount(), profile, usedTokens, maxBudget,
-                String.format("%.0f", ratio * 100), stopSuffix);
+    private FireResult firePostModelHooks(SessionState state, LlmResponse response) {
+        return HookDispatcher.dispatch(
+                postModelHooks, state,
+                (hook, s) -> hook.afterModelCall(s, response),
+                reason -> handleStop(currentRec, state, reason),
+                () -> finalizeIfPending(currentRec, state)
+        );
     }
 
-    private void logContextInfo(ContextBuilder ctx, List<ChatMessage> messages, SessionState state) {
-        log.info("[Context] {} messages | est. {} tokens | summary: {} | catalog: {} tools",
-                messages.size(), ctx.estimateTokens(),
-                state.getCompressionState().getLastSummary() != null ? "yes" : "no",
-                toolRegistry.getAllToolNames().size());
+    private FireResult firePreToolHooks(SessionState state, List<ToolExecutionRequest> requests) {
+        return HookDispatcher.dispatch(
+                preToolHooks, state,
+                (hook, s) -> hook.beforeToolExecution(s, requests),
+                reason -> handleStop(currentRec, state, reason),
+                () -> finalizeIfPending(currentRec, state)
+        );
     }
 
-    private void logLlmResponse(String thought, List<ToolExecutionRequest> requests,
-                                int deltaTokens, SessionState state) {
-        String thoughtSummary = thought.length() > 100 ? thought.substring(0, 100) + "..." : thought;
-        if (requests != null && !requests.isEmpty()) {
-            List<String> toolNames = requests.stream().map(ToolExecutionRequest::name).toList();
-            log.info("[LLM] thought: \"{}\" | tools: {} | tokens: +{} ({} total)",
-                    thoughtSummary, toolNames, deltaTokens, state.getUsageAccum().getTotalTokens());
-        } else {
-            log.info("[LLM] thought: \"{}\" | no tools | tokens: +{} ({} total)",
-                    thoughtSummary, deltaTokens, state.getUsageAccum().getTotalTokens());
-        }
+    private FireResult firePostToolHooks(SessionState state, String toolName, boolean success) {
+        return HookDispatcher.dispatch(
+                postToolHooks, state,
+                (hook, s) -> hook.afterToolExecution(s, toolName, success),
+                reason -> handleStop(currentRec, state, reason),
+                () -> {}  // PostTool stop 不 finalize，由外层 finalizeAndAppend 处理
+        );
     }
 
-    private void logTurnDone(SessionState state, int turnStartTokens) {
-        List<ToolExecutionResult> results = state.getLastToolResults();
-        int toolCount = results != null ? results.size() : 0;
-        int okCount = results != null
-                ? (int) results.stream().filter(r -> !r.content().startsWith("[ERROR]")).count()
-                : 0;
-        int failCount = toolCount - okCount;
-        long maxBudget = config.getBudget().getMaxTokens();
-        int turnDeltaTokens = state.getUsageAccum().getTotalTokens() - turnStartTokens;
-        double waterRatio = maxBudget > 0 ? (double) state.getUsageAccum().getTotalTokens() / maxBudget : 0.0;
-        log.info("---------- Turn {} done | tools: {} ok, {} fail | delta: +{} tokens | total: {} | water: {}% ----------",
-                state.getTurnCount(), okCount, failCount, turnDeltaTokens,
-                state.getUsageAccum().getTotalTokens(), String.format("%.0f", waterRatio * 100));
-    }
+    // ===== 上下文与工具方法 =====
 
-    // ===== 工具与上下文方法 =====
-
-    /** stop 期间确保 finish 工具已挂载。 */
-    private List<ToolSpecification> ensureFinishMounted(List<ToolSpecification> tools) {
-        boolean hasFinish = tools.stream().anyMatch(t -> FINISH.equals(t.name()));
-        if (hasFinish) return tools;
-
-        List<ToolSpecification> augmented = new ArrayList<>(tools);
-        List<ToolSpecification> finishSpec = toolRegistry.getSpecificationsByName(Set.of(FINISH));
-        augmented.addAll(finishSpec);
-        log.info("[STOP] finish tool force-mounted ({} -> {} specs)", tools.size(), augmented.size());
-        return augmented;
-    }
-
-    /** 组装上下文。 */
-    private ContextBuilder buildContext(SessionState state, RequestProfile profile) {
+    private ContextBuilder buildContext(SessionState state) {
         ContextBuilder ctx = new ContextBuilder();
         ctx.setSystemPrompt(basePrompt);
-
         if (state.getCompressionState().getLastSummary() != null) {
             ctx.setSummary(state.getCompressionState().getLastSummary());
         }
-
-        List<ChatMessage> transcript = jsonlStore.snapshot();
-        ctx.setTranscript(transcript);
-
+        ctx.setTranscript(jsonlStore.snapshot());
         ctx.setToolCatalog(toolRegistry.getCatalogSummary());
-
         return ctx;
     }
 
-    /**
-     * 两阶段懒加载获取工具 Schema
-     * 未声明：只挂载 enable_tools
-     * 已声明：挂载声明的工具 + enable_tools（保留声明能力，允许中途追加新工具）
-     */
-    private List<ToolSpecification> getToolsForProfile(SessionState state) {
+    /** 两阶段懒加载：未声明只挂 enable_tools；已声明挂载声明工具 + enable_tools。 */
+    private List<ToolSpecification> getToolsForProfile(TurnRecord rec, SessionState state) {
         Set<String> mounts = state.getPendingToolMounts();
         if (mounts == null || mounts.isEmpty()) {
-            log.info("[Mount] lazy-load phase 1: enable_tools only");
+            logger.mountPhase(rec, 1, "enable_tools only");
             return toolRegistry.getSpecificationsByName(Set.of(ENABLE_TOOLS));
         }
-
         Set<String> realMounts = new LinkedHashSet<>(mounts);
         realMounts.add(ENABLE_TOOLS);
         List<ToolSpecification> specs = toolRegistry.getSpecificationsByName(realMounts);
-        log.info("[Mount] lazy-load phase 2: {} -> {} specs", realMounts, specs.size());
+        logger.mountPhase(rec, 2, realMounts + " -> " + specs.size() + " specs");
         return specs;
     }
 
-    /** 校验工具是否存在，注入格式修正提示。 */
     private void validateToolExistence(SessionState state, List<ToolExecutionRequest> requests) {
         for (ToolExecutionRequest req : requests) {
             if (!toolRegistry.contains(req.name())) {
@@ -608,56 +454,16 @@ public class EonAgent {
         }
     }
 
-    /** 执行工具。 */
-    private List<ToolExecutionResult> executeTools(SessionState state) {
-        List<ToolExecutionRequest> requests = state.getPendingToolCalls();
-        List<ToolExecutionResult> results = new ArrayList<>();
-
-        for (ToolExecutionRequest req : requests) {
-            Map<String, Object> args = parseArgs(req.arguments());
-            String reason = (String) args.get("reason");
-
-            String rawResult = toolRegistry.execute(req.name(), args, state, toolContext);
-
-            // 拦截 enable_tools：从参数中提取工具名，设置 pendingToolMounts
-            if (ENABLE_TOOLS.equals(req.name())) {
-                Object toolsRaw = args.get("tools");
-                if (toolsRaw instanceof List<?> toolList && !toolList.isEmpty()) {
-                    Set<String> declaredTools = new LinkedHashSet<>();
-                    for (Object item : toolList) {
-                        String name = String.valueOf(item).trim();
-                        if (toolRegistry.contains(name)) {
-                            declaredTools.add(name);
-                        } else {
-                            log.warn("[Mount] declared tool not found: {}", name);
-                        }
-                    }
-                    if (!declaredTools.isEmpty()) {
-                        state.setPendingToolMounts(declaredTools);
-                        log.info("[Mount] declared: {} -> {} valid tools", toolList, declaredTools);
-                    }
-                }
-            }
-
-            String rendered = resultRenderer.render(req.name(), req.id(), reason, rawResult, state);
-
-            boolean success = !rawResult.startsWith("[ERROR]");
-            String argsSummary = summarizeArgs(req.name(), args);
-            log.info("[Tool] {} -> {} | args: {} | {} chars",
-                    req.name(), success ? "OK" : "FAIL", argsSummary, rendered.length());
-
-            results.add(ToolExecutionResult.of(req.id(), req.name(), rendered));
-
-            if (FINISH.equals(req.name()) && state.isFinished()) {
-                break;
-            }
-        }
-        state.setLastToolResults(results);
-        return results;
+    private List<ToolSpecification> ensureFinishMounted(List<ToolSpecification> tools) {
+        if (tools.stream().anyMatch(t -> FINISH.equals(t.name()))) return tools;
+        List<ToolSpecification> augmented = new ArrayList<>(tools);
+        augmented.addAll(toolRegistry.getSpecificationsByName(Set.of(FINISH)));
+        log.info("[STOP] finish tool force-mounted ({} -> {} specs)", tools.size(), augmented.size());
+        return augmented;
     }
 
     /** 回填 AI 消息和工具结果到 JSONL，清理临时状态。 */
-    private void finalizeAndAppend(SessionState state) {
+    private void finalizeAndAppend(TurnRecord rec, SessionState state) {
         AiMessage aiMsg = state.getLastAssistantText() != null && !state.getLastAssistantText().isBlank()
                 ? AiMessage.from(state.getLastAssistantText(), state.getPendingToolCalls())
                 : AiMessage.from(state.getPendingToolCalls());
@@ -669,64 +475,12 @@ public class EonAgent {
                 jsonlStore.append(ToolExecutionResultMessage.from(
                         result.toolCallId(), result.toolName(), result.content()));
             }
-            log.info("[Flush] AI msg + {} tool results appended to transcript", toolResults.size());
-        } else {
-            log.info("[Flush] AI msg appended to transcript");
         }
+        logger.flushed(rec, toolResults != null ? toolResults.size() : 0);
 
         state.getPendingNudges().clear();
         state.getFormatCorrections().clear();
         state.setPendingToolCalls(null);
         state.setLastToolResults(null);
-    }
-
-    /** 提取工具调用的关键参数摘要，用于日志展示。 */
-    private String summarizeArgs(String toolName, Map<String, Object> args) {
-        if (args == null || args.isEmpty()) return "(none)";
-        String summary = switch (toolName) {
-            case "web_search" -> {
-                Object q = args.get("query");
-                yield q != null ? "{query: \"" + truncate(String.valueOf(q), 60) + "\"}" : args.toString();
-            }
-            case "web_read", "download" -> {
-                Object u = args.get("url");
-                yield u != null ? "{url: \"" + truncate(String.valueOf(u), 60) + "\"}" : args.toString();
-            }
-            case "finish" -> {
-                Object g = args.get("goal_achieved");
-                yield "{goal_achieved: " + g + "}";
-            }
-            case "todo_write" -> {
-                Object t = args.get("todos");
-                int count = (t instanceof List<?> l) ? l.size() : 0;
-                yield "{todos: " + count + " items}";
-            }
-            case "file_io" -> {
-                Object op = args.get("operation");
-                Object p = args.get("path");
-                yield "{op: " + op + ", path: \"" + truncate(String.valueOf(p), 50) + "\"}";
-            }
-            case "enable_tools" -> {
-                Object t = args.get("tools");
-                yield "{tools: " + t + "}";
-            }
-            default -> args.toString();
-        };
-        return truncate(summary, 80);
-    }
-
-    private String truncate(String s, int maxLen) {
-        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
-    }
-
-    private Map<String, Object> parseArgs(String json) {
-        if (json == null || json.isBlank()) return Map.of();
-        try {
-            return JsonMapper.get()
-                    .readValue(json, new TypeReference<Map<String, Object>>() {});
-        } catch (Exception e) {
-            log.warn("[Tool] failed to parse arguments: {}", json, e);
-            return Map.of();
-        }
     }
 }

@@ -1,6 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.model.SessionState;
+import cn.kong.eon.model.TerminationFormatter;
 import cn.kong.eon.model.TodoItem;
 import cn.kong.eon.model.TodoStatus;
 import cn.kong.eon.model.ToolPermission;
@@ -61,80 +62,40 @@ public class FinishTool implements ToolExecutor {
     @Override
     public String execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         String summary = (String) arguments.get("summary");
-        Boolean goalAchieved = (Boolean) arguments.get("goal_achieved");
-        String pendingWork = (String) arguments.get("pending_work");
-
         if (summary == null || summary.isBlank()) {
             return "[ERROR] finish 必须附带 summary, 请基于当前对话上下文进行总结";
         }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("[FINISH] 任务结束\n");
-        sb.append("目标达成: ").append(goalAchieved != null && goalAchieved).append("\n");
-        sb.append("总结: ").append(summary).append("\n");
-
-        // 如果处于 stop 流程，标注中断原因
-        if (state.isStopRequested()) {
-            sb.append("中断原因: ").append(state.getStopState().getReason().getMessage()).append("\n");
-        }
-
-        // 附上 Todo 进度统计
-        List<TodoItem> todos = context.todoStore().getAll();
-        if (!todos.isEmpty()) {
-            long completed = todos.stream().filter(t -> t.getStatus() == TodoStatus.COMPLETED).count();
-            long inProgress = todos.stream().filter(t -> t.getStatus() == TodoStatus.IN_PROGRESS).count();
-            long pending = todos.stream().filter(t -> t.getStatus() == TodoStatus.PENDING).count();
-            long blocked = todos.stream().filter(t -> t.getStatus() == TodoStatus.BLOCKED).count();
-
-            sb.append("\n进度统计: ").append(completed).append("/").append(todos.size())
-                    .append(" 完成 (").append(inProgress).append(" 进行中, ")
-                    .append(pending).append(" 待办, ").append(blocked).append(" 阻塞)\n");
-
-            // 未完成的任务列表
-            List<TodoItem> pendingTodos = todos.stream()
-                    .filter(t -> t.getStatus() != TodoStatus.COMPLETED && t.getStatus() != TodoStatus.CANCELLED)
-                    .toList();
-            if (!pendingTodos.isEmpty()) {
-                sb.append("未完成任务:\n");
-                for (TodoItem t : pendingTodos) {
-                    sb.append("  ").append(t.toString());
-                    if (t.getStatus() == TodoStatus.BLOCKED && t.getBlockReason() != null) {
-                        sb.append(" [阻塞: ").append(t.getBlockReason()).append("]");
-                    }
-                    sb.append("\n");
-                }
-            }
-        }
-
-        // pending_work 参数
-        if (pendingWork != null && !pendingWork.isBlank()) {
-            sb.append("\n待做工作: ").append(pendingWork).append("\n");
-        }
-
-        // 后续建议
-        Object followUps = arguments.get("follow_up_suggestions");
-        if (followUps instanceof java.util.List<?> list && !list.isEmpty()) {
-            sb.append("后续建议:\n");
-            for (Object s : list) {
-                sb.append("  - ").append(s).append("\n");
-            }
-        }
-
-        // Token 消耗
-        sb.append("\n消耗: ").append(state.getUsageAccum().getTotalTokens())
-                .append(" tokens, ").append(state.getTurnCount()).append(" 轮\n");
+        boolean goalAchieved = Boolean.TRUE.equals(arguments.get("goal_achieved"));
+        String pendingWork = (String) arguments.get("pending_work");
+        List<String> followUps = extractFollowUps(arguments.get("follow_up_suggestions"));
 
         // 设置结束状态
         state.setFinished(true);
-        state.setFinishReason(goalAchieved != null && goalAchieved ? "GOAL_ACHIEVED" : "TASK_ENDED");
+        state.setFinishReason(goalAchieved ? "GOAL_ACHIEVED" : "TASK_ENDED");
         state.setLastAssistantText(summary);
 
+        List<TodoItem> todos = context.todoStore().getAll();
         log.info("Finish called: goalAchieved={}, todos={}/{}, tokens={}",
                 goalAchieved,
                 todos.isEmpty() ? 0 : todos.stream().filter(t -> t.getStatus() == TodoStatus.COMPLETED).count(),
                 todos.size(),
                 state.getUsageAccum().getTotalTokens());
 
-        return sb.toString();
+        String stopReasonMessage = state.isStopRequested()
+                ? state.getStopState().getReason().getMessage() : null;
+
+        return new TerminationFormatter().formatFinish(
+                summary, goalAchieved, pendingWork, followUps,
+                stopReasonMessage, todos,
+                state.getTurnCount(), state.getUsageAccum().getTotalTokens());
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> extractFollowUps(Object raw) {
+        if (raw instanceof List<?> list && !list.isEmpty()) {
+            return list.stream().map(String::valueOf).toList();
+        }
+        return List.of();
     }
 }
