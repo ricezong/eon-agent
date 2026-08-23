@@ -39,23 +39,35 @@ public class ToolDescriptor {
                 Object q = args.get("query");
                 yield q != null ? "{query: \"" + truncate(String.valueOf(q), 60) + "\"}" : args.toString();
             }
-            case "web_read", "download" -> {
-                Object u = args.get("url");
-                yield u != null ? "{url: \"" + truncate(String.valueOf(u), 60) + "\"}" : args.toString();
+            case "read_file", "write", "delete_file", "list_dir" -> {
+                Object p = args.get("target_file");
+                if (p == null) p = args.get("file_path");
+                if (p == null) p = args.get("target_directory");
+                yield p != null ? "{path: \"" + truncate(String.valueOf(p), 50) + "\"}" : args.toString();
             }
-            case "finish" -> {
-                Object g = args.get("goal_achieved");
-                yield "{goal_achieved: " + g + "}";
+            case "grep" -> {
+                Object pat = args.get("pattern");
+                yield pat != null ? "{pattern: \"" + truncate(String.valueOf(pat), 50) + "\"}" : args.toString();
             }
             case "todo_write" -> {
                 Object t = args.get("todos");
                 int count = (t instanceof List<?> l) ? l.size() : 0;
                 yield "{todos: " + count + " items}";
             }
-            case "file_io" -> {
-                Object op = args.get("operation");
-                Object p = args.get("path");
-                yield "{op: " + op + ", path: \"" + truncate(String.valueOf(p), 50) + "\"}";
+            case "update_memory" -> {
+                Object a = args.get("action");
+                Object t = args.get("title");
+                yield "{action: " + a + ", title: \"" + truncate(String.valueOf(t), 40) + "\"}";
+            }
+            case "web_fetch" -> {
+                Object u = args.get("urls");
+                int count = (u instanceof List<?> l) ? l.size() : 0;
+                yield "{urls: " + count + "}";
+            }
+            case "AskQuestion" -> {
+                Object q = args.get("questions");
+                int count = (q instanceof List<?> l) ? l.size() : 0;
+                yield "{questions: " + count + "}";
             }
             default -> truncate(args.toString(), 80);
         };
@@ -67,13 +79,11 @@ public class ToolDescriptor {
     }
 
     /**
-     * 构建工具 Schema，自动注入 reason 必填字段。
+     * 构建工具 Schema。
      * properties 中每个属性支持：type, description, required, items(array), properties(object)。
      */
     public static ToolSpecification buildSpec(String name, String description, Map<String, Map<String, Object>> properties) {
         JsonObjectSchema.Builder schemaBuilder = JsonObjectSchema.builder();
-
-        schemaBuilder.addStringProperty("reason", "为什么发起这次调用（必填，一句话说明动机）");
 
         if (properties != null) {
             for (Map.Entry<String, Map<String, Object>> entry : properties.entrySet()) {
@@ -82,7 +92,6 @@ public class ToolDescriptor {
         }
 
         List<String> required = new ArrayList<>();
-        required.add("reason");
         if (properties != null) {
             for (Map.Entry<String, Map<String, Object>> entry : properties.entrySet()) {
                 if (Boolean.TRUE.equals(entry.getValue().get("required"))) {
@@ -90,7 +99,9 @@ public class ToolDescriptor {
                 }
             }
         }
-        schemaBuilder.required(required);
+        if (!required.isEmpty()) {
+            schemaBuilder.required(required);
+        }
 
         return ToolSpecification.builder()
                 .name(name)

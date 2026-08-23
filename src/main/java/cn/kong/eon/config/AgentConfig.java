@@ -25,6 +25,7 @@ public class AgentConfig {
     private final WebSearchConfig webSearch; // 搜索配置
     private final boolean checkpointEnabled; // 是否启用 Checkpoint
     private final BudgetConfig budget;      // 预算配置
+    private final int summarizeTurns;       // 轮数触发摘要阈值
 
     public AgentConfig(Map<String, Object> raw) {
         this.raw = raw;
@@ -40,6 +41,8 @@ public class AgentConfig {
         Map<String, Object> mode = getMap("mode");
         this.checkpointEnabled = (boolean) mode.getOrDefault("checkpoint_enabled", false);
         this.budget = new BudgetConfig(getMap("budget"));
+        Map<String, Object> comp = getMap("compression");
+        this.summarizeTurns = ((Number) comp.getOrDefault("summarize_turns", 4)).intValue();
     }
 
     public static AgentConfig load(InputStream yamlStream) {
@@ -101,6 +104,7 @@ public class AgentConfig {
     public WebSearchConfig getWebSearch() { return webSearch; }
     public boolean isCheckpointEnabled() { return checkpointEnabled; }
     public BudgetConfig getBudget() { return budget; }
+    public int getSummarizeTurns() { return summarizeTurns; }
 
     // ===== 子配置类 =====
 
@@ -135,8 +139,6 @@ public class AgentConfig {
 
         // 固定常量（不从 yaml 读取）
         public static final int PINNED_MAX_TOKENS = 2048;          // Navigator 最大 token
-        public static final int INSIGHTS_MAX_ITEMS = 40;           // Insights 最大条数
-        public static final int INSIGHTS_MAX_CHARS = 8000;         // Insights 最大字符数
         public static final int TAIL_GUARD_MIN_TOKENS = 8000;      // 尾部保护最小 token
         public static final int TAIL_GUARD_MIN_TURNS = 3;          // 尾部保护最小轮次
         public static final int SNIP_KEEP_CHARS = 80;              // Snip 保留字符数
@@ -255,12 +257,16 @@ public class AgentConfig {
         public final Set<String> whitelist;  // 允许注册的本地工具
         public final Set<String> destructive; // 破坏性工具
         public final Set<String> readonly;   // 只读工具
+        public final boolean sandboxEnabled;          // 路径沙箱开关
+        public final int parallelism;                 // 并行工具执行线程数
 
         @SuppressWarnings("unchecked")
         public ToolsConfig(Map<String, Object> m) {
             this.whitelist = new LinkedHashSet<>((List<String>) m.getOrDefault("whitelist", List.of()));
             this.destructive = new LinkedHashSet<>((List<String>) m.getOrDefault("destructive", List.of()));
             this.readonly = new LinkedHashSet<>((List<String>) m.getOrDefault("readonly", List.of()));
+            this.sandboxEnabled = (boolean) m.getOrDefault("sandbox_enabled", true);
+            this.parallelism = ((Number) m.getOrDefault("parallelism", 4)).intValue();
         }
     }
 

@@ -15,12 +15,14 @@ public class CompressionState {
     private String lastSummary;
     private int summarizedUpToIndex;
     private double lastWaterLevel;
+    private int lastTurnCompressed;   // 上次轮数触发压缩时的 turnCount，0=从未触发
 
     public CompressionState() {
         this.snippedIds = new HashSet<>();
         this.prunedIds = new HashSet<>();
         this.summarizedUpToIndex = -1;
         this.lastWaterLevel = 0.0;
+        this.lastTurnCompressed = 0;
     }
 
     public boolean isSnipped(String id) { return snippedIds.contains(id); }
@@ -46,4 +48,7 @@ public class CompressionState {
 
     public double getLastWaterLevel() { return lastWaterLevel; }
     public void setLastWaterLevel(double lastWaterLevel) { this.lastWaterLevel = lastWaterLevel; }
+
+    public int getLastTurnCompressed() { return lastTurnCompressed; }
+    public void setLastTurnCompressed(int lastTurnCompressed) { this.lastTurnCompressed = lastTurnCompressed; }
 }

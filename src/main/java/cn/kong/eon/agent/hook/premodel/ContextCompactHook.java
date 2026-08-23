@@ -31,9 +31,11 @@ public class ContextCompactHook implements Hook.PreModelHook {
     private final AgentConfig config;
     private final CompressionEngine compressionEngine;
     private final PairingRepairer pairingRepairer;
+    private final String transcriptPath;
 
-    public ContextCompactHook(AgentConfig config, LlmClient llmClient) {
+    public ContextCompactHook(AgentConfig config, LlmClient llmClient, String transcriptPath) {
         this.config = config;
+        this.transcriptPath = transcriptPath;
         var ctxCfg = config.getContext();
         this.compressionEngine = new CompressionEngine(
                 ctxCfg.snipThreshold,
@@ -43,7 +45,8 @@ public class ContextCompactHook implements Hook.PreModelHook {
                 ctxCfg.PRUNE_KEEP_CHARS,
                 ctxCfg.SUMMARIZE_MAX_INPUT_CHARS,
                 ctxCfg.SUMMARIZE_MAX_OUTPUT_CHARS,
-                llmClient);
+                llmClient,
+                transcriptPath);
         this.pairingRepairer = new PairingRepairer();
     }
 
@@ -54,28 +57,50 @@ public class ContextCompactHook implements Hook.PreModelHook {
         double waterLevel = Math.min(1.0, (double) usedTokens / maxTokens);
         state.getCompressionState().setLastWaterLevel(waterLevel);
 
-        if (waterLevel < config.getContext().snipThreshold) {
+        // 轮数触发：距上次轮数压缩 >= summarize_turns 且有可裁剪内容
+        List<ChatMessage> transcript = ctx.getTranscript();
+        int turnsSinceLastCompress = state.getTurnCount() - state.getCompressionState().getLastTurnCompressed();
+        boolean turnTriggered = turnsSinceLastCompress >= config.getSummarizeTurns()
+                && transcript != null && transcript.size() > config.getContext().TAIL_GUARD_MIN_TURNS * 2 + 2;
+
+        boolean waterTriggered = waterLevel >= config.getContext().snipThreshold;
+
+        if (!waterTriggered && !turnTriggered) {
             return HookResult.ok();
         }
 
-        List<ChatMessage> transcript = ctx.getTranscript();
         if (transcript == null || transcript.isEmpty()) return HookResult.ok();
 
         CompressionState cs = state.getCompressionState();
         int tailGuardTurns = config.getContext().TAIL_GUARD_MIN_TURNS;
 
-        List<ChatMessage> compressed = compressionEngine.compress(
-                new ArrayList<>(transcript), cs, waterLevel, tailGuardTurns);
+        List<ChatMessage> workingCopy = new ArrayList<>(transcript);
 
-        if (waterLevel >= config.getContext().summarizeThreshold) {
-            compressed = pairingRepairer.repair(compressed);
+        if (waterTriggered) {
+            // 水位触发的正常压缩流程：Snip → Prune → Summarize（递进）
+            compressionEngine.compress(workingCopy, cs, waterLevel, tailGuardTurns);
+        } else {
+            // 仅轮数触发：只做 Snip（+ Prune 如水位达标），不做 Summarize
+            compressionEngine.compressByTurnCount(workingCopy, cs, waterLevel, tailGuardTurns);
         }
 
-        ctx.setTranscript(compressed);
+        // Summarize 执行后需要修复配对（仅水位触发路径可能 Summarize）
+        boolean didSummarize = cs.getSummarizedUpToIndex() >= 0
+                && cs.getSummarizedUpToIndex() < workingCopy.size()
+                && waterTriggered;
+        if (didSummarize) {
+            workingCopy = pairingRepairer.repair(workingCopy);
+        }
+
+        ctx.setTranscript(workingCopy);
+        // 记录本次轮数压缩的 turnCount
+        if (turnTriggered) {
+            state.getCompressionState().setLastTurnCompressed(state.getTurnCount());
+        }
         long postCompressTokens = ctx.estimateTokens();
-        log.info("[PreModel] ContextCompact: water {}% | {} -> {} msgs | est. {} -> {} tokens",
-                String.format("%.0f", waterLevel * 100), transcript.size(), compressed.size(),
-                usedTokens, postCompressTokens);
+        String trigger = waterTriggered ? "water " + String.format("%.0f%%", waterLevel * 100) : "turn " + state.getTurnCount();
+        log.info("[PreModel] ContextCompact: {} | {} -> {} msgs | est. {} -> {} tokens",
+                trigger, transcript.size(), workingCopy.size(), usedTokens, postCompressTokens);
 
         return HookResult.ok();
     }

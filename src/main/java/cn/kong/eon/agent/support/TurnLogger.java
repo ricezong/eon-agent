@@ -87,7 +87,7 @@ public class TurnLogger {
                 ? (int) results.stream().filter(ToolExecutionResult::success).count()
                 : 0;
         rec.turnDone(turnStartTokens, state.getUsageAccum().getTotalTokens(),
-                config.getBudget().getMaxTokens(), okCount, toolCount - okCount, state.isFinished());
+                config.getBudget().getMaxTokens(), okCount, toolCount - okCount);
     }
 
     // ===== 统一 flush：2 行摘要 =====
@@ -120,7 +120,6 @@ public class TurnLogger {
         done.append(" │ Δ+").append(rec.turnDeltaTokens).append("tok");
         done.append(" │ total ").append(rec.usedTokens).append("/").append(rec.maxTokens);
         done.append(" (").append(String.format("%.0f", rec.waterRatio * 100)).append("%)");
-        if (rec.finished) done.append(" │ ✓finish");
         log.info(done.toString());
 
         // Stop 事件（如有）
@@ -142,8 +141,8 @@ public class TurnLogger {
         log.info("├─ 用户请求: {}", state.getUserOriginalInput());
     }
 
-    public void agentFinish(SessionState state) {
-        log.info("└─ EonAgent 完成 │ turns={} │ tokens={} │ ✓ finish",
+    public void agentComplete(SessionState state) {
+        log.info("└─ EonAgent 完成 │ turns={} │ tokens={}",
                 state.getTurnCount(), state.getUsageAccum().getTotalTokens());
     }
 

@@ -13,7 +13,6 @@ public class Checkpoint {
     private java.util.List<TodoItem> todoSnapshot;  // Todo 快照
     private TokenUsage usageAccum;   // 累计 token
     private CompressionState compressionState;      // 压缩状态
-    private java.util.List<String> insightsSnapshot; // Insights 快照
     private Instant createdAt;       // 创建时间
 
     public Checkpoint() {}
@@ -35,9 +34,6 @@ public class Checkpoint {
 
     public CompressionState getCompressionState() { return compressionState; }
     public void setCompressionState(CompressionState compressionState) { this.compressionState = compressionState; }
-
-    public java.util.List<String> getInsightsSnapshot() { return insightsSnapshot; }
-    public void setInsightsSnapshot(java.util.List<String> insightsSnapshot) { this.insightsSnapshot = insightsSnapshot; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

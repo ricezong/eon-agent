@@ -13,12 +13,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Map;
 
-/** 门禁校验（PreTool, order=20）。检查破坏性工具的必要参数，校验失败请求优雅停止。 */
+/**
+ * 门禁校验（PreTool, order=20）。
+ * 检查破坏性工具的必要参数是否提供，校验失败请求优雅停止。
+ * 每个破坏性工具有自己的必填参数，不再统一检查 url。
+ */
 public class GateHook implements Hook.PreToolHook {
     private static final Logger log = LoggerFactory.getLogger(GateHook.class);
 
     private static final int STOP_GRACE_STEPS = 2;
+
+    /** 破坏性工具 → 必填参数名映射。 */
+    private static final Map<String, String> DESTRUCTIVE_REQUIRED_PARAMS = Map.of(
+            "delete_file", "target_file"
+    );
 
     private final ToolRegistry toolRegistry;
 
@@ -35,31 +45,34 @@ public class GateHook implements Hook.PreToolHook {
         if (requests == null || requests.isEmpty()) return HookResult.ok();
 
         for (ToolExecutionRequest req : requests) {
-            if (toolRegistry.isDestructive(req.name())) {
-                log.warn("[PreTool] Gate: destructive '{}' approved | args: {} | turn: {}",
-                        req.name(), req.arguments(), state.getTurnCount());
+            if (!toolRegistry.isDestructive(req.name())) continue;
 
-                // 用 JSON 解析提取 url 字段，而非字符串 contains
-                String url = extractUrl(req.arguments());
-                if (url == null || url.isBlank()) {
-                    log.warn("[PreTool] Gate: REJECTED '{}' missing 'url' → STOP", req.name());
-                    StopReason reason = new StopReason(
-                            StopCategory.GATE_REJECTED,
-                            "破坏性工具 " + req.name() + " 缺少必要参数 url",
-                            STOP_GRACE_STEPS);
-                    return HookResult.stop(reason);
-                }
+            log.warn("[PreTool] Gate: destructive '{}' approved | args: {} | turn: {}",
+                    req.name(), req.arguments(), state.getTurnCount());
+
+            String requiredParam = DESTRUCTIVE_REQUIRED_PARAMS.get(req.name());
+            if (requiredParam == null) continue;  // 无映射的破坏性工具跳过参数校验
+
+            String value = extractParam(req.arguments(), requiredParam);
+            if (value == null || value.isBlank()) {
+                log.warn("[PreTool] Gate: REJECTED '{}' missing required param '{}' → STOP",
+                        req.name(), requiredParam);
+                StopReason reason = new StopReason(
+                        StopCategory.GATE_REJECTED,
+                        "破坏性工具 " + req.name() + " 缺少必要参数 " + requiredParam,
+                        STOP_GRACE_STEPS);
+                return HookResult.stop(reason);
             }
         }
         return HookResult.ok();
     }
 
-    /** 从 JSON 参数中提取 url 字段值。 */
-    private String extractUrl(String argumentsJson) {
+    /** 从 JSON 参数中提取指定字段值。 */
+    private String extractParam(String argumentsJson, String fieldName) {
         if (argumentsJson == null || argumentsJson.isBlank()) return null;
         try {
             JsonNode node = JsonMapper.get().readTree(argumentsJson);
-            if (node.has("url")) return node.get("url").asText();
+            if (node.has(fieldName)) return node.get(fieldName).asText();
             return null;
         } catch (Exception e) {
             log.warn("[PreTool] Gate: failed to parse arguments: {}", argumentsJson);

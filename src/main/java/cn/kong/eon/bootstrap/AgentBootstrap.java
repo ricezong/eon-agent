@@ -18,7 +18,17 @@ import cn.kong.eon.store.*;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolRegistry;
 import cn.kong.eon.tool.ToolResultRenderer;
-import cn.kong.eon.tool.builtin.*;
+import cn.kong.eon.tool.builtin.AskQuestionTool;
+import cn.kong.eon.tool.builtin.DeleteFileTool;
+import cn.kong.eon.tool.builtin.DownloadFileTool;
+import cn.kong.eon.tool.builtin.GrepTool;
+import cn.kong.eon.tool.builtin.ListDirTool;
+import cn.kong.eon.tool.builtin.ReadFileTool;
+import cn.kong.eon.tool.builtin.TodoWriteTool;
+import cn.kong.eon.tool.builtin.UpdateMemoryTool;
+import cn.kong.eon.tool.builtin.WebFetchTool;
+import cn.kong.eon.tool.builtin.WebSearchTool;
+import cn.kong.eon.tool.builtin.WriteFileTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,9 +47,7 @@ public class AgentBootstrap {
         // 1. Store 层（按 sessionId 隔离）
         Path sessionDir = Path.of(config.getStorage().baseDir, sessionId);
         TodoStore todoStore = new TodoStore();
-        InsightsStore insightsStore = new InsightsStore(
-config.getContext().INSIGHTS_MAX_ITEMS,
-config.getContext().INSIGHTS_MAX_CHARS);
+        MemoryStore memoryStore = new MemoryStore(Path.of(config.getStorage().baseDir));
         ArtifactStore artifactStore = new ArtifactStore(sessionDir.resolve("artifacts"));
         JsonlStore jsonlStore = new JsonlStore(sessionDir.resolve("transcript.jsonl"));
         CheckpointStore checkpointStore = new CheckpointStore(sessionDir.resolve("checkpoints"));
@@ -52,10 +60,18 @@ config.getContext().INSIGHTS_MAX_CHARS);
         List<McpClientManager> mcpManagers = connectMcpServers(config, toolRegistry);
 
         ToolResultRenderer resultRenderer = new ToolResultRenderer(artifactStore);
+
+        // 会话工作目录：每个会话独立隔离的 workspace
+        Path workspaceDir = sessionDir.resolve("workspace");
+        try {
+            Files.createDirectories(workspaceDir);
+        } catch (IOException e) {
+            throw new RuntimeException("无法创建会话工作目录: " + workspaceDir, e);
+        }
+
         ToolContext toolContext = new ToolContext(
-                todoStore, artifactStore, insightsStore, jsonlStore, checkpointStore,
-                sessionDir.resolve("downloads").toString(),
-                sessionDir.resolve("workspace").toString());
+                todoStore, artifactStore, memoryStore, jsonlStore, checkpointStore,
+                workspaceDir.toString());
 
         // 3. 加载提示词
         String basePrompt = loadPrompt(config.getContext().systemPromptPath);
@@ -77,8 +93,8 @@ config.getContext().INSIGHTS_MAX_CHARS);
         // 7. 挂载 Hook（按执行阶段分组）
         // PreModel 阶段
         agent.addHook(new BudgetHook(config));                              // order=10
-        agent.addHook(new TodoNavigatorHook(todoStore, insightsStore));    // order=20
-        agent.addHook(new ContextCompactHook(config, llmClient));          // order=100
+        agent.addHook(new TodoNavigatorHook(todoStore));    // order=20
+        agent.addHook(new ContextCompactHook(config, llmClient, sessionDir.resolve("transcript.jsonl").toString()));          // order=100
 
         // PostModel 阶段
         agent.addHook(new LoopDetectHook(loopDetector));                   // order=30
@@ -88,7 +104,7 @@ config.getContext().INSIGHTS_MAX_CHARS);
 
         // PostTool 阶段
         agent.addHook(new FailureBreakerHook(loopDetector));               // order=30
-        agent.addHook(new CheckpointHook(config, checkpointStore, todoStore, insightsStore)); // order=100
+        agent.addHook(new CheckpointHook(config, checkpointStore, todoStore)); // order=100
 
         log.info("EonAgent built with {} hooks", agent.getHookCount());
 
@@ -120,18 +136,27 @@ config.getContext().INSIGHTS_MAX_CHARS);
         return agent;
     }
 
-    /** 注册全部本地工具。 */
+    /** 注册全部本地工具（终态 11 个）。 */
     private static void registerAllTools(ToolRegistry toolRegistry, AgentConfig config) {
+        // 文件工具
+        toolRegistry.register(ReadFileTool.descriptor());
+        toolRegistry.register(WriteFileTool.descriptor());
+        toolRegistry.register(DeleteFileTool.descriptor());
+        toolRegistry.register(ListDirTool.descriptor());
+        toolRegistry.register(DownloadFileTool.descriptor());
+        // 搜索工具
+        toolRegistry.register(GrepTool.descriptor());
+        // 任务管理
         toolRegistry.register(TodoWriteTool.descriptor());
-        toolRegistry.register(TodoReadTool.descriptor());
-        toolRegistry.register(WorkingMemoryTool.descriptor());
-        toolRegistry.register(FinishTool.descriptor());
+        // 交互工具
+        toolRegistry.register(AskQuestionTool.descriptor());
+        // 记忆系统
+        toolRegistry.register(UpdateMemoryTool.descriptor());
+        // 网页工具
+        toolRegistry.register(WebFetchTool.descriptor());
+        // 搜索工具
         toolRegistry.register(WebSearchTool.descriptor(config.getWebSearch().apiKey));
-        toolRegistry.register(WebReadTool.descriptor());
-        toolRegistry.register(DownloadTool.descriptor());
-        toolRegistry.register(FileIoTool.descriptor());
-        toolRegistry.register(DateTimeTool.descriptor());
-        log.info("All local tools registered (9)");
+        log.info("Local tools registered ({})", toolRegistry.getAll().size());
     }
 
     /** 连接所有已启用的 MCP 服务，注册远程工具。 */

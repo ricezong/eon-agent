@@ -8,47 +8,137 @@ import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
+import cn.kong.eon.util.JsonMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
-/** todo_write 工具：创建/更新任务清单（全量替换语义）。校验单一焦点与依赖完整性。 */
+/**
+ * todo_write 工具：创建和管理结构化任务列表。
+ * Schema 对齐方案：content/id/status + merge。
+ * merge=true 按 id 合并，merge=false 全量替换。
+ */
 public class TodoWriteTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(TodoWriteTool.class);
+
+    @Override
+    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+        Object todosObj = arguments.get("todos");
+        if (!(todosObj instanceof List<?> todosList) || todosList.isEmpty()) {
+            return ToolOutcome.failure("缺少或空的 'todos' 参数");
+        }
+
+        boolean merge = Boolean.TRUE.equals(arguments.get("merge"));
+
+        // 解析 todos
+        List<TodoItem> items = new ArrayList<>();
+        for (Object obj : todosList) {
+            JsonNode node = JsonMapper.get().valueToTree(obj);
+            String id = node.path("id").asText("");
+            String content = node.path("content").asText("");
+            String statusStr = node.path("status").asText("pending");
+
+            if (id.isBlank()) {
+                return ToolOutcome.failure("每个待办事项必须有非空的 'id'");
+            }
+            if (content.isBlank()) {
+                return ToolOutcome.failure("每个待办事项必须有非空的 'content'");
+            }
+
+            TodoStatus status = parseStatus(statusStr);
+
+            TodoItem item = TodoItem.of(id, content, "medium");
+            item.setStatus(status);
+            items.add(item);
+        }
+
+        // 校验单一焦点
+        if (!context.todoStore().validateSingleFocus(items)) {
+            return ToolOutcome.failure(
+                    "多个待办事项处于 'in_progress' 状态。同一时间只能有一个任务处于进行中状态。");
+        }
+
+        // 执行写入
+        List<TodoItem> result;
+        if (merge) {
+            result = context.todoStore().mergeById(items, state.getTurnCount());
+        } else {
+            result = context.todoStore().replaceAll(items, state.getTurnCount());
+        }
+
+        // 标记 todo 已使用（激活 TodoNavigatorHook）
+        state.setTodoBeenUsed(true);
+
+        String progress = cn.kong.eon.store.TodoStore.formatProgress(result);
+        log.info("todo_write: {} items (merge={}), {}", result.size(), merge, progress);
+
+        return ToolOutcome.success("待办列表已更新。 " + progress + "\n" + formatTodoList(result));
+    }
+
+    private TodoStatus parseStatus(String statusStr) {
+        return switch (statusStr.toLowerCase()) {
+            case "in_progress" -> TodoStatus.IN_PROGRESS;
+            case "completed" -> TodoStatus.COMPLETED;
+            case "cancelled" -> TodoStatus.CANCELLED;
+            case "blocked" -> TodoStatus.BLOCKED;
+            default -> TodoStatus.PENDING;
+        };
+    }
+
+    private String formatTodoList(List<TodoItem> items) {
+        StringBuilder sb = new StringBuilder();
+        for (TodoItem t : items) {
+            sb.append("  ").append(t.toString()).append("\n");
+        }
+        return sb.toString();
+    }
 
     public static ToolDescriptor descriptor() {
         Map<String, Map<String, Object>> props = new LinkedHashMap<>();
 
-        Map<String, Map<String, Object>> itemSchema = new LinkedHashMap<>();
-        itemSchema.put("id", Map.of(
+        // todos: array of objects
+        Map<String, Map<String, Object>> todoItemProps = new LinkedHashMap<>();
+        todoItemProps.put("content", Map.of(
                 "type", "string",
-                "description", "任务 ID，格式如 t1/t2/t3（字符串，不要用纯数字）"
-        ));
-        itemSchema.put("content", Map.of(
-                "type", "string",
-                "description", "任务内容描述（一句话，必填）",
+                "description", "待办事项的描述/内容。",
                 "required", true
         ));
-        itemSchema.put("status", Map.of(
+        todoItemProps.put("id", Map.of(
                 "type", "string",
-                "description", "任务状态枚举：pending(待办) | in_progress(进行中，同时最多1个) | completed(已完成) | blocked(阻塞，需填block_reason) | cancelled(已取消)"
+                "description", "待办事项的唯一标识符。",
+                "required", true
         ));
-        itemSchema.put("priority", Map.of(
+        todoItemProps.put("status", Map.of(
                 "type", "string",
-                "description", "优先级：high | medium | low（默认 medium）"
+                "description", "当前状态。枚举值：\"pending\"、\"in_progress\"、\"completed\"、\"cancelled\"。",
+                "required", true
         ));
 
         props.put("todos", Map.of(
                 "type", "array",
-                "description", "完整 Todo 列表。全量替换语义：传入什么就是什么，未传入的会被清除。每个元素是对象。",
+                "description", "要写入的待办事项数组。",
                 "required", true,
-                "items", itemSchema
+                "items", todoItemProps
+        ));
+        props.put("merge", Map.of(
+                "type", "boolean",
+                "description", "是否将待办事项与已有待办事项合并。为 true 时按 id 合并；为 false 时全量替换。",
+                "required", true
         ));
 
-        String desc = "创建或更新任务清单（全量替换语义）。"
-                + "约束：同时最多 1 个 in_progress；depends_on 未完成的不得标 in_progress；"
-                + "空数组表示清空列表。";
+        String desc = "使用此工具为当前会话创建和管理结构化任务列表。"
+                + "这有助于跟踪进度、组织复杂任务并展示周密性。"
+                + "注意：除了首次创建待办事项外，不要告诉用户你在更新待办事项，直接执行即可。"
+                + "在以下情况主动使用：1. 复杂的多步骤任务（3个以上独立步骤）；2. 需要仔细规划的非简单任务；"
+                + "3. 用户明确要求待办列表；4. 用户提供多个任务；5. 收到新指令后——捕获需求；"
+                + "6. 完成任务后——标记完成；7. 开始新任务时——标记为进行中。"
+                + "以下情况跳过：1. 单一的简单任务；2. 琐碎任务；3. 纯对话/信息查询请求。"
+                + "不要包含操作动作类条目。";
 
         return new ToolDescriptor(
                 "todo_write",
@@ -57,125 +147,5 @@ public class TodoWriteTool implements ToolExecutor {
                 ToolDescriptor.buildSpec("todo_write", desc, props),
                 new TodoWriteTool()
         );
-    }
-
-    @Override
-    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
-        try {
-            Object todosRaw = arguments.get("todos");
-            if (todosRaw == null) {
-                return ToolOutcome.failure("缺少 'todos' 参数。请传入对象数组，例如：[{\"id\":\"t1\",\"content\":\"搜索\",\"status\":\"pending\",\"priority\":\"high\"}]");
-            }
-
-            // ArgumentSanitizer 已保证类型正确
-            List<?> list = (List<?>) todosRaw;
-
-            if (list.isEmpty()) {
-                context.todoStore().clear();
-                return ToolOutcome.success("Todo 列表已清空。");
-            }
-
-            List<TodoItem> todoList = new ArrayList<>();
-            int autoIdCounter = 1;
-            for (Object item : list) {
-                TodoItem todo = convertToTodoItem(item, autoIdCounter);
-                if (todo.getId() == null || todo.getId().isBlank()) {
-                    todo.setId("t" + autoIdCounter);
-                }
-                autoIdCounter++;
-                todoList.add(todo);
-            }
-
-            if (!context.todoStore().validateSingleFocus(todoList)) {
-                return ToolOutcome.failure("同时最多一个 in_progress 任务。请检查 status 字段，确保只有一个 in_progress。");
-            }
-
-            if (!context.todoStore().validateDependencies(todoList)) {
-                return ToolOutcome.failure("depends_on 未完成的 todo 不得标 in_progress。");
-            }
-
-            List<TodoItem> result = context.todoStore().replaceAll(todoList, state.getTurnCount());
-
-            return ToolOutcome.success(renderTodoList(result));
-        } catch (Exception e) {
-            log.error("todo_write failed", e);
-            return ToolOutcome.failure(e.getMessage());
-        }
-    }
-
-    private TodoItem convertToTodoItem(Object item, int autoId) {
-        // ArgumentSanitizer 已保证数组元素类型为 Map
-        if (item instanceof Map<?, ?> rawMap) {
-            Map<String, Object> map = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> e : rawMap.entrySet()) {
-                map.put(String.valueOf(e.getKey()), e.getValue());
-            }
-
-            TodoItem todo = new TodoItem();
-
-            Object idVal = map.get("id");
-            if (idVal != null) {
-                todo.setId(String.valueOf(idVal));
-            }
-
-            // content 兼容 task/text/title/description
-            Object contentVal = map.get("content");
-            if (contentVal == null) contentVal = map.get("task");
-            if (contentVal == null) contentVal = map.get("text");
-            if (contentVal == null) contentVal = map.get("title");
-            if (contentVal == null) contentVal = map.get("description");
-            todo.setContent(contentVal != null ? String.valueOf(contentVal) : "(未命名任务)");
-
-            String statusStr = map.get("status") != null ? String.valueOf(map.get("status")) : "pending";
-            todo.setStatus(parseStatus(statusStr));
-
-            Object priorityVal = map.get("priority");
-            todo.setPriority(priorityVal != null ? String.valueOf(priorityVal) : "medium");
-
-            Object deps = map.get("depends_on");
-            if (deps == null) deps = map.get("dependsOn");
-            if (deps instanceof List<?> depList) {
-                List<String> depIds = new ArrayList<>();
-                for (Object d : depList) depIds.add(String.valueOf(d));
-                todo.setDependsOn(depIds);
-            }
-
-            todo.setNotes(map.get("notes") != null ? String.valueOf(map.get("notes")) : null);
-            todo.setBlockReason(map.get("block_reason") != null ? String.valueOf(map.get("block_reason")) : null);
-            return todo;
-        }
-
-        throw new IllegalStateException("Unexpected item type: " + item.getClass());
-    }
-
-    /** 兼容多种 status 写法。 */
-    private TodoStatus parseStatus(String statusStr) {
-        if (statusStr == null || statusStr.isBlank()) return TodoStatus.PENDING;
-        String normalized = statusStr.trim().toLowerCase().replace("-", "_").replace(" ", "_");
-        return switch (normalized) {
-            case "pending", "todo", "to_do", "not_started", "waiting" -> TodoStatus.PENDING;
-            case "in_progress", "inprogress", "running", "active", "doing" -> TodoStatus.IN_PROGRESS;
-            case "completed", "complete", "done", "finished", "success" -> TodoStatus.COMPLETED;
-            case "blocked", "block", "stuck", "error", "failed" -> TodoStatus.BLOCKED;
-            case "cancelled", "canceled", "cancel", "skipped", "skip" -> TodoStatus.CANCELLED;
-            default -> {
-                log.warn("Unknown status '{}', defaulting to PENDING", statusStr);
-                yield TodoStatus.PENDING;
-            }
-        };
-    }
-
-    private String renderTodoList(List<TodoItem> todos) {
-        if (todos.isEmpty()) {
-            return "Todo 列表已清空。";
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("当前任务清单（").append(todos.size()).append(" 项）：\n");
-        for (TodoItem t : todos) {
-            sb.append(t.toString()).append("\n");
-        }
-        long completed = todos.stream().filter(x -> x.getStatus() == TodoStatus.COMPLETED).count();
-        sb.append("进度：").append(completed).append("/").append(todos.size()).append(" 完成");
-        return sb.toString();
     }
 }

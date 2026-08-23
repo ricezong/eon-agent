@@ -26,6 +26,8 @@ import dev.langchain4j.data.message.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 
 /**
@@ -69,7 +71,7 @@ public class EonAgent {
         this.basePrompt = basePrompt;
         this.toolContext = toolContext;
         this.logger = new TurnLogger(config);
-        this.toolHandler = new ToolExecutionHandler(toolRegistry, resultRenderer, toolContext, logger, loopDetector);
+        this.toolHandler = new ToolExecutionHandler(toolRegistry, resultRenderer, toolContext, logger, loopDetector, config.getTools().parallelism);
     }
 
     public void addHook(Hook hook) {
@@ -116,16 +118,23 @@ public class EonAgent {
 
             try {
                 TurnAction action = executeTurn(state, turnStartTokens);
-                if (action instanceof TurnAction.Exit exit) return exit.output();
+                if (action instanceof TurnAction.Exit exit) return renderMemoryReferences(exit.output());
             } catch (Exception e) {
                 TurnAction action = handleLoopException(state, e);
-                if (action instanceof TurnAction.Exit exit) return exit.output();
+                if (action instanceof TurnAction.Exit exit) return renderMemoryReferences(exit.output());
             }
         }
 
         // maxSteps 在 while 循环外触发
         TurnAction action = handleMaxSteps(state);
-        return action instanceof TurnAction.Exit exit ? exit.output() : "";
+        String output = action instanceof TurnAction.Exit exit ? exit.output() : "";
+        return renderMemoryReferences(output);
+    }
+
+    /** 将 [[memory:xxx]] 引用替换为标题（内容摘要）。 */
+    private String renderMemoryReferences(String text) {
+        if (text == null || text.isEmpty()) return text;
+        return toolContext.memoryStore().renderReferences(text);
     }
 
     private void initRun(SessionState state) {
@@ -135,7 +144,6 @@ public class EonAgent {
     }
 
     private boolean shouldContinue(SessionState state) {
-        if (state.isFinished()) return false;
         int effectiveMax = state.isStopRequested()
                 ? config.getLoop().absoluteMaxSteps
                 : config.getLoop().maxSteps;
@@ -188,18 +196,13 @@ public class EonAgent {
             FireResult extension = executeExtensionLoop(rec, state, requests);
             if (extension instanceof FireResult.Exit exit) return new TurnAction.Exit(exit.output());
 
-            // 7. 回填 + finish 检测
+            // 7. 回填
             finalizeAndAppend(rec, state);
             logger.turnDone(rec, state, turnStartTokens);
 
-            if (state.isFinished()) {
-                logger.agentFinish(state);
-                return new TurnAction.Exit(state.getLastAssistantText());
-            }
-
-            // 8. stop 期间消耗 grace（非 finish 工具 / 无工具调用 两种场景统一处理）
+            // 8. stop 期间消耗 grace（LLM 仍在调用工具时消耗 grace step）
             if (state.isStopRequested()) {
-                return consumeGraceStep(rec, state, "LLM called non-finish tool");
+                return consumeGraceStep(rec, state, "LLM called tool during stop");
             }
 
             return new TurnAction.Continue();
@@ -232,7 +235,7 @@ public class EonAgent {
         return new FireResult.Continue();
     }
 
-    /** 处理无工具调用的情况。 */
+    /** 处理无工具调用的情况（方案语义：无工具调用 = 任务完成，直接退出）。 */
     private TurnAction handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
         // 截断检测
         if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
@@ -243,17 +246,7 @@ public class EonAgent {
             return new TurnAction.Continue();
         }
 
-        // stop 期间 LLM 未调 finish：消耗 grace step
-        if (state.isStopRequested()) {
-            TurnAction action = consumeGraceStep(rec, state, "LLM did not call finish");
-            if (action instanceof TurnAction.Exit exit) return exit;
-            state.addFormatCorrection(
-                    "请立即调用 finish 工具进行总结。这是最后的机会，否则任务将被强制终止。");
-            finalizeAndAppend(rec, state);
-            return new TurnAction.Continue();
-        }
-
-        // 正常聊天结束
+        // 正常聊天结束（stop 期间 LLM 未调用工具 = 已输出总结，直接退出）
         finalizeAndAppend(rec, state);
         return new TurnAction.Exit(thought);
     }
@@ -400,8 +393,17 @@ public class EonAgent {
         if (state.getCompressionState().getLastSummary() != null) {
             ctx.setSummary(state.getCompressionState().getLastSummary());
         }
+        // 动态注入块（方案 §2.10）
+        String userInfo = cn.kong.eon.context.dynamic.UserInfoProvider.generate(toolContext.workDir());
+        ctx.setUserInfo(userInfo);
+        String rules = loadUserRules();
+        if (rules != null) ctx.setRules(rules);
+        String mems = toolContext.memoryStore().renderForInjection();
+        ctx.setMemories(mems);
+        String skills = cn.kong.eon.context.dynamic.SkillsIndexProvider.generate(
+                Path.of(config.getStorage().baseDir, "skills").toString());
+        ctx.setAgentSkills(skills);
         ctx.setTranscript(jsonlStore.snapshot());
-        ctx.setToolCatalog(toolRegistry.getCatalogSummary());
         // 渲染运行时提醒到上下文
         renderNudges(state, ctx);
         return ctx;
@@ -420,6 +422,37 @@ public class EonAgent {
             sb.append("- ").append(correction).append("\n");
         }
         ctx.setRuntimeNudges(sb.toString());
+    }
+
+    /** 从外部文件加载用户规则。仅在用户显式创建时注入，classpath 模板不注入。 */
+    private String loadUserRules() {
+        // 只从外部文件加载，不从 classpath 加载模板
+        Path externalPath = Path.of("prompts/user_rules.md");
+        if (!Files.exists(externalPath)) {
+            return null;
+        }
+        try {
+            String content = Files.readString(externalPath).trim();
+            if (content.isEmpty()) {
+                return null;
+            }
+            // 过滤掉纯注释/标题模板：去掉注释和标题行后检查是否有实际内容
+            String actualContent = content.lines()
+                    .filter(line -> {
+                        String trimmed = line.trim();
+                        return !trimmed.isEmpty()
+                                && !trimmed.startsWith("#")
+                                && !trimmed.startsWith("<!--");
+                    })
+                    .reduce("", (a, b) -> a + "\n" + b).trim();
+            if (actualContent.isEmpty()) {
+                return null;
+            }
+            return "<rules>\n" + actualContent + "\n</rules>";
+        } catch (java.io.IOException e) {
+            log.debug("User rules not loaded: {}", e.getMessage());
+        }
+        return null;
     }
 
     /** 校验工具是否存在，不存在则注入格式纠正提示。 */

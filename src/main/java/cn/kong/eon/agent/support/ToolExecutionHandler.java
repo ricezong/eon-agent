@@ -13,89 +13,170 @@ import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.*;
 
 /**
  * 工具执行处理器。封装工具执行全流程：
- * 参数解析 → 执行 → finish 拦截 → todo_write 后处理 → 结果渲染 → 日志。
+ * 参数解析 → 执行 → todo_write 后处理 → 结果渲染 → 日志。
+ * 支持并行执行：多个互相独立的工具请求用 ExecutorService 并行，
+ * 串行豁免清单（todo_write/AskQuestion）强制串行。
  */
 public class ToolExecutionHandler {
     private static final Logger log = LoggerFactory.getLogger(ToolExecutionHandler.class);
 
-    private static final String FINISH = "finish";
     private static final String TODO_WRITE = "todo_write";
+    /** 串行豁免清单：顺序敏感或交互互斥的工具，即使与其他工具同轮也强制串行。 */
+    private static final Set<String> SERIAL_ONLY = Set.of(TODO_WRITE, "AskQuestion");
 
     private final ToolRegistry toolRegistry;
     private final ToolResultRenderer resultRenderer;
     private final ToolContext toolContext;
     private final TurnLogger logger;
     private final LoopDetector loopDetector;
+    private final ExecutorService parallelExecutor;
 
     public ToolExecutionHandler(ToolRegistry toolRegistry,
                                 ToolResultRenderer resultRenderer,
                                 ToolContext toolContext,
                                 TurnLogger logger,
-                                LoopDetector loopDetector) {
+                                LoopDetector loopDetector,
+                                int parallelism) {
         this.toolRegistry = toolRegistry;
         this.resultRenderer = resultRenderer;
         this.toolContext = toolContext;
         this.logger = logger;
         this.loopDetector = loopDetector;
+        this.parallelExecutor = Executors.newFixedThreadPool(Math.max(1, parallelism), r -> {
+            Thread t = new Thread(r, "tool-exec");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     /**
      * 执行所有待执行的工具调用。被熔断的工具跳过执行，返回合成错误结果。
-     * 包含 finish 拦截和 todo_write 后处理。
+     * 包含 todo_write 后处理。
+     * 多个互相独立的工具并行执行；串行豁免清单中的工具强制串行。
      */
     public List<ToolExecutionResult> execute(TurnRecord rec, SessionState state) {
         List<ToolExecutionRequest> requests = state.getPendingToolCalls();
-        List<ToolExecutionResult> results = new ArrayList<>();
+        int n = requests.size();
 
-        for (ToolExecutionRequest req : requests) {
-            // 被熔断的工具跳过执行，直接返回合成错误
-            if (loopDetector.isToolTripped(req.name())) {
-                ToolOutcome tripped = ToolOutcome.failure(
-                        "工具 " + req.name() + " 已被熔断（连续失败过多），请标记 blocked 或调整计划，不要再调用此工具");
-                String rendered = resultRenderer.render(req.name(), tripped, state);
-                logger.toolExecuted(rec, req.name(), false, "(tripped)", rendered.length());
-                results.add(ToolExecutionResult.of(req.id(), req.name(), tripped, rendered));
-                continue;
+        // 单请求：直接执行（无并行开销）
+        if (n == 1) {
+            List<ToolExecutionResult> results = new ArrayList<>(1);
+            results.add(executeSingle(requests.get(0), rec, state));
+            state.setLastToolResults(results);
+            return results;
+        }
+
+        // 多请求：分区 — 串行豁免工具 vs 可并行工具
+        List<ToolExecutionResult> results = new ArrayList<>(n);
+        // 预填充 null 占位，保证结果按原顺序
+        for (int i = 0; i < n; i++) results.add(null);
+
+        List<Integer> parallelIndices = new ArrayList<>();
+        List<Integer> serialIndices = new ArrayList<>();
+
+        for (int i = 0; i < n; i++) {
+            String toolName = requests.get(i).name();
+            if (SERIAL_ONLY.contains(toolName)) {
+                serialIndices.add(i);
+            } else {
+                parallelIndices.add(i);
             }
+        }
 
-            Map<String, Object> args = parseArgs(req.arguments());
-
-            ToolOutcome outcome = toolRegistry.execute(req.name(), args, state, toolContext);
-
-            String rendered = resultRenderer.render(req.name(), outcome, state);
-            String argsSummary = toolRegistry.get(req.name()) != null
-                    ? toolRegistry.get(req.name()).summarizeArgs(args)
-                    : truncate(args.toString(), 80);
-            logger.toolExecuted(rec, req.name(), outcome.success(), argsSummary, rendered.length());
-
-            results.add(ToolExecutionResult.of(req.id(), req.name(), outcome, rendered));
-
-            // finish 拦截：设置 finished 后立即停止后续工具执行
-            if (FINISH.equals(req.name()) && state.isFinished()) {
-                break;
+        // 并行执行非豁免工具
+        if (!parallelIndices.isEmpty()) {
+            List<Future<ToolExecutionResult>> futures = new ArrayList<>();
+            for (int idx : parallelIndices) {
+                final int i = idx;
+                final ToolExecutionRequest req = requests.get(i);
+                futures.add(parallelExecutor.submit(() -> executeSingle(req, rec, state)));
             }
+            for (int j = 0; j < parallelIndices.size(); j++) {
+                int originalIdx = parallelIndices.get(j);
+                try {
+                    results.set(originalIdx, futures.get(j).get());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    results.set(originalIdx, syntheticError(requests.get(originalIdx),
+                            "并行执行被中断: " + e.getMessage(), rec, state));
+                } catch (ExecutionException e) {
+                    // 单工具失败不影响其他工具
+                    log.error("[Tool] parallel execution failed for {}: {}",
+                            requests.get(originalIdx).name(), e.getMessage(), e);
+                    results.set(originalIdx, syntheticError(requests.get(originalIdx),
+                            "工具执行异常: " + e.getCause().getMessage(), rec, state));
+                }
+            }
+        }
 
-            // todo_write 后处理：标记 todoBeenUsed + 记录快照用于无进展检测
-            if (TODO_WRITE.equals(req.name()) && outcome.success()) {
-                if (!state.hasTodoBeenUsed()) {
-                    state.setTodoBeenUsed(true);
-                    log.info("TodoNavigator activated: todo_write called");
-                }
-                var snapResult = loopDetector.recordTodoSnapshot(toolContext.todoStore().getAll().toString());
-                if (snapResult.shouldWarn()) {
-                    state.addNudge(snapResult.message());
-                }
+        // 串行执行豁免工具
+        for (int idx : serialIndices) {
+            results.set(idx, executeSingle(requests.get(idx), rec, state));
+        }
+
+        // 确保没有 null 残留（防御性）
+        for (int i = 0; i < results.size(); i++) {
+            if (results.get(i) == null) {
+                results.set(i, syntheticError(requests.get(i), "内部错误: 结果未生成", rec, state));
             }
         }
 
         state.setLastToolResults(results);
         return results;
+    }
+
+    /**
+     * 执行单个工具请求（含熔断检查、参数解析、执行、渲染、日志、todo_write 后处理）。
+     */
+    private ToolExecutionResult executeSingle(ToolExecutionRequest req, TurnRecord rec, SessionState state) {
+        // 被熔断的工具跳过执行，直接返回合成错误
+        if (loopDetector.isToolTripped(req.name())) {
+            ToolOutcome tripped = ToolOutcome.failure(
+                    "工具 " + req.name() + " 已被熔断（连续失败过多），请标记 blocked 或调整计划，不要再调用此工具");
+            String rendered = resultRenderer.render(req.name(), tripped, state);
+            logger.toolExecuted(rec, req.name(), false, "(tripped)", rendered.length());
+            return ToolExecutionResult.of(req.id(), req.name(), tripped, rendered);
+        }
+
+        Map<String, Object> args = parseArgs(req.arguments());
+
+        ToolOutcome outcome = toolRegistry.execute(req.name(), args, state, toolContext);
+
+        String rendered = resultRenderer.render(req.name(), outcome, state);
+        String argsSummary = toolRegistry.get(req.name()) != null
+                ? toolRegistry.get(req.name()).summarizeArgs(args)
+                : truncate(args.toString(), 80);
+        logger.toolExecuted(rec, req.name(), outcome.success(), argsSummary, rendered.length());
+
+        ToolExecutionResult result = ToolExecutionResult.of(req.id(), req.name(), outcome, rendered);
+
+        // todo_write 后处理：标记 todoBeenUsed + 记录快照用于无进展检测
+        if (TODO_WRITE.equals(req.name()) && outcome.success()) {
+            if (!state.hasTodoBeenUsed()) {
+                state.setTodoBeenUsed(true);
+                log.info("TodoNavigator activated: todo_write called");
+            }
+            var snapResult = loopDetector.recordTodoSnapshot(toolContext.todoStore().getAll().toString());
+            if (snapResult.shouldWarn()) {
+                state.addNudge(snapResult.message());
+            }
+        }
+
+        return result;
+    }
+
+    /** 合成错误结果（用于并行异常隔离）。 */
+    private ToolExecutionResult syntheticError(ToolExecutionRequest req, String errorMsg,
+                                                TurnRecord rec, SessionState state) {
+        ToolOutcome outcome = ToolOutcome.failure(errorMsg);
+        String rendered = resultRenderer.render(req.name(), outcome, state);
+        logger.toolExecuted(rec, req.name(), false, "(error)", rendered.length());
+        return ToolExecutionResult.of(req.id(), req.name(), outcome, rendered);
     }
 
     private Map<String, Object> parseArgs(String json) {
@@ -110,5 +191,18 @@ public class ToolExecutionHandler {
 
     private static String truncate(String s, int maxLen) {
         return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
+    }
+
+    /** 关闭线程池。 */
+    public void shutdown() {
+        parallelExecutor.shutdown();
+        try {
+            if (!parallelExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                parallelExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            parallelExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 }

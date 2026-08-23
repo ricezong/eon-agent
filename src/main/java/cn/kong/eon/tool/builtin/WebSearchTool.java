@@ -74,7 +74,7 @@ public class WebSearchTool implements ToolExecutor {
     public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         String query = (String) arguments.get("query");
         if (query == null || query.isBlank()) {
-            return ToolOutcome.failure("Missing 'query' parameter");
+            return ToolOutcome.failure("缺少 'query' 参数");
         }
 
         if (apiKey == null || apiKey.isBlank()) {
@@ -149,13 +149,15 @@ public class WebSearchTool implements ToolExecutor {
 
         if (response.statusCode() != 200) {
             log.error("千帆 API 返回非 200: status={}, body={}", response.statusCode(), response.body());
+            // 解析错误消息并抛异常，让 execute() 返回 failure 触发熔断
+            String errorMsg = "HTTP " + response.statusCode();
             try {
                 JsonNode errNode = mapper.readTree(response.body());
                 if (errNode.has("message")) {
-                    return "{\"error\": true, \"message\": \"" + errNode.get("message").asText() + "\"}";
+                    errorMsg = errNode.get("message").asText();
                 }
             } catch (Exception ignored) {}
-            return "{\"error\": true, \"message\": \"HTTP " + response.statusCode() + "\"}";
+            throw new RuntimeException("千帆 API 错误: " + errorMsg);
         }
 
         return response.body();
@@ -164,6 +166,7 @@ public class WebSearchTool implements ToolExecutor {
     private String parseResponse(String responseJson, String query) throws Exception {
         JsonNode root = mapper.readTree(responseJson);
 
+        // 检查 API 级别错误（如配额超限等）
         if (root.has("code") && root.has("message")) {
             String code = root.path("code").asText();
             String message = root.path("message").asText();

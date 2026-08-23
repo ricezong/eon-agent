@@ -36,6 +36,24 @@ public class TodoStore {
         return getAll();
     }
 
+    /**
+     * 按 id 合并 Todo 列表。已存在 id 更新内容/状态，新 id 追加。
+     * @param newTodos 新传入的 todo 列表
+     * @param currentTurn 当前轮次
+     * @return 合并后的完整列表
+     */
+    public synchronized List<TodoItem> mergeById(List<TodoItem> newTodos, int currentTurn) {
+        for (TodoItem t : newTodos) {
+            if (t.getId() == null || t.getId().isBlank()) {
+                t.setId(generateId());
+            }
+            t.setLastModifiedTurn(currentTurn);
+            todos.put(t.getId(), t); // 覆盖或新增
+        }
+        log.debug("TodoStore merged: {} items total", todos.size());
+        return getAll();
+    }
+
     public List<TodoItem> getAll() {
         List<TodoItem> list = new ArrayList<>(todos.values());
         list.sort(Comparator.comparing(TodoItem::getId));

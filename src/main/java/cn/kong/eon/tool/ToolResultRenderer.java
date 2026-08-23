@@ -42,10 +42,12 @@ public class ToolResultRenderer {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("[工具: ").append(toolName).append(" | ").append(success ? "成功" : "失败").append("]\n");
-        sb.append(displayContent);
+        sb.append("[工具结果] ").append(toolName).append("\n");
+        sb.append("状态: ").append(success ? "成功" : "失败").append("\n");
+        sb.append("内容:\n").append(displayContent);
         if (refId != null) {
-            sb.append("\n[完整内容: artifact://").append(refId).append("]");
+            sb.append("\n[内容过长，完整内容已保存至 artifact://").append(refId)
+              .append("，可用 read_file 读取该引用]");
         }
         return sb.toString();
     }

@@ -5,7 +5,6 @@ import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.store.CheckpointStore;
-import cn.kong.eon.store.InsightsStore;
 import cn.kong.eon.store.TodoStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,13 +16,11 @@ public class CheckpointHook implements Hook.PostToolHook {
     private final AgentConfig config;
     private final CheckpointStore checkpointStore;
     private final TodoStore todoStore;
-    private final InsightsStore insightsStore;
 
-    public CheckpointHook(AgentConfig config, CheckpointStore checkpointStore, TodoStore todoStore, InsightsStore insightsStore) {
+    public CheckpointHook(AgentConfig config, CheckpointStore checkpointStore, TodoStore todoStore) {
         this.config = config;
         this.checkpointStore = checkpointStore;
         this.todoStore = todoStore;
-        this.insightsStore = insightsStore;
     }
 
     @Override public String name() { return "Checkpoint"; }
@@ -39,8 +36,7 @@ public class CheckpointHook implements Hook.PostToolHook {
                 state.getTurnCount(),
                 todoStore.getAll(),
                 state.getUsageAccum(),
-                state.getCompressionState(),
-                insightsStore.getAll()
+                state.getCompressionState()
         );
         log.info("Checkpoint saved: turn={}", state.getTurnCount());
 

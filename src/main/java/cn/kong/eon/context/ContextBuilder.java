@@ -9,23 +9,32 @@ import java.util.List;
 
 /**
  * 上下文构建器。分层组装发送给 LLM 的 messages。
- * 物理顺序：System Prompt → Summary → Transcript → ToolCatalog → Navigator → RuntimeNudges → TailGuard。
+ * 物理顺序：
+ *   System Prompt → Summary → user_info → rules → memories → agent_skills
+ *   → Transcript → Navigator → RuntimeNudges → TailGuard。
  * System Prompt 不拼接动态内容，保证 KV Cache 前缀稳定。
+ * 工具通过 API 请求的 tools 字段注入，不在 messages 中重复。
  */
 public class ContextBuilder {
 
     private String systemPrompt;    // 系统提示词
     private String summary;         // 历史对话摘要
-    private String navigator;       // Todo 列表 + Insights 导航
-    private String toolCatalog;     // 可用工具目录
+    private String userInfo;        // <user_info> 操作系统/日期/时区/语言/工作目录
+    private String rules;           // <rules> 用户自定义规则
+    private String memories;        // <memories> 跨会话记忆
+    private String agentSkills;     // <agent_skills> 技能索引
+    private String navigator;       // Todo 列表导航
     private String runtimeNudges;   // 运行时提醒（本轮有效）
     private List<ChatMessage> transcript;  // 对话历史
     private List<ChatMessage> tailGuard;   // 尾部保护消息
 
     public ContextBuilder setSystemPrompt(String systemPrompt) { this.systemPrompt = systemPrompt; return this; }
     public ContextBuilder setSummary(String summary) { this.summary = summary; return this; }
+    public ContextBuilder setUserInfo(String userInfo) { this.userInfo = userInfo; return this; }
+    public ContextBuilder setRules(String rules) { this.rules = rules; return this; }
+    public ContextBuilder setMemories(String memories) { this.memories = memories; return this; }
+    public ContextBuilder setAgentSkills(String agentSkills) { this.agentSkills = agentSkills; return this; }
     public ContextBuilder setNavigator(String navigator) { this.navigator = navigator; return this; }
-    public ContextBuilder setToolCatalog(String toolCatalog) { this.toolCatalog = toolCatalog; return this; }
     public ContextBuilder setRuntimeNudges(String runtimeNudges) { this.runtimeNudges = runtimeNudges; return this; }
     public ContextBuilder setTranscript(List<ChatMessage> transcript) { this.transcript = transcript; return this; }
     public List<ChatMessage> getTranscript() { return transcript; }
@@ -34,24 +43,40 @@ public class ContextBuilder {
     public List<ChatMessage> build() {
         List<ChatMessage> result = new ArrayList<>();
 
+        // 1. System Prompt（KV Cache 前缀）
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             result.add(SystemMessage.from(systemPrompt));
         }
+        // 2. Summary
         if (summary != null && !summary.isBlank()) {
             result.add(SystemMessage.from("## [Summary] 历史对话摘要\n" + summary));
         }
+        // 3-6. 动态注入块
+        if (userInfo != null && !userInfo.isBlank()) {
+            result.add(UserMessage.from("user_info", userInfo));
+        }
+        if (rules != null && !rules.isBlank()) {
+            result.add(UserMessage.from("rules", rules));
+        }
+        if (memories != null && !memories.isBlank()) {
+            result.add(UserMessage.from("memories", memories));
+        }
+        if (agentSkills != null && !agentSkills.isBlank()) {
+            result.add(UserMessage.from("agent_skills", agentSkills));
+        }
+        // 7. Transcript
         if (transcript != null) {
             result.addAll(transcript);
         }
-        if (toolCatalog != null && !toolCatalog.isBlank()) {
-            result.add(UserMessage.from("tool_catalog", toolCatalog));
-        }
+        // 8. Navigator
         if (navigator != null && !navigator.isBlank()) {
             result.add(UserMessage.from("navigator", navigator));
         }
+        // 9. Runtime Nudges
         if (runtimeNudges != null && !runtimeNudges.isBlank()) {
             result.add(UserMessage.from("runtime_nudges", runtimeNudges));
         }
+        // 10. Tail Guard
         if (tailGuard != null) {
             result.addAll(tailGuard);
         }
@@ -64,7 +89,10 @@ public class ContextBuilder {
         long chars = 0;
         if (systemPrompt != null) chars += systemPrompt.length();
         if (summary != null) chars += summary.length();
-        if (toolCatalog != null) chars += toolCatalog.length();
+        if (userInfo != null) chars += userInfo.length();
+        if (rules != null) chars += rules.length();
+        if (memories != null) chars += memories.length();
+        if (agentSkills != null) chars += agentSkills.length();
         if (navigator != null) chars += navigator.length();
         if (transcript != null) {
             for (ChatMessage msg : transcript) chars += extractText(msg).length();

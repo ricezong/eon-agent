@@ -19,8 +19,6 @@ public class SessionState {
     private CompressionState compressionState; // 压缩状态
     private List<String> pendingNudges;      // 运行时提醒（本轮有效）
     private List<String> formatCorrections;  // 格式纠正（本轮有效）
-    private boolean finished;                // 是否已结束
-    private String finishReason;             // 结束原因
     private String lastAssistantText;        // 最近一轮助手文本
 
     private boolean todoBeenUsed = false;    // 是否调用过 todo_write（激活 TodoNavigator）
@@ -39,7 +37,6 @@ public class SessionState {
         this.compressionState = new CompressionState();
         this.pendingNudges = new ArrayList<>();
         this.formatCorrections = new ArrayList<>();
-        this.finished = false;
         this.todoBeenUsed = false;
         this.pendingToolCalls = new ArrayList<>();
         this.lastToolResults = new ArrayList<>();
@@ -79,12 +76,6 @@ public class SessionState {
 
     public List<String> getFormatCorrections() { return formatCorrections; }
     public void setFormatCorrections(List<String> formatCorrections) { this.formatCorrections = formatCorrections; }
-
-    public boolean isFinished() { return finished; }
-    public void setFinished(boolean finished) { this.finished = finished; }
-
-    public String getFinishReason() { return finishReason; }
-    public void setFinishReason(String finishReason) { this.finishReason = finishReason; }
 
     public String getLastAssistantText() { return lastAssistantText; }
     public void setLastAssistantText(String lastAssistantText) { this.lastAssistantText = lastAssistantText; }

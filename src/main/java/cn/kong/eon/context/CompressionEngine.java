@@ -30,12 +30,14 @@ public class CompressionEngine {
     private final int summarizeMaxInputChars;
     private final int summarizeMaxOutputChars;
     private final LlmClient llmClient;
+    private final String transcriptPath;
 
     public CompressionEngine(double snipThreshold, double pruneThreshold,
                              double summarizeThreshold,
                              int snipKeepChars, int pruneKeepChars,
                              int summarizeMaxInputChars, int summarizeMaxOutputChars,
-                             LlmClient llmClient) {
+                             LlmClient llmClient,
+                             String transcriptPath) {
         this.snipThreshold = snipThreshold;
         this.pruneThreshold = pruneThreshold;
         this.summarizeThreshold = summarizeThreshold;
@@ -44,6 +46,7 @@ public class CompressionEngine {
         this.summarizeMaxInputChars = summarizeMaxInputChars;
         this.summarizeMaxOutputChars = summarizeMaxOutputChars;
         this.llmClient = llmClient;
+        this.transcriptPath = transcriptPath != null ? transcriptPath : "(transcript path unavailable)";
     }
 
     /**
@@ -70,6 +73,27 @@ public class CompressionEngine {
         return messages;
     }
 
+    /**
+     * 轮数触发压缩：仅 Snip（截短过长工具结果），不执行 Summarize。
+     * Summarize 是昂贵的 LLM 调用，仅在水位达到 summarize_threshold 时由 water-triggered 路径触发。
+     * 如果水位已达 prune 阈值，额外执行 Prune。
+     */
+    public List<ChatMessage> compressByTurnCount(List<ChatMessage> messages,
+                                                   CompressionState state,
+                                                   double waterLevel,
+                                                   int tailGuardTurns) {
+        log.info("[Compress] turn-triggered (water={}) -> Snip{}",
+                String.format("%.2f", waterLevel),
+                waterLevel >= pruneThreshold ? " + Prune" : "");
+        if (waterLevel >= snipThreshold) {
+            applySnip(messages, state, tailGuardTurns);
+        }
+        if (waterLevel >= pruneThreshold) {
+            applyPrune(messages, state, tailGuardTurns);
+        }
+        return messages;
+    }
+
     /** Snip：截短 tool result，保留骨架 + 摘要前缀。 */
     private void applySnip(List<ChatMessage> messages, CompressionState state, int tailGuardTurns) {
         int tailStart = Math.max(0, messages.size() - tailGuardTurns * 2 - 2);
@@ -88,9 +112,9 @@ public class CompressionEngine {
                 String refId = extractRef(content);
                 String snippet = content.substring(0, Math.min(snipKeepChars, content.length()));
                 if (refId != null) {
-                    snippet += "... [Tool result trimmed: kept summary only. Ref: " + refId + "]";
+                    snippet += "... [工具结果已截断：仅保留摘要。引用: " + refId + "]";
                 } else {
-                    snippet += "... [Tool result trimmed: kept summary only]";
+                    snippet += "... [工具结果已截断：仅保留摘要]";
                 }
 
                 messages.set(i, ToolExecutionResultMessage.from(trm.id(), trm.toolName(), snippet));
@@ -121,9 +145,9 @@ public class CompressionEngine {
                 String refId = extractRef(content);
                 String placeholder;
                 if (refId != null) {
-                    placeholder = "[Old tool result content cleared. Ref: " + refId + "]";
+                    placeholder = "[旧工具结果内容已清除。引用: " + refId + "]";
                 } else {
-                    placeholder = "[Old tool result content cleared]";
+                    placeholder = "[旧工具结果内容已清除]";
                 }
 
                 messages.set(i, ToolExecutionResultMessage.from(trm.id(), trm.toolName(), placeholder));
@@ -138,7 +162,8 @@ public class CompressionEngine {
     }
 
     /**
-     * Summarize：LLM 生成摘要，删除被覆盖的旧消息。
+     * Summarize：LLM 生成 5 段式摘要，删除被覆盖的旧消息。
+     * 增量摘要：旧摘要 + 被裁剪对话一起送 LLM 重生成（非字符串拼接）。
      * 删除旧消息会导致配对断裂，由 ContextCompactor 调用 PairingRepairer 修复。
      */
     private void applySummarize(List<ChatMessage> messages, CompressionState state, int tailGuardTurns) {
@@ -154,7 +179,7 @@ public class CompressionEngine {
             return;
         }
 
-        // 拼接旧消息文本
+        // 拼接被裁剪的对话文本
         StringBuilder dialogText = new StringBuilder();
         for (int i = 0; i < tailStart; i++) {
             String line = formatMessageForSummary(messages.get(i));
@@ -172,21 +197,37 @@ public class CompressionEngine {
             return;
         }
 
+        String existingSummary = state.getLastSummary();
+        String existingSummarySection = (existingSummary != null && !existingSummary.isBlank())
+                ? existingSummary
+                : "(无旧摘要，首次生成)";
+
+        // 5 段式摘要提示词（个人助手优化版）
         String summaryPrompt = """
-                请将以下历史对话压缩为一段简洁摘要，保留以下要点：
-                - 用户的核心请求和目标
-                - 已完成的关键步骤和决策
-                - 工具调用的关键发现和结果要点
-                - 尚未完成的任务和下一步计划
+                请将以下历史对话压缩为结构化摘要，严格按以下 5 段格式输出：
 
-                摘要要求：
-                - 不超过 %d 个字符
-                - 用陈述句，不用对话格式
-                - 保留关键事实和数字，省略过程性描述
+                1. Primary Request and Intent — 用户的核心诉求（逐条列出）
+                2. Key Context and Decisions — 关键上下文、已做的决策、已获取的关键信息
+                3. User Preferences and Updates — 本轮中发现/更新/确认的用户偏好和记忆
+                4. Pending Tasks and Current Work — 未完成任务与当前进展
+                5. All User Messages and Transcript — 用户原始消息（逐条）+ 原始记录文件路径与回溯指引
 
-                === 历史对话 ===
+                第 5 段必须包含（固定模板）：
+                "原始对话完整记录: %s
+                当任务或状态不清楚时，请用搜索工具检索该文件而不是猜测。
+                回溯方法：先按关键词（任务名/文件名/ID/错误信息/工具名）定位匹配行，
+                再用读取文件工具查看匹配位置附近的内容，还原意图和状态；
+                不要从头到尾通读整个文件（文件可能非常大）。"
+
+                摘要要求：不超过 %d 字符；陈述句；保留关键事实与数字；省略过程性描述。
+                如有旧摘要，请合并旧摘要与新对话生成新版摘要（增量），不要直接拼接。
+
+                === 旧摘要（如有） ===
                 %s
-                """.formatted(summarizeMaxOutputChars, dialogText);
+
+                === 本次被裁剪的对话 ===
+                %s
+                """.formatted(transcriptPath, summarizeMaxOutputChars, existingSummarySection, dialogText);
 
         List<ChatMessage> summaryMessages = new ArrayList<>();
         summaryMessages.add(SystemMessage.from("你是一个对话摘要生成器。请严格按指令生成摘要。"));
@@ -205,11 +246,7 @@ public class CompressionEngine {
                 summary = summary.substring(0, summarizeMaxOutputChars) + "...";
             }
 
-            // 追加合并已有摘要
-            String existingSummary = state.getLastSummary();
-            if (existingSummary != null && !existingSummary.isBlank()) {
-                summary = existingSummary + "\n\n" + summary;
-            }
+            // 增量摘要：整体替换（旧摘要 + 被裁剪对话一起送 LLM 重生成的新版摘要）
             state.setLastSummary(summary);
 
             // 删除已被摘要覆盖的旧消息

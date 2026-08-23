@@ -36,7 +36,6 @@ public class TurnRecord {
     int okCount;            // 成功数
     int failCount;          // 失败数
     double waterRatio;      // 预算水位
-    boolean finished;       // 是否结束
 
     // Stop 事件
     final List<StopEvent> stopEvents = new ArrayList<>();  // 停止事件列表
@@ -94,12 +93,11 @@ public class TurnRecord {
     }
 
     TurnRecord turnDone(int turnStartTokens, long totalTokens, long maxBudget,
-                        int okCount, int failCount, boolean finished) {
+                        int okCount, int failCount) {
         this.turnDeltaTokens = (int) (totalTokens - turnStartTokens);
         this.waterRatio = maxBudget > 0 ? (double) totalTokens / maxBudget : 0.0;
         this.okCount = okCount;
         this.failCount = failCount;
-        this.finished = finished;
         return this;
     }
 

@@ -40,8 +40,7 @@ public class CheckpointStore {
     public Checkpoint save(String sessionId, int turnCount,
                            java.util.List<TodoItem> todoSnapshot,
                            TokenUsage usageAccum,
-                           CompressionState compressionState,
-                           java.util.List<String> insightsSnapshot) {
+                           CompressionState compressionState) {
         int seq = counter.incrementAndGet();
         Checkpoint cp = new Checkpoint();
         cp.setCheckpointId("cp_" + String.format("%03d", seq));
@@ -50,7 +49,6 @@ public class CheckpointStore {
         cp.setTodoSnapshot(new ArrayList<>(todoSnapshot));
         cp.setUsageAccum(usageAccum);
         cp.setCompressionState(compressionState);
-        cp.setInsightsSnapshot(new ArrayList<>(insightsSnapshot));
         cp.setCreatedAt(Instant.now());
 
         Path file = checkpointDir.resolve(cp.getCheckpointId() + ".json");
