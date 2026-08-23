@@ -106,29 +106,84 @@ public class EonAgent {
         return totalHookCount;
     }
 
+    /** 关闭 Agent 释放资源（工具线程池等）。 */
+    public void shutdown() {
+        if (toolHandler != null) {
+            toolHandler.shutdown();
+        }
+        log.info("EonAgent resources released");
+    }
+
     // ===== 主循环 =====
 
     /** 运行 Agent 主循环。 */
     public String run(SessionState state) {
+        return runStream(state, null);
+    }
+
+    /**
+     * 运行 Agent 主循环（带流式回调）。
+     * <p>
+     * 在关键节点调用 {@link TurnCallback}，用于 SSE 事件推送。
+     * callback 为 null 时行为与 {@link #run} 完全一致。
+     */
+    public String runStream(SessionState state, TurnCallback callback) {
         initRun(state);
+
+        if (callback != null) {
+            safeCallback(() -> callback.onRunStart(state.getSessionId(), state.getUserOriginalInput()));
+        }
 
         while (shouldContinue(state)) {
             state.incrementTurn();
             int turnStartTokens = state.getUsageAccum().getTotalTokens();
 
+            if (callback != null) {
+                final int turn = state.getTurnCount();
+                safeCallback(() -> callback.onTurnStart(turn));
+            }
+
             try {
-                TurnAction action = executeTurn(state, turnStartTokens);
-                if (action instanceof TurnAction.Exit exit) return renderMemoryReferences(exit.output());
+                TurnAction action = executeTurn(state, turnStartTokens, callback);
+                if (action instanceof TurnAction.Exit exit) {
+                    String output = renderMemoryReferences(exit.output());
+                    if (callback != null) {
+                        final int tc = state.getTurnCount();
+                        final int tokens = state.getUsageAccum().getTotalTokens();
+                        safeCallback(() -> callback.onOutput(output, tc, tokens));
+                    }
+                    return output;
+                }
+                if (callback != null) {
+                    safeCallback(() -> callback.onTurnEnd(
+                            state.getTurnCount(), state.getUsageAccum().getTotalTokens()));
+                }
             } catch (Exception e) {
+                if (callback != null) {
+                    safeCallback(() -> callback.onError(e.getMessage()));
+                }
                 TurnAction action = handleLoopException(state, e);
-                if (action instanceof TurnAction.Exit exit) return renderMemoryReferences(exit.output());
+                if (action instanceof TurnAction.Exit exit) {
+                    String output = renderMemoryReferences(exit.output());
+                    if (callback != null) {
+                        final int tc = state.getTurnCount();
+                        final int tokens = state.getUsageAccum().getTotalTokens();
+                        safeCallback(() -> callback.onOutput(output, tc, tokens));
+                    }
+                    return output;
+                }
             }
         }
 
         // maxSteps 在 while 循环外触发
         TurnAction action = handleMaxSteps(state);
         String output = action instanceof TurnAction.Exit exit ? exit.output() : "";
-        return renderMemoryReferences(output);
+        output = renderMemoryReferences(output);
+        if (callback != null) {
+            String reason = output;
+            safeCallback(() -> callback.onTerminate(reason, state.getTurnCount(), state.getUsageAccum().getTotalTokens()));
+        }
+        return output;
     }
 
     /** 将 [[memory:xxx]] 引用替换为标题（内容摘要）。 */
@@ -151,7 +206,7 @@ public class EonAgent {
     }
 
     /** 执行单个 Turn。try-finally 确保 flushTurn 一定被执行。 */
-    private TurnAction executeTurn(SessionState state, int turnStartTokens) {
+    private TurnAction executeTurn(SessionState state, int turnStartTokens, TurnCallback callback) {
         TurnRecord rec = logger.newRecord();
         this.currentRec = rec;
         try {
@@ -180,6 +235,14 @@ public class EonAgent {
             List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
             logger.llmResponse(rec, thought, requests, deltaTokens, state);
 
+            // SSE 回调：LLM 响应到达
+            if (callback != null) {
+                final List<String> toolNames = requests != null
+                        ? requests.stream().map(ToolExecutionRequest::name).toList()
+                        : List.of();
+                safeCallback(() -> callback.onLlmResponse(thought, toolNames));
+            }
+
             // 4. 无工具调用
             if (requests == null || requests.isEmpty()) {
                 return handleNoToolCalls(rec, state, thought);
@@ -193,7 +256,7 @@ public class EonAgent {
             if (postModel instanceof FireResult.Skip) return new TurnAction.Continue();
 
             // 6. Extension Loop: PreTool → Execute → PostTool
-            FireResult extension = executeExtensionLoop(rec, state, requests);
+            FireResult extension = executeExtensionLoop(rec, state, requests, callback);
             if (extension instanceof FireResult.Exit exit) return new TurnAction.Exit(exit.output());
 
             // 7. 回填
@@ -218,12 +281,35 @@ public class EonAgent {
     }
 
     /** Extension Loop: PreTool → Execute → PostTool。 */
-    private FireResult executeExtensionLoop(TurnRecord rec, SessionState state, List<ToolExecutionRequest> requests) {
+    private FireResult executeExtensionLoop(TurnRecord rec, SessionState state,
+                                           List<ToolExecutionRequest> requests, TurnCallback callback) {
         FireResult preTool = firePreToolHooks(state, requests);
         if (preTool instanceof FireResult.Exit) return preTool;
         if (preTool instanceof FireResult.Skip) return new FireResult.Continue();
 
+        // SSE 回调：工具开始执行
+        if (callback != null) {
+            for (ToolExecutionRequest req : requests) {
+                safeCallback(() -> callback.onToolStart(req.name(), req.id()));
+            }
+        }
+
         List<ToolExecutionResult> results = toolHandler.execute(rec, state);
+
+        // SSE 回调：工具执行完成
+        if (callback != null) {
+            for (int i = 0; i < requests.size() && i < results.size(); i++) {
+                ToolExecutionResult result = results.get(i);
+                String summary = result.content();
+                if (summary != null && summary.length() > 200) {
+                    summary = summary.substring(0, 200) + "...(truncated)";
+                }
+                final String toolName = requests.get(i).name();
+                final boolean success = result.success();
+                final String toolSummary = summary;
+                safeCallback(() -> callback.onToolResult(toolName, success, toolSummary));
+            }
+        }
 
         for (int i = 0; i < requests.size(); i++) {
             ToolExecutionResult result = results.get(i);
@@ -233,6 +319,15 @@ public class EonAgent {
         }
 
         return new FireResult.Continue();
+    }
+
+    /** 安全执行回调，吞掉异常以免中断 Agent 主循环。 */
+    private void safeCallback(Runnable action) {
+        try {
+            action.run();
+        } catch (Exception e) {
+            log.warn("TurnCallback error: {}", e.getMessage(), e);
+        }
     }
 
     /** 处理无工具调用的情况（方案语义：无工具调用 = 任务完成，直接退出）。 */

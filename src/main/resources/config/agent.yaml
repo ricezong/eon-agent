@@ -90,6 +90,6 @@ memory:
 mcp:
   servers:
     novel-mcp-server:
-      url: "http://124.223.110.114:8081/mcp"  # MCP 服务端点
+      url: "http://localhost:8081/mcp"  # MCP 服务端点
       enabled: true                            # 是否启用
       permission: "READONLY"                   # MCP 工具默认权限

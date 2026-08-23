@@ -13,5 +13,13 @@ public record ToolContext(
         MemoryStore memoryStore,
         JsonlStore jsonlStore,
         CheckpointStore checkpointStore,
-        String workDir
-) {}
+        String workDir,
+        InteractionCallback interactionCallback
+) {
+    /** 兼容旧构造：无交互回调（CLI 模式）。 */
+    public ToolContext(TodoStore todoStore, ArtifactStore artifactStore,
+                      MemoryStore memoryStore, JsonlStore jsonlStore,
+                      CheckpointStore checkpointStore, String workDir) {
+        this(todoStore, artifactStore, memoryStore, jsonlStore, checkpointStore, workDir, null);
+    }
+}

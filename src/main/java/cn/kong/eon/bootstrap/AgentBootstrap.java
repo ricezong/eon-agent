@@ -1,214 +1,53 @@
 package cn.kong.eon.bootstrap;
 
 import cn.kong.eon.agent.EonAgent;
-import cn.kong.eon.agent.hook.postmodel.LoopDetectHook;
-import cn.kong.eon.agent.hook.posttool.CheckpointHook;
-import cn.kong.eon.agent.hook.posttool.FailureBreakerHook;
-import cn.kong.eon.agent.hook.premodel.BudgetHook;
-import cn.kong.eon.agent.hook.premodel.ContextCompactHook;
-import cn.kong.eon.agent.hook.premodel.TodoNavigatorHook;
-import cn.kong.eon.agent.hook.pretool.GateHook;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
-import cn.kong.eon.loop.LoopDetector;
-import cn.kong.eon.mcp.McpClientManager;
-import cn.kong.eon.model.Checkpoint;
 import cn.kong.eon.model.SessionState;
-import cn.kong.eon.store.*;
-import cn.kong.eon.tool.ToolContext;
-import cn.kong.eon.tool.ToolRegistry;
-import cn.kong.eon.tool.ToolResultRenderer;
-import cn.kong.eon.tool.builtin.AskQuestionTool;
-import cn.kong.eon.tool.builtin.DeleteFileTool;
-import cn.kong.eon.tool.builtin.DownloadFileTool;
-import cn.kong.eon.tool.builtin.GrepTool;
-import cn.kong.eon.tool.builtin.ListDirTool;
-import cn.kong.eon.tool.builtin.ReadFileTool;
-import cn.kong.eon.tool.builtin.TodoWriteTool;
-import cn.kong.eon.tool.builtin.UpdateMemoryTool;
-import cn.kong.eon.tool.builtin.WebFetchTool;
-import cn.kong.eon.tool.builtin.WebSearchTool;
-import cn.kong.eon.tool.builtin.WriteFileTool;
+import cn.kong.eon.session.AgentBootstrapFactory;
+import cn.kong.eon.session.AgentSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Scanner;
 
-/** Agent 组装器：构建 EonAgent + 挂载 Hook + 连接 MCP 服务。 */
+/**
+ * CLI 启动器（兼容旧模式）。
+ * <p>
+ * 委托 {@link AgentBootstrapFactory} 完成 Agent 组装，消除重复代码。
+ * 保留 JVM shutdown hook 用于 CLI 模式下关闭 MCP 连接。
+ */
 public class AgentBootstrap {
     private static final Logger log = LoggerFactory.getLogger(AgentBootstrap.class);
 
+    /**
+     * 构建 EonAgent 实例。
+     * <p>
+     * 委托 {@link AgentBootstrapFactory#createSession} 完成组装，
+     * 从返回的 {@link AgentSession} 中取出 {@link EonAgent}。
+     * 同时注册 JVM shutdown hook 关闭 MCP 连接。
+     *
+     * @param config    Agent 配置
+     * @param sessionId 会话 ID
+     * @return EonAgent 实例
+     */
     public static EonAgent build(AgentConfig config, String sessionId) {
-        // 1. Store 层（按 sessionId 隔离）
-        Path sessionDir = Path.of(config.getStorage().baseDir, sessionId);
-        TodoStore todoStore = new TodoStore();
-        MemoryStore memoryStore = new MemoryStore(Path.of(config.getStorage().baseDir));
-        ArtifactStore artifactStore = new ArtifactStore(sessionDir.resolve("artifacts"));
-        JsonlStore jsonlStore = new JsonlStore(sessionDir.resolve("transcript.jsonl"));
-        CheckpointStore checkpointStore = new CheckpointStore(sessionDir.resolve("checkpoints"));
-
-        // 2. Tool 层
-        ToolRegistry toolRegistry = new ToolRegistry(config.getTools().whitelist);
-        registerAllTools(toolRegistry, config);
-
-        // 2.1 MCP 服务
-        List<McpClientManager> mcpManagers = connectMcpServers(config, toolRegistry);
-
-        ToolResultRenderer resultRenderer = new ToolResultRenderer(artifactStore);
-
-        // 会话工作目录：每个会话独立隔离的 workspace
-        Path workspaceDir = sessionDir.resolve("workspace");
-        try {
-            Files.createDirectories(workspaceDir);
-        } catch (IOException e) {
-            throw new RuntimeException("无法创建会话工作目录: " + workspaceDir, e);
-        }
-
-        ToolContext toolContext = new ToolContext(
-                todoStore, artifactStore, memoryStore, jsonlStore, checkpointStore,
-                workspaceDir.toString());
-
-        // 3. 加载提示词
-        String basePrompt = loadPrompt(config.getContext().systemPromptPath);
-
-        // 4. LLM 层
         LlmClient llmClient = new LlmClient(config);
+        AgentBootstrapFactory factory = new AgentBootstrapFactory(config, llmClient);
 
-        // 5. 共享 LoopDetector（LoopDetect 和 FailureBreaker 共用状态）
-        LoopDetector loopDetector = new LoopDetector(
-                config.getLoopDetect().repeatWarn,
-                config.getLoopDetect().repeatStop,
-                config.getLoopDetect().noProgressSteps,
-                config.getLoopDetect().failureWarn,
-                config.getLoopDetect().failureStop);
+        // 使用空输入创建会话（CLI 模式下实际输入在调用 agent.run() 时通过 SessionState 传入）
+        AgentSession session = factory.createSession(sessionId, "");
 
-        // 6. 创建 EonAgent
-        EonAgent agent = new EonAgent(config, llmClient, toolRegistry, resultRenderer, jsonlStore, basePrompt, toolContext, loopDetector);
+        // CLI 模式注册 JVM shutdown hook 关闭 MCP 连接
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            session.destroy();
+        }, "Agent-ShutdownHook"));
 
-        // 7. 挂载 Hook（按执行阶段分组）
-        // PreModel 阶段
-        agent.addHook(new BudgetHook(config));                              // order=10
-        agent.addHook(new TodoNavigatorHook(todoStore));    // order=20
-        agent.addHook(new ContextCompactHook(config, llmClient, sessionDir.resolve("transcript.jsonl").toString()));          // order=100
-
-        // PostModel 阶段
-        agent.addHook(new LoopDetectHook(loopDetector));                   // order=30
-
-        // PreTool 阶段
-        agent.addHook(new GateHook(toolRegistry));                   // order=20
-
-        // PostTool 阶段
-        agent.addHook(new FailureBreakerHook(loopDetector));               // order=30
-        agent.addHook(new CheckpointHook(config, checkpointStore, todoStore)); // order=100
-
-        log.info("EonAgent built with {} hooks", agent.getHookCount());
-
-        // 尝试从 checkpoint 恢复（如果配置启用且存在快照）
-        if (config.isCheckpointEnabled()) {
-            Checkpoint cp = checkpointStore.loadLatest(sessionId);
-            if (cp != null) {
-                log.info("Checkpoint recovered: turn={}, session={}", cp.getTurnCount(), sessionId);
-                if (cp.getTodoSnapshot() != null && !cp.getTodoSnapshot().isEmpty()) {
-                    todoStore.replaceAll(cp.getTodoSnapshot(), cp.getTurnCount());
-                }
-            }
-        }
-
-        // 注册 JVM 关闭钩子
-        if (!mcpManagers.isEmpty()) {
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                for (McpClientManager mgr : mcpManagers) {
-                    try {
-                        mgr.close();
-                        log.info("MCP server closed: {}", mgr.getServerKey());
-                    } catch (Exception e) {
-                        log.warn("Failed to close MCP server: {}", mgr.getServerKey(), e);
-                    }
-                }
-            }, "MCP-ShutdownHook"));
-        }
-
-        return agent;
+        log.info("AgentBootstrap (CLI) delegated to AgentBootstrapFactory, session={}", sessionId);
+        return session.getAgent();
     }
 
-    /** 注册全部本地工具（终态 11 个）。 */
-    private static void registerAllTools(ToolRegistry toolRegistry, AgentConfig config) {
-        // 文件工具
-        toolRegistry.register(ReadFileTool.descriptor());
-        toolRegistry.register(WriteFileTool.descriptor());
-        toolRegistry.register(DeleteFileTool.descriptor());
-        toolRegistry.register(ListDirTool.descriptor());
-        toolRegistry.register(DownloadFileTool.descriptor());
-        // 搜索工具
-        toolRegistry.register(GrepTool.descriptor());
-        // 任务管理
-        toolRegistry.register(TodoWriteTool.descriptor());
-        // 交互工具
-        toolRegistry.register(AskQuestionTool.descriptor());
-        // 记忆系统
-        toolRegistry.register(UpdateMemoryTool.descriptor());
-        // 网页工具
-        toolRegistry.register(WebFetchTool.descriptor());
-        // 搜索工具
-        toolRegistry.register(WebSearchTool.descriptor(config.getWebSearch().apiKey));
-        log.info("Local tools registered ({})", toolRegistry.getAll().size());
-    }
-
-    /** 连接所有已启用的 MCP 服务，注册远程工具。 */
-    private static List<McpClientManager> connectMcpServers(AgentConfig config, ToolRegistry toolRegistry) {
-        List<McpClientManager> managers = new ArrayList<>();
-        List<AgentConfig.McpServerConfig> servers = config.getMcp().getEnabledServers();
-
-        if (servers.isEmpty()) {
-            log.info("No MCP servers configured or enabled");
-            return managers;
-        }
-
-        for (AgentConfig.McpServerConfig server : servers) {
-            log.info("Connecting MCP server: {} -> {}", server.key, server.url);
-            McpClientManager manager = new McpClientManager(server.key, server.url);
-            try {
-                manager.connect();
-                if (manager.isConnected()) {
-                    int registered = toolRegistry.registerMcpTools(manager, server.permission);
-                    log.info("MCP server '{}' connected: {} tools registered", server.key, registered);
-                    managers.add(manager);
-                }
-            } catch (Exception e) {
-                log.error("Failed to connect MCP server '{}': {}", server.key, e.getMessage(), e);
-            }
-        }
-
-        log.info("MCP summary: {}/{} servers connected, {} MCP tools total",
-                managers.size(), servers.size(), toolRegistry.getMcpToolCount());
-        return managers;
-    }
-
-    /** 从 classpath 或文件系统加载提示词。 */
-    private static String loadPrompt(String relativePath) {
-        try {
-            Path promptPath = Path.of(relativePath);
-            if (!Files.exists(promptPath)) {
-                try (var is = AgentBootstrap.class.getClassLoader().getResourceAsStream(relativePath)) {
-                    if (is != null) {
-                        return new String(is.readAllBytes());
-                    }
-                }
-                promptPath = Path.of("src/main/resources/" + relativePath);
-            }
-            return Files.readString(promptPath);
-        } catch (IOException e) {
-            log.error("Failed to load prompt: {}", relativePath, e);
-            return "你是 Eon Agent。请使用工具完成任务。";
-        }
-    }
-
-    /** 交互式启动。 */
+    /** 交互式 CLI 启动入口。 */
     public static void main(String[] args) {
         AgentConfig config = AgentConfig.loadFromClasspath("config/agent.yaml");
 
