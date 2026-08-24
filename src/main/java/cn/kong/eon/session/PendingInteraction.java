@@ -39,7 +39,7 @@ public class PendingInteraction {
     private static final long AWAIT_TIMEOUT_MINUTES = 10;
 
     public enum State {
-        IDLE,           // 无待处理交互
+        IDLE,
         PENDING,        // 问题已暂存，等待用户答案
         ANSWERED        // 用户已提交答案，Agent 正在恢复
     }

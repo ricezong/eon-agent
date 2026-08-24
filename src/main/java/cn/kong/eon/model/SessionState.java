@@ -13,22 +13,23 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class SessionState {
     private String sessionId;
-    private String userOriginalInput;        // 用户原始请求
-    private int turnCount;                   // 当前轮次
-    private TokenUsage usageAccum;           // 累计 token 用量
-    private CompressionState compressionState; // 压缩状态
+    private String userOriginalInput;
+    private int turnCount;
+    private TokenUsage usageAccum;
+    private CompressionState compressionState;
     private List<String> pendingNudges;      // 运行时提醒（本轮有效）
     private List<String> formatCorrections;  // 格式纠正（本轮有效）
-    private String lastAssistantText;        // 最近一轮助手文本
+    private String lastAssistantText;
 
     private boolean todoBeenUsed = false;    // 是否调用过 todo_write（激活 TodoNavigator）
+    private boolean budgetSoftTriggered = false; // 预算软阈值是否已触发（会话级状态）
 
     private transient StopState stopState;   // 优雅停止状态
 
     // 运行时临时字段（不序列化）
     private transient List<ChatMessage> currentMessages;    // 当前轮构建的 messages
     private transient LlmResponse lastResponse;            // 最近一轮 LLM 响应
-    private transient List<ToolExecutionRequest> pendingToolCalls;  // 待执行的工具调用
+    private transient List<ToolExecutionRequest> pendingToolCalls;
     private transient List<ToolExecutionResult> lastToolResults;   // 上一轮工具执行结果
 
     public SessionState() {
@@ -38,6 +39,7 @@ public class SessionState {
         this.pendingNudges = new ArrayList<>();
         this.formatCorrections = new ArrayList<>();
         this.todoBeenUsed = false;
+        this.budgetSoftTriggered = false;
         this.pendingToolCalls = new ArrayList<>();
         this.lastToolResults = new ArrayList<>();
     }
@@ -53,8 +55,6 @@ public class SessionState {
 
     public void addNudge(String nudge) { pendingNudges.add(nudge); }
     public void addFormatCorrection(String correction) { formatCorrections.add(correction); }
-
-    // --- getters / setters ---
 
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
@@ -83,6 +83,9 @@ public class SessionState {
     public boolean hasTodoBeenUsed() { return todoBeenUsed; }
     public void setTodoBeenUsed(boolean todoBeenUsed) { this.todoBeenUsed = todoBeenUsed; }
 
+    public boolean isBudgetSoftTriggered() { return budgetSoftTriggered; }
+    public void setBudgetSoftTriggered(boolean budgetSoftTriggered) { this.budgetSoftTriggered = budgetSoftTriggered; }
+
     public List<ChatMessage> getCurrentMessages() { return currentMessages; }
     public void setCurrentMessages(List<ChatMessage> currentMessages) { this.currentMessages = currentMessages; }
 
@@ -98,7 +101,6 @@ public class SessionState {
     public StopState getStopState() { return stopState; }
     public void setStopState(StopState stopState) { this.stopState = stopState; }
 
-    /** 是否处于优雅停止流程中。 */
     public boolean isStopRequested() {
         return stopState != null && stopState.isActive();
     }

@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -90,12 +91,13 @@ public class MemoryStore {
         }
     }
 
-    /** 加载全部记忆。 */
+    /** 加载全部记忆（按创建时间排序，保证注入顺序确定性）。 */
     public List<MemoryItem> loadAll() {
         List<MemoryItem> items = new ArrayList<>();
         try (var stream = Files.list(memoryDir)) {
             stream.filter(p -> p.getFileName().toString().startsWith("mem_"))
                   .filter(p -> p.toString().endsWith(".json"))
+                  .sorted(Comparator.comparing(p -> p.getFileName().toString()))
                   .forEach(p -> {
                       try {
                           items.add(mapper.readValue(p.toFile(), MemoryItem.class));
@@ -106,6 +108,7 @@ public class MemoryStore {
         } catch (IOException e) {
             log.warn("Failed to list memories: {}", e.getMessage());
         }
+        items.sort(Comparator.comparing(m -> m.createdAt));
         return items;
     }
 

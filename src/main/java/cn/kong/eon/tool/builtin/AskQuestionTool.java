@@ -7,6 +7,8 @@ import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.tool.InteractionCallback;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,12 +24,28 @@ import java.util.*;
 public class AskQuestionTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(AskQuestionTool.class);
 
+    /** Schema 专用 POJO：选项输入。 */
+    public record OptionInput(
+            String id,
+            String label
+    ) {}
+
+    /** Schema 专用 POJO：问题输入。 */
+    public record QuestionInput(
+            String id,
+            String prompt,
+            List<OptionInput> options,
+            Boolean allow_multiple
+    ) {}
+
     /** API 模式标志，设为 true 后不再阻塞 stdin。 */
     private static volatile boolean apiMode = false;
 
     /** CLI 模式 Scanner，懒加载。API 模式下不创建，避免资源泄漏。 */
     private Scanner scanner;
     private final Scanner providedScanner;
+    /** 标记 scanner 是否为内部创建（非外部传入），用于 close() 时判断是否需要释放。 */
+    private boolean scannerInternallyCreated;
 
     public AskQuestionTool() {
         this.providedScanner = null;
@@ -43,34 +61,21 @@ public class AskQuestionTool implements ToolExecutor {
         log.info("AskQuestionTool apiMode={}", enabled);
     }
 
-    @SuppressWarnings("unchecked")
+    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    @Tool(name = "AskQuestion", value = {
+            "向用户收集结构化的多选答案。提供一个或多个带选项的问题，在适合多选时设置 allow_multiple。",
+            "当你需要通过结构化的问题格式从用户处收集特定信息时使用此工具。",
+            "每个问题应包含：唯一 id；清晰的提示文本；至少 2 个选项；可选的 allow_multiple 标志。"
+    })
+    public String askQuestion(
+            @P(name = "questions", description = "要呈现给用户的问题数组（至少 1 个）。每个问题包含 id（唯一标识符）、prompt（问题文本）、options（答案选项数组，每个选项含 id 和 label，至少 2 个）、allow_multiple（是否允许多选，默认 false）。") List<QuestionInput> questions,
+            @P(name = "title", description = "问题表单的可选标题。") String title
+    ) {
+        return null;
+    }
+
     public static ToolDescriptor descriptor() {
-        Map<String, Map<String, Object>> props = new LinkedHashMap<>();
-
-        Map<String, Object> optionProps = new LinkedHashMap<>();
-        optionProps.put("id", Map.of("type", "string", "description", "此选项的唯一标识符。", "required", true));
-        optionProps.put("label", Map.of("type", "string", "description", "此选项的显示文本。", "required", true));
-
-        Map<String, Object> questionProps = new LinkedHashMap<>();
-        questionProps.put("id", Map.of("type", "string", "description", "此问题的唯一标识符。", "required", true));
-        questionProps.put("prompt", Map.of("type", "string", "description", "要显示的问题文本。", "required", true));
-        questionProps.put("options", Map.of("type", "array", "description", "答案选项（至少 2 个）。", "required", true, "items", optionProps));
-        questionProps.put("allow_multiple", Map.of("type", "boolean", "description", "为 true 时允许用户多选。默认：false。"));
-
-        props.put("questions", Map.of("type", "array", "description", "要呈现给用户的问题数组（至少 1 个）。", "required", true, "items", questionProps));
-        props.put("title", Map.of("type", "string", "description", "问题表单的可选标题。"));
-
-        String desc = "向用户收集结构化的多选答案。提供一个或多个带选项的问题，在适合多选时设置 allow_multiple。"
-                + "当你需要通过结构化的问题格式从用户处收集特定信息时使用此工具。"
-                + "每个问题应包含：唯一 id；清晰的提示文本；至少 2 个选项；可选的 allow_multiple 标志。";
-
-        return new ToolDescriptor(
-                "AskQuestion",
-                desc,
-                ToolPermission.READONLY,
-                ToolDescriptor.buildSpec("AskQuestion", desc, props),
-                new AskQuestionTool()
-        );
+        return ToolDescriptor.fromAnnotated(new AskQuestionTool(), ToolPermission.READONLY);
     }
 
     @Override
@@ -83,28 +88,27 @@ public class AskQuestionTool implements ToolExecutor {
 
         String title = (String) arguments.get("title");
 
-        // API 模式：通过 InteractionCallback 暂停 Agent
         if (apiMode && context.interactionCallback() != null) {
             return executeViaCallback(arguments, context.interactionCallback(), state, title);
         }
 
-        // CLI 模式：直接从 stdin 读取
         if (apiMode) {
             // API 模式但无 callback（不应发生，但作为降级处理）
             return ToolOutcome.failure(
                     "API 模式暂不支持交互式提问，请直接在消息中提供用户可选项的信息。");
         }
 
-        // 懒加载 Scanner：仅在 CLI 模式首次使用时创建
         if (scanner == null) {
-            scanner = (providedScanner != null) ? providedScanner : new Scanner(System.in);
+            if (providedScanner != null) {
+                scanner = providedScanner;
+            } else {
+                scanner = new Scanner(System.in);
+                scannerInternallyCreated = true;
+            }
         }
         return executeViaStdin(rawQuestions, title);
     }
 
-    /**
-     * API 模式：通过回调接口提交问题并阻塞等待答案。
-     */
     @SuppressWarnings("unchecked")
     private ToolOutcome executeViaCallback(Map<String, Object> arguments,
                                            InteractionCallback callback,
@@ -115,7 +119,6 @@ public class AskQuestionTool implements ToolExecutor {
 
         Map<String, String> answers = callback.askQuestions(questions, title);
 
-        // 将答案格式化为输出文本
         StringBuilder output = new StringBuilder();
         if (title != null && !title.isBlank()) {
             output.append("--- ").append(title).append(" ---\n\n");
@@ -128,9 +131,6 @@ public class AskQuestionTool implements ToolExecutor {
         return ToolOutcome.success(output.toString());
     }
 
-    /**
-     * CLI 模式：从 stdin 读取用户选择。
-     */
     private ToolOutcome executeViaStdin(List<?> rawQuestions, String title) {
         StringBuilder output = new StringBuilder();
         if (title != null && !title.isBlank()) {
@@ -209,5 +209,24 @@ public class AskQuestionTool implements ToolExecutor {
             if (n >= 1 && n <= max) return n - 1;
         } catch (NumberFormatException ignored) {}
         return -1;
+    }
+
+    /**
+     * 释放内部创建的 Scanner 资源。
+     * <p>
+     * 仅关闭内部创建的 Scanner；外部传入的 providedScanner 由调用方管理。
+     * 注意：Scanner 包装 System.in 时，close() 会关闭底层 System.in 流，
+     * 因此对内部创建的 Scanner 不调用 close()，仅置 null 释放引用，
+     * 由 GC 在后续回收。
+     */
+    @Override
+    public void close() {
+        if (scannerInternallyCreated && scanner != null) {
+            // 不调用 scanner.close()，因为会关闭 System.in
+            // 仅释放引用，让 GC 回收
+            scanner = null;
+            scannerInternallyCreated = false;
+            log.debug("AskQuestionTool internal Scanner reference released");
+        }
     }
 }

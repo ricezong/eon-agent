@@ -1,0 +1,286 @@
+/* ===== Eon Agent 设计系统 ===== */
+/* 设计理念：深色玻璃拟态 + 渐变光晕 + 精致细节 */
+
+:root {
+  /* 主色调 - 紫蓝渐变系 */
+  --c-primary: #6366f1;
+  --c-primary-light: #818cf8;
+  --c-primary-dark: #4f46e5;
+  --c-accent: #a855f7;
+  --c-accent-light: #c084fc;
+
+  /* 功能色 */
+  --c-success: #10b981;
+  --c-success-light: #34d399;
+  --c-warning: #f59e0b;
+  --c-warning-light: #fbbf24;
+  --c-danger: #ef4444;
+  --c-danger-light: #f87171;
+  --c-info: #06b6d4;
+  --c-info-light: #22d3ee;
+
+  /* 背景层级 */
+  --bg-base: #0a0a0f;
+  --bg-elevated: #12121a;
+  --bg-surface: #1a1a26;
+  --bg-surface-hover: #22222e;
+  --bg-glass: rgba(26, 26, 38, 0.6);
+  --bg-glass-strong: rgba(26, 26, 38, 0.85);
+
+  /* 文字 */
+  --t-primary: #f4f4f8;
+  --t-secondary: #b4b4c8;
+  --t-tertiary: #7c7c92;
+  --t-disabled: #4a4a5c;
+
+  /* 边框 */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-primary: rgba(99, 102, 241, 0.4);
+
+  /* 渐变 */
+  --grad-primary: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  --grad-primary-soft: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
+  --grad-success: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+  --grad-danger: linear-gradient(135deg, #ef4444 0%, #f59e0b 100%);
+  --grad-glow: radial-gradient(circle at 30% 20%, rgba(99, 102, 241, 0.15), transparent 50%),
+               radial-gradient(circle at 70% 80%, rgba(168, 85, 247, 0.12), transparent 50%);
+
+  /* 阴影 */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 24px rgba(99, 102, 241, 0.3);
+
+  /* 圆角 */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+  --r-full: 9999px;
+
+  /* 动画 */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 0.15s;
+  --dur-base: 0.25s;
+  --dur-slow: 0.4s;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  background: var(--bg-base);
+  color: var(--t-primary);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* 全局背景光晕 */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: var(--grad-glow);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#app {
+  position: relative;
+  z-index: 1;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 选中文本 */
+::selection {
+  background: rgba(99, 102, 241, 0.4);
+  color: #fff;
+}
+
+/* 通用动画 */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(99, 102, 241, 0.4); }
+  50% { box-shadow: 0 0 24px rgba(99, 102, 241, 0.7); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.fade-enter-active, .fade-leave-active {
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+
+.slide-enter-active {
+  transition: all var(--dur-base) var(--ease-spring);
+}
+.slide-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+/* 工具类 */
+.glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border-default);
+}
+
+.gradient-text {
+  background: var(--grad-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Markdown 内容样式 */
+.markdown-body {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--t-primary);
+  word-wrap: break-word;
+}
+.markdown-body p {
+  margin: 0.5em 0;
+}
+.markdown-body p:first-child { margin-top: 0; }
+.markdown-body p:last-child { margin-bottom: 0; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  margin: 1em 0 0.5em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.markdown-body h1 { font-size: 1.5em; }
+.markdown-body h2 { font-size: 1.3em; }
+.markdown-body h3 { font-size: 1.15em; }
+.markdown-body h4 { font-size: 1em; }
+.markdown-body ul, .markdown-body ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.markdown-body li { margin: 0.25em 0; }
+.markdown-body code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+  font-size: 0.88em;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--c-primary-light);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+.markdown-body pre {
+  margin: 0.75em 0;
+  padding: 14px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  overflow-x: auto;
+}
+.markdown-body pre code {
+  background: transparent;
+  color: var(--t-primary);
+  padding: 0;
+  font-size: 0.85em;
+}
+.markdown-body blockquote {
+  margin: 0.75em 0;
+  padding: 0.5em 1em;
+  border-left: 3px solid var(--c-primary);
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--t-secondary);
+}
+.markdown-body a {
+  color: var(--c-primary-light);
+  text-decoration: none;
+  border-bottom: 1px dashed transparent;
+  transition: border-color var(--dur-fast);
+}
+.markdown-body a:hover { border-bottom-color: var(--c-primary-light); }
+.markdown-body table {
+  margin: 0.75em 0;
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9em;
+}
+.markdown-body th, .markdown-body td {
+  padding: 8px 12px;
+  border: 1px solid var(--border-default);
+  text-align: left;
+}
+.markdown-body th {
+  background: rgba(255, 255, 255, 0.04);
+  font-weight: 600;
+}
+.markdown-body hr {
+  margin: 1.5em 0;
+  border: none;
+  border-top: 1px solid var(--border-default);
+}
+.markdown-body img {
+  max-width: 100%;
+  border-radius: var(--r-md);
+}

@@ -12,19 +12,19 @@ public class AgentConfig {
 
     private static final Logger log = LoggerFactory.getLogger(AgentConfig.class);
 
-    private final Map<String, Object> raw;  // 原始 YAML 数据
+    private final Map<String, Object> raw;
 
-    private final LlmConfig llm;            // LLM 配置
-    private final ContextConfig context;    // 上下文配置
-    private final LoopConfig loop;          // 循环配置
-    private final LoopDetectConfig loopDetect; // 循环检测配置
-    private final RetryConfig retry;        // 重试配置
-    private final StorageConfig storage;    // 存储配置
-    private final ToolsConfig tools;        // 工具配置
-    private final McpConfig mcp;            // MCP 配置
-    private final WebSearchConfig webSearch; // 搜索配置
-    private final boolean checkpointEnabled; // 是否启用 Checkpoint
-    private final BudgetConfig budget;      // 预算配置
+    private final LlmConfig llm;
+    private final ContextConfig context;
+    private final LoopConfig loop;
+    private final LoopDetectConfig loopDetect;
+    private final RetryConfig retry;
+    private final StorageConfig storage;
+    private final ToolsConfig tools;
+    private final McpConfig mcp;
+    private final WebSearchConfig webSearch;
+    private final boolean checkpointEnabled;
+    private final BudgetConfig budget;
     private final int summarizeTurns;       // 轮数触发摘要阈值
 
     public AgentConfig(Map<String, Object> raw) {
@@ -39,10 +39,10 @@ public class AgentConfig {
         this.mcp = new McpConfig(getMap("mcp"));
         this.webSearch = new WebSearchConfig(getMap("web_search"));
         Map<String, Object> mode = getMap("mode");
-        this.checkpointEnabled = (boolean) mode.getOrDefault("checkpoint_enabled", false);
+        this.checkpointEnabled = parseBoolean(mode, "checkpoint_enabled", false, "mode");
         this.budget = new BudgetConfig(getMap("budget"));
         Map<String, Object> comp = getMap("compression");
-        this.summarizeTurns = ((Number) comp.getOrDefault("summarize_turns", 4)).intValue();
+        this.summarizeTurns = parseInt(comp, "summarize_turns", 4, "compression");
     }
 
     public static AgentConfig load(InputStream yamlStream) {
@@ -64,6 +64,49 @@ public class AgentConfig {
     private Map<String, Object> getMap(String key) {
         Object v = raw.get(key);
         return v instanceof Map ? (Map<String, Object>) v : Map.of();
+    }
+
+    static String parseString(Map<String, Object> m, String key, String fallback, String section) {
+        Object v = m.getOrDefault(key, fallback);
+        if (v == null) return fallback;
+        if (v instanceof String s) return s;
+        throw configTypeError(section, key, v, "String");
+    }
+
+    static int parseInt(Map<String, Object> m, String key, int fallback, String section) {
+        Object v = m.getOrDefault(key, fallback);
+        if (v == null) return fallback;
+        if (v instanceof Number n) return n.intValue();
+        throw configTypeError(section, key, v, "int");
+    }
+
+    static long parseLong(Map<String, Object> m, String key, long fallback, String section) {
+        Object v = m.getOrDefault(key, fallback);
+        if (v == null) return fallback;
+        if (v instanceof Number n) return n.longValue();
+        throw configTypeError(section, key, v, "long");
+    }
+
+    static double parseDouble(Map<String, Object> m, String key, double fallback, String section) {
+        Object v = m.getOrDefault(key, fallback);
+        if (v == null) return fallback;
+        if (v instanceof Number n) return n.doubleValue();
+        throw configTypeError(section, key, v, "double");
+    }
+
+    static boolean parseBoolean(Map<String, Object> m, String key, boolean fallback, String section) {
+        Object v = m.getOrDefault(key, fallback);
+        if (v == null) return fallback;
+        if (v instanceof Boolean b) return b;
+        throw configTypeError(section, key, v, "boolean");
+    }
+
+    private static IllegalStateException configTypeError(String section, String key, Object value, String expectedType) {
+        String actualType = value == null ? "null" : value.getClass().getSimpleName();
+        return new IllegalStateException(String.format(
+                "配置类型错误: %s.%s 期望 %s，实际得到 %s (值=%s)。" +
+                "请检查 agent.yaml 中该字段的类型是否正确。",
+                section, key, expectedType, actualType, value));
     }
 
     /**
@@ -106,55 +149,53 @@ public class AgentConfig {
     public BudgetConfig getBudget() { return budget; }
     public int getSummarizeTurns() { return summarizeTurns; }
 
-    // ===== 子配置类 =====
-
     public static class LlmConfig {
-        public final String provider;       // 提供商标识
-        public final String baseUrl;        // API 基础地址
-        public final String apiKey;         // API Key
-        public final String modelName;      // 模型名称
-        public final double temperature;    // 采样温度
+        public final String provider;
+        public final String baseUrl;
+        public final String apiKey;
+        public final String modelName;
+        public final double temperature;
         public final int timeout;           // 请求超时（秒）
         public final int maxTokens;         // 单次响应最大输出 token
 
         public LlmConfig(Map<String, Object> m) {
-            this.provider = (String) m.getOrDefault("provider", "deepseek");
-            this.baseUrl = (String) m.getOrDefault("base_url", "https://api.deepseek.com/v1");
-            this.apiKey = AgentConfig.resolveEnv((String) m.getOrDefault("api_key", ""));
-            this.modelName = (String) m.getOrDefault("model_name", "deepseek-chat");
-            this.temperature = ((Number) m.getOrDefault("temperature", 0.0)).doubleValue();
-            this.timeout = ((Number) m.getOrDefault("timeout", 120)).intValue();
-            this.maxTokens = ((Number) m.getOrDefault("max_tokens", 4096)).intValue();
+            this.provider = parseString(m, "provider", "deepseek", "llm");
+            this.baseUrl = parseString(m, "base_url", "https://api.deepseek.com/v1", "llm");
+            this.apiKey = AgentConfig.resolveEnv(parseString(m, "api_key", "", "llm"));
+            this.modelName = parseString(m, "model_name", "deepseek-chat", "llm");
+            this.temperature = parseDouble(m, "temperature", 0.0, "llm");
+            this.timeout = parseInt(m, "timeout", 120, "llm");
+            this.maxTokens = parseInt(m, "max_tokens", 4096, "llm");
         }
     }
 
     public static class ContextConfig {
-        // 高频配置项（从 yaml 读取）
         public final int maxTokens;           // 上下文窗口大小
         public final double budgetRatio;      // 输入 token 占比上限
-        public final String systemPromptPath; // 系统提示词路径
+        public final String systemPromptPath;
         public final double snipThreshold;    // 截短水位
         public final double pruneThreshold;   // 占位符水位
         public final double summarizeThreshold; // 摘要水位
+        public final int summarizeMaxInputChars; // 摘要输入上限
 
-        // 固定常量（不从 yaml 读取）
+        // 固定常量：压缩算法内部约束，非用户可调参数
         public static final int PINNED_MAX_TOKENS = 2048;          // Navigator 最大 token
         public static final int TAIL_GUARD_MIN_TOKENS = 8000;      // 尾部保护最小 token
         public static final int TAIL_GUARD_MIN_TURNS = 3;          // 尾部保护最小轮次
         public static final int SNIP_KEEP_CHARS = 80;              // Snip 保留字符数
         public static final int PRUNE_KEEP_CHARS = 30;             // Prune 保留字符数
         public static final int SUMMARY_TRIGGER_MESSAGES = 16;     // 摘要触发消息数
-        public static final int SUMMARIZE_MAX_INPUT_CHARS = 50000; // 摘要输入上限
         public static final int SUMMARIZE_MAX_OUTPUT_CHARS = 2000; // 摘要输出上限
 
         public ContextConfig(Map<String, Object> m) {
-            this.maxTokens = ((Number) m.getOrDefault("max_tokens", 120000)).intValue();
-            this.budgetRatio = ((Number) m.getOrDefault("budget_ratio", 0.7)).doubleValue();
-            this.systemPromptPath = (String) m.getOrDefault("system_prompt_path", "prompts/system_prompt.md");
+            this.maxTokens = parseInt(m, "max_tokens", 120000, "context");
+            this.budgetRatio = parseDouble(m, "budget_ratio", 0.7, "context");
+            this.systemPromptPath = parseString(m, "system_prompt_path", "prompts/system_prompt.md", "context");
+            this.summarizeMaxInputChars = parseInt(m, "summarize_max_input_chars", 50000, "context");
             Map<String, Object> comp = getSubMap(m, "compression");
-            this.snipThreshold = ((Number) comp.getOrDefault("snip_threshold", 0.65)).doubleValue();
-            this.pruneThreshold = ((Number) comp.getOrDefault("prune_threshold", 0.82)).doubleValue();
-            this.summarizeThreshold = ((Number) comp.getOrDefault("summarize_threshold", 0.95)).doubleValue();
+            this.snipThreshold = parseDouble(comp, "snip_threshold", 0.65, "context.compression");
+            this.pruneThreshold = parseDouble(comp, "prune_threshold", 0.82, "context.compression");
+            this.summarizeThreshold = parseDouble(comp, "summarize_threshold", 0.95, "context.compression");
         }
 
         @SuppressWarnings("unchecked")
@@ -169,22 +210,23 @@ public class AgentConfig {
         public double getSnipThreshold() { return snipThreshold; }
         public double getPruneThreshold() { return pruneThreshold; }
         public double getSummarizeThreshold() { return summarizeThreshold; }
+        public int getSummarizeMaxInputChars() { return summarizeMaxInputChars; }
     }
 
     public static class LoopConfig {
         public final int maxSteps;           // 正常模式最大步数
         public final int absoluteMaxSteps;   // stop 期间绝对上限
 
+
         public LoopConfig(Map<String, Object> m) {
-            this.maxSteps = ((Number) m.getOrDefault("max_steps", 30)).intValue();
-            this.absoluteMaxSteps = ((Number) m.getOrDefault("absolute_max_steps", 160)).intValue();
+            this.maxSteps = parseInt(m, "max_steps", 30, "loop");
+            this.absoluteMaxSteps = parseInt(m, "absolute_max_steps", 160, "loop");
         }
 
         public int getMaxSteps() { return maxSteps; }
         public int getAbsoluteMaxSteps() { return absoluteMaxSteps; }
     }
 
-    /** 会话级 Token 预算配置。 */
     public static class BudgetConfig {
         public final int maxTokens;          // 累计 token 上限
         public final double softThreshold;   // 软阈值：注入收尾 nudge
@@ -192,10 +234,10 @@ public class AgentConfig {
         public final int graceSteps;         // 触发后额外轮次
 
         public BudgetConfig(Map<String, Object> m) {
-            this.maxTokens = ((Number) m.getOrDefault("max_tokens", 500000)).intValue();
-            this.softThreshold = ((Number) m.getOrDefault("soft_threshold", 0.75)).doubleValue();
-            this.hardThreshold = ((Number) m.getOrDefault("hard_threshold", 1.0)).doubleValue();
-            this.graceSteps = ((Number) m.getOrDefault("grace_steps", 3)).intValue();
+            this.maxTokens = parseInt(m, "max_tokens", 500000, "budget");
+            this.softThreshold = parseDouble(m, "soft_threshold", 0.75, "budget");
+            this.hardThreshold = parseDouble(m, "hard_threshold", 1.0, "budget");
+            this.graceSteps = parseInt(m, "grace_steps", 3, "budget");
         }
 
         public int getMaxTokens() { return maxTokens; }
@@ -210,13 +252,15 @@ public class AgentConfig {
         public final int noProgressSteps;    // 无进展告警步数
         public final int failureWarn;        // 连续失败告警阈值
         public final int failureStop;        // 连续失败停止阈值
+        public final int stopGraceSteps;     // 循环检测/门禁停止后给 LLM 的 grace 步数
 
         public LoopDetectConfig(Map<String, Object> m) {
-            this.repeatWarn = ((Number) m.getOrDefault("repeat_warn", 3)).intValue();
-            this.repeatStop = ((Number) m.getOrDefault("repeat_stop", 5)).intValue();
-            this.noProgressSteps = ((Number) m.getOrDefault("no_progress_steps", 6)).intValue();
-            this.failureWarn = ((Number) m.getOrDefault("failure_warn", 3)).intValue();
-            this.failureStop = ((Number) m.getOrDefault("failure_stop", 5)).intValue();
+            this.repeatWarn = parseInt(m, "repeat_warn", 3, "loop_detect");
+            this.repeatStop = parseInt(m, "repeat_stop", 5, "loop_detect");
+            this.noProgressSteps = parseInt(m, "no_progress_steps", 6, "loop_detect");
+            this.failureWarn = parseInt(m, "failure_warn", 3, "loop_detect");
+            this.failureStop = parseInt(m, "failure_stop", 5, "loop_detect");
+            this.stopGraceSteps = parseInt(m, "stop_grace_steps", 2, "loop_detect");
         }
 
         public int getRepeatWarn() { return repeatWarn; }
@@ -224,19 +268,20 @@ public class AgentConfig {
         public int getNoProgressSteps() { return noProgressSteps; }
         public int getFailureWarn() { return failureWarn; }
         public int getFailureStop() { return failureStop; }
+        public int getStopGraceSteps() { return stopGraceSteps; }
     }
 
     public static class RetryConfig {
-        public final int attempts;           // 最大重试次数
-        public final long minDelayMs;        // 退避起始延迟
-        public final long maxDelayMs;        // 退避最大延迟
-        public final double jitter;          // 抖动系数
+        public final int attempts;
+        public final long minDelayMs;
+        public final long maxDelayMs;
+        public final double jitter;
 
         public RetryConfig(Map<String, Object> m) {
-            this.attempts = ((Number) m.getOrDefault("attempts", 3)).intValue();
-            this.minDelayMs = ((Number) m.getOrDefault("min_delay_ms", 500)).longValue();
-            this.maxDelayMs = ((Number) m.getOrDefault("max_delay_ms", 5000)).longValue();
-            this.jitter = ((Number) m.getOrDefault("jitter", 0.2)).doubleValue();
+            this.attempts = parseInt(m, "attempts", 3, "retry");
+            this.minDelayMs = parseLong(m, "min_delay_ms", 500, "retry");
+            this.maxDelayMs = parseLong(m, "max_delay_ms", 5000, "retry");
+            this.jitter = parseDouble(m, "jitter", 0.2, "retry");
         }
 
         public int getAttempts() { return attempts; }
@@ -246,33 +291,57 @@ public class AgentConfig {
     }
 
     public static class StorageConfig {
-        public final String baseDir;         // 会话数据根目录
+        public final String baseDir;
 
         public StorageConfig(Map<String, Object> m) {
-            this.baseDir = (String) m.getOrDefault("base_dir", "./data");
+            this.baseDir = parseString(m, "base_dir", "./data", "storage");
         }
     }
 
     public static class ToolsConfig {
-        public final Set<String> whitelist;  // 允许注册的本地工具
-        public final Set<String> destructive; // 破坏性工具
-        public final Set<String> readonly;   // 只读工具
+        public final Set<String> whitelist;
+        public final Set<String> destructive;
+        public final Set<String> readonly;
         public final boolean sandboxEnabled;          // 路径沙箱开关
         public final int parallelism;                 // 并行工具执行线程数
+        public final int httpConnectTimeoutSeconds;   // 共享 HttpClient 连接超时（秒）
+        public final int webFetchMaxContentLength;    // web_fetch 内容截断字符数
+        public final int webFetchCacheTtlMinutes;     // web_fetch 缓存 TTL（分钟）
+        public final int webFetchCacheMaxEntries;     // web_fetch LRU 缓存上限
+        public final long downloadMaxFileSizeMb;      // 下载文件大小上限（MB）
+        public final int grepMaxFileSizeMb;           // grep 单文件大小上限（MB）
+        public final int grepMaxMatchLines;           // grep 最大匹配行数
+        public final int grepMaxOutputChars;          // grep 输出截断字符数
 
         @SuppressWarnings("unchecked")
         public ToolsConfig(Map<String, Object> m) {
             this.whitelist = new LinkedHashSet<>((List<String>) m.getOrDefault("whitelist", List.of()));
             this.destructive = new LinkedHashSet<>((List<String>) m.getOrDefault("destructive", List.of()));
             this.readonly = new LinkedHashSet<>((List<String>) m.getOrDefault("readonly", List.of()));
-            this.sandboxEnabled = (boolean) m.getOrDefault("sandbox_enabled", true);
-            this.parallelism = ((Number) m.getOrDefault("parallelism", 4)).intValue();
+            this.sandboxEnabled = parseBoolean(m, "sandbox_enabled", true, "tools");
+            this.parallelism = parseInt(m, "parallelism", 4, "tools");
+            this.httpConnectTimeoutSeconds = parseInt(m, "http_connect_timeout_seconds", 30, "tools");
+            Map<String, Object> webFetch = getSubMap(m, "web_fetch");
+            this.webFetchMaxContentLength = parseInt(webFetch, "max_content_length", 50000, "tools.web_fetch");
+            this.webFetchCacheTtlMinutes = parseInt(webFetch, "cache_ttl_minutes", 15, "tools.web_fetch");
+            this.webFetchCacheMaxEntries = parseInt(webFetch, "cache_max_entries", 64, "tools.web_fetch");
+            Map<String, Object> download = getSubMap(m, "download");
+            this.downloadMaxFileSizeMb = parseLong(download, "max_file_size_mb", 100, "tools.download");
+            Map<String, Object> grep = getSubMap(m, "grep");
+            this.grepMaxFileSizeMb = parseInt(grep, "max_file_size_mb", 10, "tools.grep");
+            this.grepMaxMatchLines = parseInt(grep, "max_match_lines", 500, "tools.grep");
+            this.grepMaxOutputChars = parseInt(grep, "max_output_chars", 50000, "tools.grep");
+        }
+
+        @SuppressWarnings("unchecked")
+        private static Map<String, Object> getSubMap(Map<String, Object> m, String key) {
+            Object v = m.get(key);
+            return v instanceof Map ? (Map<String, Object>) v : Map.of();
         }
     }
 
-    /** MCP 服务配置，支持多服务。 */
     public static class McpConfig {
-        public final Map<String, McpServerConfig> servers;  // 服务列表
+        public final Map<String, McpServerConfig> servers;
 
         @SuppressWarnings("unchecked")
         public McpConfig(Map<String, Object> m) {
@@ -295,31 +364,30 @@ public class AgentConfig {
     }
 
     public static class McpServerConfig {
-        public final String key;             // 服务标识
-        public final String url;             // 服务端点
-        public final boolean enabled;        // 是否启用
-        public final String permission;     // 默认权限
+        public final String key;
+        public final String url;
+        public final boolean enabled;
+        public final String permission;
 
         public McpServerConfig(String key, Map<String, Object> m) {
             this.key = key;
-            this.url = (String) m.getOrDefault("url", "");
-            this.enabled = (boolean) m.getOrDefault("enabled", true);
-            this.permission = (String) m.getOrDefault("permission", "READONLY");
+            this.url = parseString(m, "url", "", "mcp.servers." + key);
+            this.enabled = parseBoolean(m, "enabled", true, "mcp.servers." + key);
+            this.permission = parseString(m, "permission", "READONLY", "mcp.servers." + key);
         }
     }
 
-    /** 百度千帆 AI Search 配置。 */
     public static class WebSearchConfig {
-        public final String apiKey;          // API Key
-        public final String searchSource;    // 搜索源
+        public final String apiKey;
+        public final String searchSource;
         public final int topK;               // 返回结果数
         public final String recencyFilter;   // 时间过滤
 
         public WebSearchConfig(Map<String, Object> m) {
-            this.apiKey = AgentConfig.resolveEnv((String) m.getOrDefault("api_key", ""));
-            this.searchSource = (String) m.getOrDefault("search_source", "baidu_search_v2");
-            this.topK = ((Number) m.getOrDefault("top_k", 10)).intValue();
-            this.recencyFilter = (String) m.getOrDefault("recency_filter", "year");
+            this.apiKey = AgentConfig.resolveEnv(parseString(m, "api_key", "", "web_search"));
+            this.searchSource = parseString(m, "search_source", "baidu_search_v2", "web_search");
+            this.topK = parseInt(m, "top_k", 10, "web_search");
+            this.recencyFilter = parseString(m, "recency_filter", "year", "web_search");
         }
     }
 

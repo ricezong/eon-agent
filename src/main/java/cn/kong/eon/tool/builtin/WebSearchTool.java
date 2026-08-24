@@ -2,6 +2,7 @@ package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolPermission;
+import cn.kong.eon.tool.SharedHttpClient;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -11,6 +12,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,7 +22,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** web_search 工具：使用百度千帆 AI Search API 搜索网页。 */
@@ -31,9 +33,7 @@ public class WebSearchTool implements ToolExecutor {
     private static final int DEFAULT_TOP_K = 10;
 
     private final ObjectMapper mapper = JsonMapper.get();
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
-            .build();
+    private final HttpClient httpClient = SharedHttpClient.getInstance();
 
     private final String apiKey;
 
@@ -41,33 +41,24 @@ public class WebSearchTool implements ToolExecutor {
         this.apiKey = apiKey != null ? apiKey : "";
     }
 
+    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    @Tool(name = "web_search", value = {
+            "将查询发送至搜索引擎并显示结果。使用此工具查找当前信息。当需要搜索网络、查找最新新闻或获取实时数据时，请使用此工具。",
+            "将查询发送至搜索引擎并显示结果。使用此工具查找有关人物、地点、公司、历史研究、新闻或其他主题的信息。",
+            "对 2024 年以前的信息或已知/确定的信息请勿使用此工具。再次尝试相同的查询没有任何意义。",
+            "当你已经知道答案，或者答案不依赖于实时数据时，请勿使用此工具。"
+    })
+    public String webSearch(
+            @P(name = "query", description = "搜索查询词，必须是完整、具体、自包含的短语，且包含所有相关关键词和上下文。中文查询请使用自然语言（如\"北京明天下雨吗\"），英文查询请使用完整句子。") String query,
+            @P(name = "max_results", description = "搜索返回的最大结果数，默认为 5") Integer maxResults,
+            @P(name = "site_filter", description = "限制结果仅来自指定站点，使用域名进行过滤，如 baidu.com。") String siteFilter,
+            @P(name = "recency_filter", description = "时间范围过滤：过去一天(pd)、过去一周(pw)、过去一个月(pm)或过去一年(py)。") String recencyFilter
+    ) {
+        return null;
+    }
+
     public static ToolDescriptor descriptor(String apiKey) {
-        Map<String, Map<String, Object>> props = new LinkedHashMap<>();
-        props.put("query", Map.of(
-                "type", "string",
-                "description", "搜索关键词",
-                "required", true
-        ));
-        props.put("max_results", Map.of(
-                "type", "integer",
-                "description", "最大返回结果数（默认10，最大20）"
-        ));
-        props.put("site_filter", Map.of(
-                "type", "string",
-                "description", "限定搜索站点（可选，如 www.weather.com.cn）"
-        ));
-        props.put("recency_filter", Map.of(
-                "type", "string",
-                "description", "时效性过滤（可选）：no_limit / day / week / month / year"
-        ));
-        String desc = "搜索网页，返回搜索结果列表（标题 + URL + 摘要 + 日期）。使用百度千帆 AI Search。";
-        return new ToolDescriptor(
-                "web_search",
-                desc,
-                ToolPermission.READONLY,
-                ToolDescriptor.buildSpec("web_search", desc, props),
-                new WebSearchTool(apiKey)
-        );
+        return ToolDescriptor.fromAnnotated(new WebSearchTool(apiKey), ToolPermission.READONLY);
     }
 
     @Override

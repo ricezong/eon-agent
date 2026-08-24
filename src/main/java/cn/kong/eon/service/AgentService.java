@@ -10,6 +10,7 @@ import cn.kong.eon.session.AgentSession;
 import cn.kong.eon.session.PendingInteraction;
 import cn.kong.eon.session.SessionManager;
 import cn.kong.eon.util.JsonMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import jakarta.annotation.PreDestroy;
@@ -148,10 +149,8 @@ public class AgentService {
             throw new SessionBusyException(sessionId);
         }
 
-        // 构建 SSE 回调
         TurnCallback callback = new SseEmitterCallback(sessionId, emitter, objectMapper);
 
-        // 在 agentExecutor 线程池中执行
         runStreamAsync(session, userInput, callback, emitter);
 
         return emitter;
@@ -179,9 +178,12 @@ public class AgentService {
         } catch (Exception e) {
             log.error("Stream chat failed: session={}", session.getSessionId(), e);
             try {
+                String errorJson = objectMapper.writeValueAsString(Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error"));
                 emitter.send(SseEmitter.event()
                         .name("error")
-                        .data("{\"error\":\"" + e.getMessage() + "\"}"));
+                        .data(errorJson));
+            } catch (JsonProcessingException jpe) {
+                log.error("Failed to serialize error JSON", jpe);
             } catch (Exception ignored) {}
         } finally {
             session.releaseLock();
@@ -203,8 +205,6 @@ public class AgentService {
     public java.util.List<String> listSessions() {
         return sessionManager.listSessionIds();
     }
-
-    // ===== 异步交互 =====
 
     /**
      * 获取会话的交互状态。如果存在待处理的交互，返回问题信息。
@@ -248,7 +248,6 @@ public class AgentService {
 
         log.info("Submitting answer for session={}, questions={}", sessionId, answers.size());
 
-        // 提交答案，唤醒被阻塞的 Agent 线程
         // Agent 线程在 PendingInteraction.awaitAnswer() 中阻塞，收到答案后自行 reset
         session.submitInteractionAnswer(answers);
 

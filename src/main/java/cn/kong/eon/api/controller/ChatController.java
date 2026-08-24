@@ -11,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import jakarta.validation.Valid;
+
 /**
  * 对话 API。
  * <p>
@@ -39,7 +41,7 @@ public class ChatController {
      * 如果不包含 sessionId，则自动创建新会话。
      */
     @PostMapping("/chat")
-    public ResponseEntity<ChatResponse> chat(@RequestBody ChatRequest request) {
+    public ResponseEntity<ChatResponse> chat(@Valid @RequestBody ChatRequest request) {
         if (request.getMessage() == null || request.getMessage().isBlank()) {
             throw new IllegalArgumentException("message 不能为空");
         }
@@ -65,7 +67,7 @@ public class ChatController {
      * 异步对话。提交后立即返回 jobId，不阻塞 HTTP 请求。
      */
     @PostMapping("/chat/async")
-    public ResponseEntity<AsyncChatResponse> chatAsync(@RequestBody ChatRequest request) {
+    public ResponseEntity<AsyncChatResponse> chatAsync(@Valid @RequestBody ChatRequest request) {
         if (request.getMessage() == null || request.getMessage().isBlank()) {
             throw new IllegalArgumentException("message 不能为空");
         }
@@ -128,14 +130,11 @@ public class ChatController {
         }
 
         if (sessionId == null || sessionId.isBlank()) {
-            // 无 sessionId → 创建新会话并流式执行首轮
             return agentService.createAndStream(message);
         }
 
         return agentService.chatStream(sessionId, message);
     }
-
-    // ===== 异步交互 =====
 
     /**
      * 查询会话的交互状态。

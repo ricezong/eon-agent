@@ -15,15 +15,15 @@ import java.util.*;
 public class LoopDetector {
     private static final Logger log = LoggerFactory.getLogger(LoopDetector.class);
 
-    private final int repeatWarn;                 // 重复调用告警阈值
-    private final int repeatStop;                 // 重复调用停止阈值
-    private final int noProgressSteps;            // 无进展告警步数
+    private final int repeatWarn;
+    private final int repeatStop;
+    private final int noProgressSteps;
     private final int failureWarnThreshold;       // 单工具失败告警阈值
     private final int failureStopThreshold;       // 单工具失败熔断阈值
 
     private final Map<String, Integer> callFingerprintCount = new HashMap<>();  // 调用指纹连续计数
     private final Deque<String> todoSnapshots = new ArrayDeque<>();             // Todo 快照队列
-    private int stepsWithoutProgress = 0;                                       // 无进展步数
+    private int stepsWithoutProgress = 0;
 
     private final Map<String, Integer> toolFailureCount = new HashMap<>();      // 单工具连续失败计数
     private final Set<String> trippedTools = new HashSet<>();                   // 已熔断工具集
@@ -125,9 +125,9 @@ public class LoopDetector {
             Set<String> uniqueSnapshots = new HashSet<>(todoSnapshots);
             if (uniqueSnapshots.size() == 1) {
                 stepsWithoutProgress++;
-                if (stepsWithoutProgress >= 1) {
-                    log.warn("[LoopDetector] no progress: todo unchanged for {} steps", noProgressSteps);
-                    return DetectionResult.warn("连续 " + noProgressSteps + " 步 Todo 无变化，请检查是否陷入循环");
+                if (stepsWithoutProgress >= 2) {
+                    log.warn("[LoopDetector] no progress: todo unchanged for {} consecutive windows ({} steps)", stepsWithoutProgress, noProgressSteps);
+                    return DetectionResult.warn("连续 " + (noProgressSteps * stepsWithoutProgress) + " 步 Todo 无变化，请检查是否陷入循环");
                 }
             } else {
                 stepsWithoutProgress = 0;

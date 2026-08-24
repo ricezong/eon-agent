@@ -23,6 +23,7 @@ context:
   max_tokens: 120000                      # 上下文窗口大小
   budget_ratio: 0.7                       # 输入 token 占比上限
   system_prompt_path: "prompts/system_prompt.md"  # 系统提示词路径
+  summarize_max_input_chars: 50000       # 摘要输入上限（字符数）
   compression:
     snip_threshold: 0.65                  # 水位 ≥65%：截短旧工具结果
     prune_threshold: 0.82                 # 水位 ≥82%：替换为占位符
@@ -45,6 +46,7 @@ loop_detect:
   no_progress_steps: 6                    # Todo 连续 6 步无变化告警
   failure_warn: 3                         # 单工具连续失败 3 次注入警告
   failure_stop: 5                         # 单工具连续失败 5 次熔断该工具
+  stop_grace_steps: 2                     # 循环检测/门禁停止后给 LLM 的 grace 步数
 
 retry:
   attempts: 3                             # LLM 调用最大重试次数
@@ -56,7 +58,8 @@ storage:
   base_dir: "./data"                      # 会话数据根目录: base_dir/{sessionId}/
 
 tools:
-  whitelist:                              # 允许注册的本地工具白名单（11 个）
+  http_connect_timeout_seconds: 30          # 共享 HttpClient 连接超时（秒）
+  whitelist:                                # 允许注册的本地工具白名单（11 个）
     - "read_file"
     - "write"
     - "delete_file"
@@ -79,6 +82,16 @@ tools:
     - "AskQuestion"
   sandbox_enabled: true                   # 路径沙箱开关
   parallelism: 4                          # 并行工具执行线程数
+  web_fetch:
+    max_content_length: 50000             # web_fetch 内容截断字符数
+    cache_ttl_minutes: 15                 # 缓存 TTL（分钟）
+    cache_max_entries: 64                 # LRU 缓存上限
+  download:
+    max_file_size_mb: 100                 # 下载文件大小上限（MB）
+  grep:
+    max_file_size_mb: 10                  # grep 单文件大小上限（MB）
+    max_match_lines: 500                  # grep 最大匹配行数
+    max_output_chars: 50000               # grep 输出截断字符数
 
 compression:
   summarize_turns: 6                      # 轮数触发压缩阈值（文档建议5-8轮）

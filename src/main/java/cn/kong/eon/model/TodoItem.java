@@ -10,17 +10,17 @@ import java.util.List;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class TodoItem {
-    private String id;                  // 任务 ID
-    private String content;             // 任务内容
-    private TodoStatus status;          // 任务状态
+    private String id;
+    private String content;
+    private TodoStatus status;
     private String priority;            // 优先级：high/medium/low
-    private String parentId;            // 父任务 ID
-    private List<String> dependsOn;     // 依赖任务 ID 列表
+    private String parentId;
+    private List<String> dependsOn;
     private List<String> artifacts;     // 关联的 artifact refId
-    private String notes;               // 备注
+    private String notes;
     private String blockReason;         // 阻塞原因（blocked 时必填）
     private int version;                // 乐观锁版本
-    private int lastModifiedTurn;       // 最后修改轮次
+    private int lastModifiedTurn;
 
     public TodoItem() {
         this.dependsOn = new ArrayList<>();
@@ -36,8 +36,6 @@ public class TodoItem {
         t.priority = priority != null ? priority : "medium";
         return t;
     }
-
-    // --- getters / setters ---
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }

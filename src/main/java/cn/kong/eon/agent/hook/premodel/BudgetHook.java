@@ -15,7 +15,6 @@ public class BudgetHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(BudgetHook.class);
 
     private final AgentConfig config;
-    private boolean softTriggered = false;
 
     public BudgetHook(AgentConfig config) {
         this.config = config;
@@ -35,7 +34,7 @@ public class BudgetHook implements Hook.PreModelHook {
         if (ratio >= budget.getHardThreshold()) {
             log.warn("[PreModel] Budget: HARD exceeded {}% ({}/{}) → STOP",
                     String.format("%.0f", ratio * 100), used, maxBudget);
-            // 请求优雅停止，给 LLM graceSteps 轮整理输出
+            // 请求优雅停止
             StopReason reason = new StopReason(
                     StopCategory.BUDGET_EXCEEDED,
                     "Token 预算硬超限: " + used + " >= " + (long)(maxBudget * budget.getHardThreshold()),
@@ -43,8 +42,14 @@ public class BudgetHook implements Hook.PreModelHook {
             return HookResult.stop(reason);
         }
 
-        if (ratio >= budget.getSoftThreshold() && !softTriggered) {
-            softTriggered = true;
+        // 优雅停止恢复后重置 softTriggered
+        if (ratio < budget.getSoftThreshold() && state.isBudgetSoftTriggered()) {
+            state.setBudgetSoftTriggered(false);
+            log.info("[PreModel] Budget: softTriggered reset (usage dropped below {}%)", String.format("%.0f", budget.getSoftThreshold() * 100));
+        }
+
+        if (ratio >= budget.getSoftThreshold() && !state.isBudgetSoftTriggered()) {
+            state.setBudgetSoftTriggered(true);
             int remainingSteps = budget.getGraceSteps();
             String nudge = String.format(
                     "⚠️ 预算告警：累计已消耗 %d token（预算上限 %d，已用 %.0f%%）。"

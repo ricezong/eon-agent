@@ -6,12 +6,10 @@ package cn.kong.eon.tool;
  */
 public record ToolOutcome(boolean success, String content) {
 
-    /** 工具执行成功。 */
     public static ToolOutcome success(String content) {
         return new ToolOutcome(true, content != null ? content : "");
     }
 
-    /** 工具执行失败。 */
     public static ToolOutcome failure(String content) {
         return new ToolOutcome(false, content != null ? content : "");
     }

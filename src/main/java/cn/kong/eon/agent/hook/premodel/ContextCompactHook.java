@@ -26,7 +26,7 @@ public class ContextCompactHook implements Hook.PreModelHook {
 
     @Override public String name() { return "ContextCompact"; }
     @Override public boolean isActive(SessionState state) { return true; }
-    @Override public int order() { return 100; }  // 压缩必须在其他 PreModel Hook 之后执行
+    @Override public int order() { return 100; }
 
     private final AgentConfig config;
     private final CompressionEngine compressionEngine;
@@ -43,7 +43,7 @@ public class ContextCompactHook implements Hook.PreModelHook {
                 ctxCfg.summarizeThreshold,
                 ctxCfg.SNIP_KEEP_CHARS,
                 ctxCfg.PRUNE_KEEP_CHARS,
-                ctxCfg.SUMMARIZE_MAX_INPUT_CHARS,
+                ctxCfg.summarizeMaxInputChars,
                 ctxCfg.SUMMARIZE_MAX_OUTPUT_CHARS,
                 llmClient,
                 transcriptPath);

@@ -10,11 +10,12 @@ import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -35,7 +36,6 @@ public class TodoWriteTool implements ToolExecutor {
 
         boolean merge = Boolean.TRUE.equals(arguments.get("merge"));
 
-        // 解析 todos
         List<TodoItem> items = new ArrayList<>();
         for (Object obj : todosList) {
             JsonNode node = JsonMapper.get().valueToTree(obj);
@@ -63,7 +63,6 @@ public class TodoWriteTool implements ToolExecutor {
                     "多个待办事项处于 'in_progress' 状态。同一时间只能有一个任务处于进行中状态。");
         }
 
-        // 执行写入
         List<TodoItem> result;
         if (merge) {
             result = context.todoStore().mergeById(items, state.getTurnCount());
@@ -98,54 +97,25 @@ public class TodoWriteTool implements ToolExecutor {
         return sb.toString();
     }
 
+    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    @Tool(name = "todo_write", value = {
+            "使用此工具为当前会话创建和管理结构化任务列表。",
+            "这有助于跟踪进度、组织复杂任务并展示周密性。",
+            "注意：除了首次创建待办事项外，不要告诉用户你在更新待办事项，直接执行即可。",
+            "在以下情况主动使用：1. 复杂的多步骤任务（3个以上独立步骤）；2. 需要仔细规划的非简单任务；",
+            "3. 用户明确要求待办列表；4. 用户提供多个任务；5. 收到新指令后——捕获需求；",
+            "6. 完成任务后——标记完成；7. 开始新任务时——标记为进行中。",
+            "以下情况跳过：1. 单一的简单任务；2. 琐碎任务；3. 纯对话/信息查询请求。",
+            "不要包含操作动作类条目。"
+    })
+    public String todoWrite(
+            @P(name = "todos", description = "要写入的待办事项数组。每个项包含 id（唯一标识符）、content（任务描述）和 status（当前状态：pending/in_progress/completed/cancelled）。") List<TodoItem> todos,
+            @P(name = "merge", description = "是否将待办事项与已有待办事项合并。为 true 时按 id 合并；为 false 时全量替换。") boolean merge
+    ) {
+        return null;
+    }
+
     public static ToolDescriptor descriptor() {
-        Map<String, Map<String, Object>> props = new LinkedHashMap<>();
-
-        // todos: array of objects
-        Map<String, Map<String, Object>> todoItemProps = new LinkedHashMap<>();
-        todoItemProps.put("content", Map.of(
-                "type", "string",
-                "description", "待办事项的描述/内容。",
-                "required", true
-        ));
-        todoItemProps.put("id", Map.of(
-                "type", "string",
-                "description", "待办事项的唯一标识符。",
-                "required", true
-        ));
-        todoItemProps.put("status", Map.of(
-                "type", "string",
-                "description", "当前状态。枚举值：\"pending\"、\"in_progress\"、\"completed\"、\"cancelled\"。",
-                "required", true
-        ));
-
-        props.put("todos", Map.of(
-                "type", "array",
-                "description", "要写入的待办事项数组。",
-                "required", true,
-                "items", todoItemProps
-        ));
-        props.put("merge", Map.of(
-                "type", "boolean",
-                "description", "是否将待办事项与已有待办事项合并。为 true 时按 id 合并；为 false 时全量替换。",
-                "required", true
-        ));
-
-        String desc = "使用此工具为当前会话创建和管理结构化任务列表。"
-                + "这有助于跟踪进度、组织复杂任务并展示周密性。"
-                + "注意：除了首次创建待办事项外，不要告诉用户你在更新待办事项，直接执行即可。"
-                + "在以下情况主动使用：1. 复杂的多步骤任务（3个以上独立步骤）；2. 需要仔细规划的非简单任务；"
-                + "3. 用户明确要求待办列表；4. 用户提供多个任务；5. 收到新指令后——捕获需求；"
-                + "6. 完成任务后——标记完成；7. 开始新任务时——标记为进行中。"
-                + "以下情况跳过：1. 单一的简单任务；2. 琐碎任务；3. 纯对话/信息查询请求。"
-                + "不要包含操作动作类条目。";
-
-        return new ToolDescriptor(
-                "todo_write",
-                desc,
-                ToolPermission.RESTRICTED_WRITE,
-                ToolDescriptor.buildSpec("todo_write", desc, props),
-                new TodoWriteTool()
-        );
+        return ToolDescriptor.fromAnnotated(new TodoWriteTool(), ToolPermission.RESTRICTED_WRITE);
     }
 }

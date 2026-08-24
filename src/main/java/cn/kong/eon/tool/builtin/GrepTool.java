@@ -7,6 +7,8 @@ import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,7 +19,6 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -31,9 +32,25 @@ import java.util.regex.Pattern;
 public class GrepTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(GrepTool.class);
 
-    private static final int MAX_MATCH_LINES = 500;
-    private static final int MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
     private static final int DEFAULT_CONTEXT_LINES = 1;
+
+    private final int maxMatchLines;
+    private final int maxFileSize;
+    private final int maxOutputChars;
+
+    public GrepTool() {
+        this(500, 10 * 1024 * 1024, 50000);
+    }
+
+    public GrepTool(int maxMatchLines, int maxFileSize) {
+        this(maxMatchLines, maxFileSize, 50000);
+    }
+
+    public GrepTool(int maxMatchLines, int maxFileSize, int maxOutputChars) {
+        this.maxMatchLines = maxMatchLines;
+        this.maxFileSize = maxFileSize;
+        this.maxOutputChars = maxOutputChars;
+    }
 
     @Override
     public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
@@ -46,7 +63,6 @@ public class GrepTool implements ToolExecutor {
         boolean caseInsensitive = "true".equalsIgnoreCase(String.valueOf(arguments.get("case_insensitive")));
         int contextLines = parseIntOrDefault(arguments.get("context_lines"), DEFAULT_CONTEXT_LINES);
 
-        // 构建搜索模式
         int flags = 0;
         if (caseInsensitive) flags |= Pattern.CASE_INSENSITIVE;
         Pattern pattern;
@@ -56,7 +72,6 @@ public class GrepTool implements ToolExecutor {
             return ToolOutcome.failure("无效的搜索模式: " + e.getMessage());
         }
 
-        // 解析搜索路径
         PathResolver resolver = new PathResolver(context.workDir(), true);
         Path rootPath;
         try {
@@ -71,7 +86,6 @@ public class GrepTool implements ToolExecutor {
             return ToolOutcome.failure("路径不存在: " + searchPath);
         }
 
-        // 收集匹配结果
         List<MatchEntry> allMatches = new ArrayList<>();
         int[] totalMatches = {0};
 
@@ -82,7 +96,7 @@ public class GrepTool implements ToolExecutor {
                 Files.walkFileTree(rootPath, new SimpleFileVisitor<>() {
                     @Override
                     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                        if (allMatches.size() >= MAX_MATCH_LINES) return FileVisitResult.TERMINATE;
+                        if (allMatches.size() >= maxMatchLines) return FileVisitResult.TERMINATE;
                         searchInFile(file, rootPath, pattern, contextLines, allMatches, totalMatches);
                         return FileVisitResult.CONTINUE;
                     }
@@ -98,7 +112,6 @@ public class GrepTool implements ToolExecutor {
             return ToolOutcome.failure("搜索失败: " + e.getMessage());
         }
 
-        // 构建输出
         StringBuilder sb = new StringBuilder();
         int fileCount = (int) allMatches.stream().map(m -> m.filePath).distinct().count();
         sb.append("搜索 \"").append(patternStr).append("\" 在 ").append(fileCount).append(" 个文件中，")
@@ -106,11 +119,10 @@ public class GrepTool implements ToolExecutor {
 
         boolean truncated = false;
         for (MatchEntry entry : allMatches) {
-            if (sb.length() > 50000) {
+            if (sb.length() > maxOutputChars) {
                 truncated = true;
                 break;
             }
-            // 文件名（目录搜索时显示）
             if (Files.isDirectory(rootPath)) {
                 Path relative = rootPath.relativize(entry.filePath);
                 sb.append("--- ").append(relative).append(" ---\n");
@@ -137,12 +149,12 @@ public class GrepTool implements ToolExecutor {
 
     private void searchInFile(Path file, Path basePath, Pattern pattern, int contextLines,
                               List<MatchEntry> results, int[] totalMatches) {
-        if (results.size() >= MAX_MATCH_LINES) return;
+        if (results.size() >= maxMatchLines) return;
         if (!Files.isRegularFile(file)) return;
 
         try {
             long size = Files.size(file);
-            if (size > MAX_FILE_SIZE) return;
+            if (size > maxFileSize) return;
 
             String content = Files.readString(file);
             String[] lines = content.split("\n", -1);
@@ -169,11 +181,10 @@ public class GrepTool implements ToolExecutor {
                         entry.lines.add(new ContextLine(j + 1, lines[j], j == i));
                     }
 
-                    if (results.size() >= MAX_MATCH_LINES) return;
+                    if (results.size() >= maxMatchLines) return;
                 }
             }
         } catch (IOException e) {
-            // 跳过无法读取的文件
         }
     }
 
@@ -185,8 +196,6 @@ public class GrepTool implements ToolExecutor {
             return defaultVal;
         }
     }
-
-    // === 内部数据结构 ===
 
     private static class MatchEntry {
         final Path filePath;
@@ -209,39 +218,28 @@ public class GrepTool implements ToolExecutor {
         }
     }
 
-    // === Schema ===
+    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    @Tool(name = "grep", value = {
+            "在文件或目录中搜索指定内容。当需要在文件中查找某段文字或某个关键词时使用此工具。",
+            "返回匹配的行及行号，默认包含上下文行。",
+            "搜索范围可以是一个文件或整个目录。"
+    })
+    public String grep(
+            @P(name = "pattern", description = "要搜索的内容（支持简单的模式匹配）。") String pattern,
+            @P(name = "path", description = "要搜索的文件或目录路径。相对于工作目录，不指定则搜索工作目录。", required = false) String path,
+            @P(name = "case_insensitive", description = "是否忽略大小写。传 \"true\" 启用。默认：false。", required = false) String case_insensitive,
+            @P(name = "context_lines", description = "匹配行前后显示的上下文行数。默认：1。", required = false) String context_lines
+    ) {
+        return null;
+    }
 
     @SuppressWarnings("unchecked")
+    /** 仅供测试使用，生产环境通过 {@link #descriptor(int, int, int)} 传入配置。 */
     public static ToolDescriptor descriptor() {
-        Map<String, Map<String, Object>> props = new LinkedHashMap<>();
-        props.put("pattern", Map.of(
-                "type", "string",
-                "description", "要搜索的内容（支持简单的模式匹配）。",
-                "required", true
-        ));
-        props.put("path", Map.of(
-                "type", "string",
-                "description", "要搜索的文件或目录路径。相对于工作目录，不指定则搜索工作目录。"
-        ));
-        props.put("case_insensitive", Map.of(
-                "type", "string",
-                "description", "是否忽略大小写。传 \"true\" 启用。默认：false。"
-        ));
-        props.put("context_lines", Map.of(
-                "type", "string",
-                "description", "匹配行前后显示的上下文行数。默认：1。"
-        ));
+        return ToolDescriptor.fromAnnotated(new GrepTool(), ToolPermission.READONLY);
+    }
 
-        String desc = "在文件或目录中搜索指定内容。当需要在文件中查找某段文字或某个关键词时使用此工具。"
-                + "返回匹配的行及行号，默认包含上下文行。"
-                + "搜索范围可以是一个文件或整个目录。";
-
-        return new ToolDescriptor(
-                "grep",
-                desc,
-                ToolPermission.READONLY,
-                ToolDescriptor.buildSpec("grep", desc, props),
-                new GrepTool()
-        );
+    public static ToolDescriptor descriptor(int maxMatchLines, int maxFileSize, int maxOutputChars) {
+        return ToolDescriptor.fromAnnotated(new GrepTool(maxMatchLines, maxFileSize, maxOutputChars), ToolPermission.READONLY);
     }
 }

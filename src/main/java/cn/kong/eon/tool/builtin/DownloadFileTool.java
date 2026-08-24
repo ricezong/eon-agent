@@ -3,10 +3,13 @@ package cn.kong.eon.tool.builtin;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.PathResolver;
+import cn.kong.eon.tool.SharedHttpClient;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,7 +21,6 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -31,12 +33,18 @@ public class DownloadFileTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(DownloadFileTool.class);
 
     private static final int TIMEOUT_SECONDS = 60;
-    private static final long MAX_FILE_SIZE = 100L * 1024 * 1024; // 100MB
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(30))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
+    private final long maxFileSize;
+
+    private final HttpClient httpClient = SharedHttpClient.getInstance();
+
+    public DownloadFileTool() {
+        this(100L * 1024 * 1024);
+    }
+
+    public DownloadFileTool(long maxFileSize) {
+        this.maxFileSize = maxFileSize;
+    }
 
     @Override
     public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
@@ -50,10 +58,8 @@ public class DownloadFileTool implements ToolExecutor {
             return ToolOutcome.failure("缺少 'file_path' 参数");
         }
 
-        // 保持原始协议，不强制升级 HTTPS（目标服务器可能只支持 HTTP）
         String resolvedUrl = url.trim();
 
-        // 解析本地路径
         PathResolver resolver = new PathResolver(context.workDir(), true);
         Path localPath;
         try {
@@ -79,29 +85,26 @@ public class DownloadFileTool implements ToolExecutor {
                 return ToolOutcome.failure("下载失败：HTTP " + response.statusCode());
             }
 
-            // 检查 Content-Length（如果服务器提供）
             long contentLength = response.headers()
                     .firstValueAsLong("content-length")
                     .orElse(-1);
-            if (contentLength > MAX_FILE_SIZE) {
+            if (contentLength > maxFileSize) {
                 return ToolOutcome.failure("文件过大：" + formatSize(contentLength)
-                        + "，上限 " + formatSize(MAX_FILE_SIZE));
+                        + "，上限 " + formatSize(maxFileSize));
             }
 
-            // 确保父目录存在
             Files.createDirectories(localPath.getParent());
 
-            // 流式写入
             long bytesWritten;
             try (InputStream is = response.body()) {
                 bytesWritten = Files.copy(is, localPath);
             }
 
             // 再次检查实际写入大小
-            if (bytesWritten > MAX_FILE_SIZE) {
+            if (bytesWritten > maxFileSize) {
                 Files.deleteIfExists(localPath);
                 return ToolOutcome.failure("文件过大：" + formatSize(bytesWritten)
-                        + "，上限 " + formatSize(MAX_FILE_SIZE));
+                        + "，上限 " + formatSize(maxFileSize));
             }
 
             log.info("download_file done: {} ({} bytes)", localPath, bytesWritten);
@@ -128,29 +131,25 @@ public class DownloadFileTool implements ToolExecutor {
         return String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024));
     }
 
+    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    @Tool(name = "download_file", value = {
+            "从指定 URL 下载文件并保存到本地。当用户要求下载文件、保存远程内容到本地时使用此工具。",
+            "文件以流式方式直接写入本地磁盘，不经过对话上下文，支持大文件（上限 100MB）。",
+            "保持原始内容，不做格式转换。"
+    })
+    public String downloadFile(
+            @P(name = "url", description = "要下载的文件 URL。必须是完整的合法 URL。") String url,
+            @P(name = "file_path", description = "保存的文件路径（可选，默认从 URL 推断）") String file_path
+    ) {
+        return null;
+    }
+
+    /** 仅供测试使用，生产环境通过 {@link #descriptor(long)} 传入配置。 */
     public static ToolDescriptor descriptor() {
-        Map<String, Map<String, Object>> props = new LinkedHashMap<>();
-        props.put("url", Map.of(
-                "type", "string",
-                "description", "要下载的文件 URL。必须是完整的合法 URL。",
-                "required", true
-        ));
-        props.put("filename", Map.of(
-                "type", "string",
-                "description", "保存的文件名（可选，默认从 URL 推断）",
-                "required", true
-        ));
+        return ToolDescriptor.fromAnnotated(new DownloadFileTool(), ToolPermission.RESTRICTED_WRITE);
+    }
 
-        String desc = "从指定 URL 下载文件并保存到本地。当用户要求下载文件、保存远程内容到本地时使用此工具。"
-                + "文件以流式方式直接写入本地磁盘，不经过对话上下文，支持大文件（上限 100MB）。"
-                + "保持原始内容，不做格式转换。";
-
-        return new ToolDescriptor(
-                "download_file",
-                desc,
-                ToolPermission.RESTRICTED_WRITE,
-                ToolDescriptor.buildSpec("download_file", desc, props),
-                new DownloadFileTool()
-        );
+    public static ToolDescriptor descriptor(long maxFileSize) {
+        return ToolDescriptor.fromAnnotated(new DownloadFileTool(maxFileSize), ToolPermission.RESTRICTED_WRITE);
     }
 }

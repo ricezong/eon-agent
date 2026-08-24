@@ -23,7 +23,7 @@ import java.util.Map;
 public class GateHook implements Hook.PreToolHook {
     private static final Logger log = LoggerFactory.getLogger(GateHook.class);
 
-    private static final int STOP_GRACE_STEPS = 2;
+    private final int stopGraceSteps;
 
     /** 破坏性工具 → 必填参数名映射。 */
     private static final Map<String, String> DESTRUCTIVE_REQUIRED_PARAMS = Map.of(
@@ -33,7 +33,12 @@ public class GateHook implements Hook.PreToolHook {
     private final ToolRegistry toolRegistry;
 
     public GateHook(ToolRegistry toolRegistry) {
+        this(toolRegistry, 2);
+    }
+
+    public GateHook(ToolRegistry toolRegistry, int stopGraceSteps) {
         this.toolRegistry = toolRegistry;
+        this.stopGraceSteps = stopGraceSteps;
     }
 
     @Override public String name() { return "Gate"; }
@@ -60,7 +65,7 @@ public class GateHook implements Hook.PreToolHook {
                 StopReason reason = new StopReason(
                         StopCategory.GATE_REJECTED,
                         "破坏性工具 " + req.name() + " 缺少必要参数 " + requiredParam,
-                        STOP_GRACE_STEPS);
+                        stopGraceSteps);
                 return HookResult.stop(reason);
             }
         }

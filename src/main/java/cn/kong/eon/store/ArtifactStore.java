@@ -20,8 +20,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ArtifactStore {
     private static final Logger log = LoggerFactory.getLogger(ArtifactStore.class);
 
-    private final Path artifactDir;                            // artifact 存储目录
-    private final ObjectMapper mapper;                         // JSON 序列化
+    private final Path artifactDir;
+    private final ObjectMapper mapper;
     private final Map<String, ArtifactRef> refs = new ConcurrentHashMap<>();  // 引用注册表
     private final AtomicInteger counter = new AtomicInteger(0); // 自增 ID 计数器
 

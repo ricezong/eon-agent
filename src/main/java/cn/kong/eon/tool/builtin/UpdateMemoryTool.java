@@ -8,11 +8,11 @@ import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -26,38 +26,25 @@ import java.util.Map;
 public class UpdateMemoryTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(UpdateMemoryTool.class);
 
+    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    @Tool(name = "update_memory", value = {
+            "在持久化知识库中创建、更新或删除记忆，供 AI 将来参考。如果用户补充了已有记忆，必须使用此工具的 'update' 操作。",
+            "如果用户反驳了已有记忆，必须使用此工具的 'delete' 操作，而非 'update' 或 'create'。",
+            "要更新或删除已有记忆时，必须提供 existing_knowledge_id 参数。",
+            "如果用户要求记住某事、保存某事或创建记忆，必须使用此工具的 'create' 操作。",
+            "除非用户明确要求记住或保存某事，不要使用 'create' 操作调用此工具。"
+    })
+    public String updateMemory(
+            @P(name = "action", description = "对知识库执行的操作。默认为 'create'。枚举值：\"create\"、\"update\"、\"delete\"。", required = false) String action,
+            @P(name = "existing_knowledge_id", description = "当 action 为 'update' 或 'delete' 时必填。要更新或删除的已有记忆的 ID。", required = false) String existing_knowledge_id,
+            @P(name = "knowledge_to_store", description = "要存储的具体记忆内容。不超过一段话。当 action 为 'create' 或 'update' 时必填。", required = false) String knowledge_to_store,
+            @P(name = "title", description = "要存储的记忆的标题。当 action 为 'create' 或 'update' 时必填。", required = false) String title
+    ) {
+        return null;
+    }
+
     public static ToolDescriptor descriptor() {
-        Map<String, Map<String, Object>> props = new LinkedHashMap<>();
-        props.put("action", Map.of(
-                "type", "string",
-                "description", "对知识库执行的操作。默认为 'create'。枚举值：\"create\"、\"update\"、\"delete\"。"
-        ));
-        props.put("existing_knowledge_id", Map.of(
-                "type", "string",
-                "description", "当 action 为 'update' 或 'delete' 时必填。要更新或删除的已有记忆的 ID。"
-        ));
-        props.put("knowledge_to_store", Map.of(
-                "type", "string",
-                "description", "要存储的具体记忆内容。不超过一段话。当 action 为 'create' 或 'update' 时必填。"
-        ));
-        props.put("title", Map.of(
-                "type", "string",
-                "description", "要存储的记忆的标题。当 action 为 'create' 或 'update' 时必填。"
-        ));
-
-        String desc = "在持久化知识库中创建、更新或删除记忆，供 AI 将来参考。如果用户补充了已有记忆，必须使用此工具的 'update' 操作。"
-                + "如果用户反驳了已有记忆，必须使用此工具的 'delete' 操作，而非 'update' 或 'create'。"
-                + "要更新或删除已有记忆时，必须提供 existing_knowledge_id 参数。"
-                + "如果用户要求记住某事、保存某事或创建记忆，必须使用此工具的 'create' 操作。"
-                + "除非用户明确要求记住或保存某事，不要使用 'create' 操作调用此工具。";
-
-        return new ToolDescriptor(
-                "update_memory",
-                desc,
-                ToolPermission.READONLY,
-                ToolDescriptor.buildSpec("update_memory", desc, props),
-                new UpdateMemoryTool()
-        );
+        return ToolDescriptor.fromAnnotated(new UpdateMemoryTool(), ToolPermission.READONLY);
     }
 
     @Override

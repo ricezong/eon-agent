@@ -7,13 +7,14 @@ import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.tool.PathResolver;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -29,7 +30,6 @@ public class DeleteFileTool implements ToolExecutor {
             return ToolOutcome.failure("缺少 'target_file' 参数");
         }
 
-        // explanation 是可选参数，记录到日志
         String explanation = (String) arguments.get("explanation");
         if (explanation != null) {
             log.info("delete_file explanation: {}", explanation);
@@ -66,21 +66,19 @@ public class DeleteFileTool implements ToolExecutor {
         }
     }
 
+    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    @Tool(name = "delete_file", value = {
+            "删除指定文件或目录。用法：删除文件或目录。永久删除，不可恢复。",
+            "危险：删除前需要确认。"
+    })
+    public String deleteFile(
+            @P(name = "target_file", description = "要删除的文件或目录路径。相对于工作目录，可直接传文件名。") String target_file,
+            @P(name = "explanation", description = "删除原因说明（可选）。", required = false) String explanation
+    ) {
+        return null;
+    }
+
     public static ToolDescriptor descriptor() {
-        Map<String, Map<String, Object>> props = new LinkedHashMap<>();
-        props.put("target_file", Map.of(
-                "type", "string",
-                "description", "要删除的文件或目录路径。相对于工作目录，可直接传文件名。",
-                "required", true
-        ));
-        String desc = "删除指定文件或目录。用法：删除文件或目录。永久删除，不可恢复。"
-                + "危险：删除前需要确认。";
-        return new ToolDescriptor(
-                "delete_file",
-                desc,
-                ToolPermission.RESTRICTED_WRITE,
-                ToolDescriptor.buildSpec("delete_file", desc, props),
-                new DeleteFileTool()
-        );
+        return ToolDescriptor.fromAnnotated(new DeleteFileTool(), ToolPermission.RESTRICTED_WRITE);
     }
 }

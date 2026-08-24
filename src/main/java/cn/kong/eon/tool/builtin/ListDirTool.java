@@ -7,13 +7,14 @@ import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.tool.PathResolver;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -89,21 +90,18 @@ public class ListDirTool implements ToolExecutor {
         return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
     }
 
+    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    @Tool(name = "list_dir", value = {
+            "浏览目录中的文件和子目录。当用户需要查看某个文件夹里有什么文件时使用此工具。",
+            "返回文件名、类型和大小信息。"
+    })
+    public String listDir(
+            @P(name = "target_directory", description = "要浏览的目录路径。相对于工作目录，不传则浏览工作目录本身。") String target_directory
+    ) {
+        return null;
+    }
+
     public static ToolDescriptor descriptor() {
-        Map<String, Map<String, Object>> props = new LinkedHashMap<>();
-        props.put("target_directory", Map.of(
-                "type", "string",
-                "description", "要浏览的目录路径。相对于工作目录，不传则浏览工作目录本身。",
-                "required", true
-        ));
-        String desc = "浏览目录中的文件和子目录。当用户需要查看某个文件夹里有什么文件时使用此工具。"
-                + "返回文件名、类型和大小信息。";
-        return new ToolDescriptor(
-                "list_dir",
-                desc,
-                ToolPermission.READONLY,
-                ToolDescriptor.buildSpec("list_dir", desc, props),
-                new ListDirTool()
-        );
+        return ToolDescriptor.fromAnnotated(new ListDirTool(), ToolPermission.READONLY);
     }
 }

@@ -104,11 +104,11 @@ public class JsonlStore {
     /** JSONL 序列化中间结构。 */
     public static class SerializedMessage {
         public String type;       // 消息类型：system/user/ai/tool
-        public String content;    // 消息内容
+        public String content;
         public String name;           // UserMessage 的 name 属性
-        public String toolCallId;     // 工具调用 ID
-        public String toolName;       // 工具名称
-        public List<ToolCallRef> toolCalls;  // 工具调用列表
+        public String toolCallId;
+        public String toolName;
+        public List<ToolCallRef> toolCalls;
 
         public SerializedMessage() {}
 

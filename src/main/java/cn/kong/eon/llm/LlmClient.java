@@ -5,10 +5,12 @@ import cn.kong.eon.model.TokenUsage;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.model.TokenCountEstimator;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiTokenCountEstimator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,6 +23,7 @@ public class LlmClient {
 
     private final ChatModel chatModel;
     private final AgentConfig.RetryConfig retryConfig;
+    private final TokenCountEstimator tokenCountEstimator;
 
     public LlmClient(AgentConfig config) {
         AgentConfig.LlmConfig llmConfig = config.getLlm();
@@ -37,8 +40,24 @@ public class LlmClient {
                 .logResponses(false)
                 .build();
 
+        // 创建精确的 Token 估算器；若模型名不被 JTokkit 识别则回退到 gpt-4o 编码
+        TokenCountEstimator estimator;
+        try {
+            estimator = new OpenAiTokenCountEstimator(llmConfig.modelName);
+        } catch (Exception e) {
+            log.warn("Failed to create tokenizer for model '{}', falling back to gpt-4o: {}",
+                    llmConfig.modelName, e.getMessage());
+            estimator = new OpenAiTokenCountEstimator("gpt-4o");
+        }
+        this.tokenCountEstimator = estimator;
+
         log.info("LlmClient initialized: provider={}, model={}, baseUrl={}",
                 llmConfig.provider, llmConfig.modelName, llmConfig.baseUrl);
+    }
+
+    /** 暴露 TokenCountEstimator 供 ContextBuilder 做精确估算。 */
+    public TokenCountEstimator getTokenCountEstimator() {
+        return tokenCountEstimator;
     }
 
     /** 调用 LLM，带指数退避重试。 */

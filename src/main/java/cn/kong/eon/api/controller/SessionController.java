@@ -26,7 +26,6 @@ public class SessionController {
         this.agentService = agentService;
     }
 
-    /** 创建新会话。 */
     @PostMapping
     public ResponseEntity<SessionResponse> createSession(@RequestBody CreateSessionRequest request) {
         String message = request.getMessage() != null ? request.getMessage() : "";
@@ -34,13 +33,11 @@ public class SessionController {
         return ResponseEntity.ok(buildSessionResponse(sessionId));
     }
 
-    /** 列出所有活跃会话 ID。 */
     @GetMapping
     public ResponseEntity<List<String>> listSessions() {
         return ResponseEntity.ok(agentService.listSessions());
     }
 
-    /** 获取会话信息。 */
     @GetMapping("/{sessionId}")
     public ResponseEntity<SessionResponse> getSession(@PathVariable("sessionId") String sessionId) {
         var session = agentService.getSession(sessionId);
@@ -55,7 +52,6 @@ public class SessionController {
         ));
     }
 
-    /** 关闭并销毁会话。 */
     @DeleteMapping("/{sessionId}")
     public ResponseEntity<Void> closeSession(@PathVariable("sessionId") String sessionId) {
         agentService.closeSession(sessionId);

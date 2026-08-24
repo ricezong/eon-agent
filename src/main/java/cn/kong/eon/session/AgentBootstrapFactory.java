@@ -17,6 +17,7 @@ import cn.kong.eon.model.SessionState;
 import cn.kong.eon.store.*;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolRegistry;
+import cn.kong.eon.tool.SharedHttpClient;
 import cn.kong.eon.tool.ToolResultRenderer;
 import cn.kong.eon.tool.builtin.*;
 import org.slf4j.Logger;
@@ -65,6 +66,7 @@ public class AgentBootstrapFactory {
         CheckpointStore checkpointStore = new CheckpointStore(sessionDir.resolve("checkpoints"));
 
         // 2. Tool 层
+        SharedHttpClient.configure(config.getTools().httpConnectTimeoutSeconds);
         ToolRegistry toolRegistry = new ToolRegistry(config.getTools().whitelist);
         registerAllTools(toolRegistry, config);
 
@@ -73,7 +75,6 @@ public class AgentBootstrapFactory {
 
         ToolResultRenderer resultRenderer = new ToolResultRenderer(artifactStore);
 
-        // 会话工作目录
         Path workspaceDir = sessionDir.resolve("workspace");
         try {
             Files.createDirectories(workspaceDir);
@@ -103,12 +104,13 @@ public class AgentBootstrapFactory {
                 jsonlStore, basePrompt, toolContext, loopDetector);
 
         // 6. 挂载 Hook
+        int stopGraceSteps = config.getLoopDetect().stopGraceSteps;
         agent.addHook(new BudgetHook(config));
         agent.addHook(new TodoNavigatorHook(todoStore));
         agent.addHook(new ContextCompactHook(config, llmClient,
                 sessionDir.resolve("transcript.jsonl").toString()));
-        agent.addHook(new LoopDetectHook(loopDetector));
-        agent.addHook(new GateHook(toolRegistry));
+        agent.addHook(new LoopDetectHook(loopDetector, stopGraceSteps));
+        agent.addHook(new GateHook(toolRegistry, stopGraceSteps));
         agent.addHook(new FailureBreakerHook(loopDetector));
         agent.addHook(new CheckpointHook(config, checkpointStore, todoStore));
 
@@ -141,12 +143,17 @@ public class AgentBootstrapFactory {
         toolRegistry.register(WriteFileTool.descriptor());
         toolRegistry.register(DeleteFileTool.descriptor());
         toolRegistry.register(ListDirTool.descriptor());
-        toolRegistry.register(DownloadFileTool.descriptor());
-        toolRegistry.register(GrepTool.descriptor());
+        long maxFileSizeBytes = config.getTools().downloadMaxFileSizeMb * 1024 * 1024;
+        toolRegistry.register(DownloadFileTool.descriptor(maxFileSizeBytes));
+        int grepMaxFileSizeBytes = config.getTools().grepMaxFileSizeMb * 1024 * 1024;
+        toolRegistry.register(GrepTool.descriptor(config.getTools().grepMaxMatchLines, grepMaxFileSizeBytes, config.getTools().grepMaxOutputChars));
         toolRegistry.register(TodoWriteTool.descriptor());
         toolRegistry.register(AskQuestionTool.descriptor());
         toolRegistry.register(UpdateMemoryTool.descriptor());
-        toolRegistry.register(WebFetchTool.descriptor());
+        toolRegistry.register(WebFetchTool.descriptor(
+                config.getTools().webFetchMaxContentLength,
+                config.getTools().webFetchCacheTtlMinutes,
+                config.getTools().webFetchCacheMaxEntries));
         toolRegistry.register(WebSearchTool.descriptor(config.getWebSearch().apiKey));
         log.info("Local tools registered ({})", toolRegistry.getAll().size());
     }

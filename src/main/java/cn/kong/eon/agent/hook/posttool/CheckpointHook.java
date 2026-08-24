@@ -25,6 +25,7 @@ public class CheckpointHook implements Hook.PostToolHook {
 
     @Override public String name() { return "Checkpoint"; }
     @Override public boolean isActive(SessionState state) { return config.isCheckpointEnabled(); }
+    @Override public int order() { return 100; }
 
     @Override
     public HookResult afterToolExecution(SessionState state, String toolName, boolean success) {

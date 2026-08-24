@@ -7,13 +7,14 @@ import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.tool.PathResolver;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -68,7 +69,6 @@ public class ReadFileTool implements ToolExecutor {
             String[] lines = content.split("\n", -1);
             int totalLines = lines.length;
 
-            // 处理空文件
             if (totalLines == 1 && lines[0].isEmpty()) {
                 log.info("read_file: {} (empty)", targetFile);
                 return ToolOutcome.success("文件为空。");
@@ -89,7 +89,6 @@ public class ReadFileTool implements ToolExecutor {
             System.arraycopy(lines, startLine - 1, subset, 0, count);
             String result = String.join("\n", subset);
 
-            // 追加截断提示
             if (endLine < totalLines) {
                 result += "\n\n(文件共 " + totalLines + " 行，已显示第 " + startLine + "-" + endLine + " 行)";
             }
@@ -104,31 +103,22 @@ public class ReadFileTool implements ToolExecutor {
         }
     }
 
+    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    @Tool(name = "read_file", value = {
+            "读取本地文件的内容。当用户需要查看文件、文档或笔记时使用此工具。",
+            "对于较长的文件，可以通过 offset 和 limit 参数分段读取。",
+            "如果文件不存在或无法读取，会返回错误信息。",
+            "也支持读取 artifact:// 引用（工具结果过长时系统会自动生成此类引用）。"
+    })
+    public String readFile(
+            @P(name = "target_file", description = "要读取的文件路径。相对于工作目录，可直接传文件名。") String target_file,
+            @P(name = "offset", description = "从第几行开始读取（从 1 开始计数）。不指定则从头读取。", required = false) Integer offset,
+            @P(name = "limit", description = "最多读取多少行。不指定则读取整个文件。", required = false) Integer limit
+    ) {
+        return null; // Schema definition only; actual execution via execute()
+    }
+
     public static ToolDescriptor descriptor() {
-        Map<String, Map<String, Object>> props = new LinkedHashMap<>();
-        props.put("target_file", Map.of(
-                "type", "string",
-                "description", "要读取的文件路径。相对于工作目录，可直接传文件名。",
-                "required", true
-        ));
-        props.put("offset", Map.of(
-                "type", "integer",
-                "description", "从第几行开始读取（从 1 开始计数）。不指定则从头读取。"
-        ));
-        props.put("limit", Map.of(
-                "type", "integer",
-                "description", "最多读取多少行。不指定则读取整个文件。"
-        ));
-        String desc = "读取本地文件的内容。当用户需要查看文件、文档或笔记时使用此工具。"
-                + "对于较长的文件，可以通过 offset 和 limit 参数分段读取。"
-                + "如果文件不存在或无法读取，会返回错误信息。"
-                + "也支持读取 artifact:// 引用（工具结果过长时系统会自动生成此类引用）。";
-        return new ToolDescriptor(
-                "read_file",
-                desc,
-                ToolPermission.READONLY,
-                ToolDescriptor.buildSpec("read_file", desc, props),
-                new ReadFileTool()
-        );
+        return ToolDescriptor.fromAnnotated(new ReadFileTool(), ToolPermission.READONLY);
     }
 }

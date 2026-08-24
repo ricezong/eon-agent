@@ -17,10 +17,8 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * 工具执行处理器。封装工具执行全流程：
- * 参数解析 → 执行 → todo_write 后处理 → 结果渲染 → 日志。
- * 支持并行执行：多个互相独立的工具请求用 ExecutorService 并行，
- * 串行豁免清单（todo_write/AskQuestion）强制串行。
+ * 工具执行处理器。封装工具执行全流程：参数解析 → 执行 → todo_write 后处理 → 结果渲染 → 日志。
+ * 支持并行执行，串行豁免清单（todo_write/AskQuestion）强制串行。
  */
 public class ToolExecutionHandler {
     private static final Logger log = LoggerFactory.getLogger(ToolExecutionHandler.class);
@@ -56,8 +54,6 @@ public class ToolExecutionHandler {
 
     /**
      * 执行所有待执行的工具调用。被熔断的工具跳过执行，返回合成错误结果。
-     * 包含 todo_write 后处理。
-     * 多个互相独立的工具并行执行；串行豁免清单中的工具强制串行。
      */
     public List<ToolExecutionResult> execute(TurnRecord rec, SessionState state) {
         List<ToolExecutionRequest> requests = state.getPendingToolCalls();

@@ -12,12 +12,12 @@ import java.util.*;
 public class ToolRegistry {
     private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
 
-    private final Map<String, ToolDescriptor> tools = new LinkedHashMap<>();  // 本地工具
-    private final Set<String> whitelist;                                       // 白名单
-    private final ArgumentSanitizer sanitizer = new ArgumentSanitizer();        // 参数清洗器
+    private final Map<String, ToolDescriptor> tools = new LinkedHashMap<>();
+    private final Set<String> whitelist;
+    private final ArgumentSanitizer sanitizer = new ArgumentSanitizer();
 
-    private final Map<String, McpClientManager> mcpToolSources = new HashMap<>();  // MCP 工具来源
-    private final Map<String, ToolSpecification> mcpToolSpecs = new HashMap<>();   // MCP 工具 Schema
+    private final Map<String, McpClientManager> mcpToolSources = new HashMap<>();
+    private final Map<String, ToolSpecification> mcpToolSpecs = new HashMap<>();
 
     public ToolRegistry(Set<String> whitelist) {
         this.whitelist = whitelist != null ? whitelist : new HashSet<>();
@@ -85,7 +85,7 @@ public class ToolRegistry {
         return all;
     }
 
-    /** 按名称过滤获取 Schema */
+    /** 按名称过滤获取 Schema。 */
     public List<ToolSpecification> getSpecificationsByName(Set<String> toolNames) {
         List<ToolSpecification> result = new ArrayList<>();
         for (String name : toolNames) {
@@ -104,7 +104,6 @@ public class ToolRegistry {
     /** 执行工具（本地或 MCP）。 */
     public ToolOutcome execute(String name, Map<String, Object> arguments,
                           cn.kong.eon.model.SessionState state, ToolContext context) {
-        // 本地工具
         ToolDescriptor descriptor = tools.get(name);
         if (descriptor != null) {
             try {
@@ -119,7 +118,6 @@ public class ToolRegistry {
             }
         }
 
-        // MCP 工具
         McpClientManager mcpManager = mcpToolSources.get(name);
         if (mcpManager != null) {
             try {
@@ -169,6 +167,18 @@ public class ToolRegistry {
 
     public Collection<ToolDescriptor> getAll() { return tools.values(); }
     public int getMcpToolCount() { return mcpToolSpecs.size(); }
+
+    /** 释放所有本地工具持有的资源（如 Scanner、文件句柄等）。 */
+    public void closeAll() {
+        for (ToolDescriptor desc : tools.values()) {
+            try {
+                desc.getExecutor().close();
+            } catch (Exception e) {
+                log.warn("Failed to close tool {}: {}", desc.getName(), e.getMessage());
+            }
+        }
+        log.info("All local tools closed ({})", tools.size());
+    }
 
     /** 获取工具目录摘要（名称 + 描述），注入上下文供 LLM 选择工具。 */
     public String getCatalogSummary() {

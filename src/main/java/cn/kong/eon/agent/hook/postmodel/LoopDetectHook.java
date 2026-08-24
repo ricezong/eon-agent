@@ -21,12 +21,16 @@ import java.util.List;
 public class LoopDetectHook implements Hook.PostModelHook {
     private static final Logger log = LoggerFactory.getLogger(LoopDetectHook.class);
 
-    private static final int STOP_GRACE_STEPS = 2;
-
+    private final int stopGraceSteps;
     private final LoopDetector loopDetector;
 
     public LoopDetectHook(LoopDetector loopDetector) {
+        this(loopDetector, 2);
+    }
+
+    public LoopDetectHook(LoopDetector loopDetector, int stopGraceSteps) {
         this.loopDetector = loopDetector;
+        this.stopGraceSteps = stopGraceSteps;
     }
 
     @Override public String name() { return "LoopDetect"; }
@@ -44,7 +48,7 @@ public class LoopDetectHook implements Hook.PostModelHook {
             StopReason reason = new StopReason(
                     StopCategory.LOOP_DETECTED,
                     dr.message(),
-                    STOP_GRACE_STEPS);
+                    stopGraceSteps);
             return HookResult.stop(reason);
         }
         if (dr.shouldWarn()) {

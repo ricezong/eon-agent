@@ -33,11 +33,9 @@ public class PathResolver {
         Path resolved;
         Path workspace = Path.of(workDir).toAbsolutePath().normalize();
 
-        // 绝对路径直接使用
         if (Path.of(rawPath).isAbsolute()) {
             resolved = Path.of(rawPath).toAbsolutePath().normalize();
         } else {
-            // 相对路径基于 workspace 解析
             resolved = workspace.resolve(rawPath).toAbsolutePath().normalize();
         }
 
@@ -50,12 +48,10 @@ public class PathResolver {
         return resolved;
     }
 
-    /** 获取 workspace 根路径。 */
     public Path workspace() {
         return Path.of(workDir).toAbsolutePath().normalize();
     }
 
-    /** 检查路径是否存在。 */
     public boolean exists(String rawPath) {
         try {
             return Files.exists(resolve(rawPath));

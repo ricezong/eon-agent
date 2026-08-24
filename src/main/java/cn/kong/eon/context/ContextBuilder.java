@@ -3,6 +3,7 @@ package cn.kong.eon.context;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.TokenCountEstimator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,7 +18,7 @@ import java.util.List;
  */
 public class ContextBuilder {
 
-    private String systemPrompt;    // 系统提示词
+    private String systemPrompt;
     private String summary;         // 历史对话摘要
     private String userInfo;        // <user_info> 操作系统/日期/时区/语言/工作目录
     private String rules;           // <rules> 用户自定义规则
@@ -25,8 +26,9 @@ public class ContextBuilder {
     private String agentSkills;     // <agent_skills> 技能索引
     private String navigator;       // Todo 列表导航
     private String runtimeNudges;   // 运行时提醒（本轮有效）
-    private List<ChatMessage> transcript;  // 对话历史
-    private List<ChatMessage> tailGuard;   // 尾部保护消息
+    private List<ChatMessage> transcript;
+    private List<ChatMessage> tailGuard;
+    private TokenCountEstimator tokenCountEstimator; // 精确 token 估算器
 
     public ContextBuilder setSystemPrompt(String systemPrompt) { this.systemPrompt = systemPrompt; return this; }
     public ContextBuilder setSummary(String summary) { this.summary = summary; return this; }
@@ -39,6 +41,7 @@ public class ContextBuilder {
     public ContextBuilder setTranscript(List<ChatMessage> transcript) { this.transcript = transcript; return this; }
     public List<ChatMessage> getTranscript() { return transcript; }
     public ContextBuilder setTailGuard(List<ChatMessage> tailGuard) { this.tailGuard = tailGuard; return this; }
+    public ContextBuilder setTokenCountEstimator(TokenCountEstimator estimator) { this.tokenCountEstimator = estimator; return this; }
 
     public List<ChatMessage> build() {
         List<ChatMessage> result = new ArrayList<>();
@@ -84,8 +87,25 @@ public class ContextBuilder {
         return result;
     }
 
-    /** 粗略估算 token 数：chars/2 作为中英混合折中。 */
+    /**
+     * 使用 LangChain4j TokenCountEstimator 精确估算 token 数。
+     * 若未注入 estimator，回退到 chars/2 的粗略估算。
+     */
     public long estimateTokens() {
+        if (tokenCountEstimator != null) {
+            long tokens = 0;
+            if (systemPrompt != null) tokens += tokenCountEstimator.estimateTokenCountInText(systemPrompt);
+            if (summary != null) tokens += tokenCountEstimator.estimateTokenCountInText(summary);
+            if (userInfo != null) tokens += tokenCountEstimator.estimateTokenCountInText(userInfo);
+            if (rules != null) tokens += tokenCountEstimator.estimateTokenCountInText(rules);
+            if (memories != null) tokens += tokenCountEstimator.estimateTokenCountInText(memories);
+            if (agentSkills != null) tokens += tokenCountEstimator.estimateTokenCountInText(agentSkills);
+            if (navigator != null) tokens += tokenCountEstimator.estimateTokenCountInText(navigator);
+            if (transcript != null) tokens += tokenCountEstimator.estimateTokenCountInMessages(transcript);
+            if (tailGuard != null) tokens += tokenCountEstimator.estimateTokenCountInMessages(tailGuard);
+            return tokens;
+        }
+        // 回退：chars/2 粗略估算
         long chars = 0;
         if (systemPrompt != null) chars += systemPrompt.length();
         if (summary != null) chars += summary.length();

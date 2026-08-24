@@ -7,13 +7,14 @@ import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.tool.PathResolver;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -43,7 +44,6 @@ public class WriteFileTool implements ToolExecutor {
         }
 
         try {
-            // 确保父目录存在
             Files.createDirectories(resolvedPath.getParent());
             Files.writeString(resolvedPath, contents);
 
@@ -58,26 +58,19 @@ public class WriteFileTool implements ToolExecutor {
         }
     }
 
+    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    @Tool(name = "write", value = {
+            "创建或覆盖文件。当用户需要保存笔记、文档或写入内容到文件时使用此工具。",
+            "如果指定路径的文件已存在，会覆盖原文件内容。"
+    })
+    public String writeFile(
+            @P(name = "file_path", description = "要创建或覆盖的文件路径。相对于工作目录，直接传文件名即可，如 '笔记.txt'。") String file_path,
+            @P(name = "contents", description = "要写入的文件内容。") String contents
+    ) {
+        return null;
+    }
+
     public static ToolDescriptor descriptor() {
-        Map<String, Map<String, Object>> props = new LinkedHashMap<>();
-        props.put("file_path", Map.of(
-                "type", "string",
-                "description", "要创建或覆盖的文件路径。相对于工作目录，直接传文件名即可，如 '笔记.txt'。",
-                "required", true
-        ));
-        props.put("contents", Map.of(
-                "type", "string",
-                "description", "要写入的文件内容。",
-                "required", true
-        ));
-        String desc = "创建或覆盖文件。当用户需要保存笔记、文档或写入内容到文件时使用此工具。"
-                + "如果指定路径的文件已存在，会覆盖原文件内容。";
-        return new ToolDescriptor(
-                "write",
-                desc,
-                ToolPermission.RESTRICTED_WRITE,
-                ToolDescriptor.buildSpec("write", desc, props),
-                new WriteFileTool()
-        );
+        return ToolDescriptor.fromAnnotated(new WriteFileTool(), ToolPermission.RESTRICTED_WRITE);
     }
 }

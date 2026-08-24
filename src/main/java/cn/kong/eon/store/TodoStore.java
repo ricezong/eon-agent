@@ -48,7 +48,7 @@ public class TodoStore {
                 t.setId(generateId());
             }
             t.setLastModifiedTurn(currentTurn);
-            todos.put(t.getId(), t); // 覆盖或新增
+            todos.put(t.getId(), t);
         }
         log.debug("TodoStore merged: {} items total", todos.size());
         return getAll();
@@ -97,8 +97,6 @@ public class TodoStore {
         return todos.values().stream().allMatch(t ->
                 t.getStatus() == TodoStatus.COMPLETED || t.getStatus() == TodoStatus.CANCELLED);
     }
-
-    // ===== 格式化方法 =====
 
     private static long countByStatus(List<TodoItem> todos, TodoStatus status) {
         return todos.stream().filter(t -> t.getStatus() == status).count();

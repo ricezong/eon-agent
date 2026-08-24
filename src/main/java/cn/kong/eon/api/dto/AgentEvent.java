@@ -101,8 +101,6 @@ public class AgentEvent {
         return e;
     }
 
-    // --- getters ---
-
     public EventType getType() { return type; }
     public void setType(EventType type) { this.type = type; }
 
@@ -141,14 +139,14 @@ public class AgentEvent {
 
     /** SSE 事件类型。 */
     public enum EventType {
-        RUN_START,       // Agent 开始运行
-        TURN_START,      // Turn 开始
+        RUN_START,
+        TURN_START,
         LLM_RESPONSE,    // LLM 响应到达（思考文本 + 工具调用）
-        TOOL_START,      // 工具开始执行
-        TOOL_RESULT,     // 工具执行完成
-        TURN_END,        // Turn 结束
-        DONE,            // 正常完成
-        TERMINATED,      // 被强制终止
-        ERROR            // 出错
+        TOOL_START,
+        TOOL_RESULT,
+        TURN_END,
+        DONE,
+        TERMINATED,
+        ERROR
     }
 }
