@@ -2,6 +2,7 @@ package cn.kong.eon.service;
 
 import cn.kong.eon.agent.TurnCallback;
 import cn.kong.eon.api.dto.InteractionResponse;
+import cn.kong.eon.api.dto.SessionResponse;
 import cn.kong.eon.api.exception.SessionBusyException;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
@@ -201,9 +202,15 @@ public class AgentService {
         sessionManager.remove(sessionId);
     }
 
-    /** 列出所有活跃会话 ID。 */
-    public java.util.List<String> listSessions() {
-        return sessionManager.listSessionIds();
+    /** 列出所有活跃会话。 */
+    public java.util.List<SessionResponse> listSessions() {
+        return sessionManager.listSessions().stream()
+                .map(s -> new SessionResponse(
+                        s.getSessionId(),
+                        s.getCreatedAt(),
+                        s.getLastActiveAt(),
+                        s.getState().getTurnCount()))
+                .toList();
     }
 
     /**

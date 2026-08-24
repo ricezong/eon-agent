@@ -52,6 +52,11 @@ public class SessionManager {
         return new ArrayList<>(sessions.keySet());
     }
 
+    /** 获取所有活跃会话。 */
+    public List<AgentSession> listSessions() {
+        return new ArrayList<>(sessions.values());
+    }
+
     /**
      * 清理超时会话（最后活跃时间早于 threshold 的会话）。
      *

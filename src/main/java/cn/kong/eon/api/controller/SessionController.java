@@ -34,7 +34,7 @@ public class SessionController {
     }
 
     @GetMapping
-    public ResponseEntity<List<String>> listSessions() {
+    public ResponseEntity<List<SessionResponse>> listSessions() {
         return ResponseEntity.ok(agentService.listSessions());
     }
 
