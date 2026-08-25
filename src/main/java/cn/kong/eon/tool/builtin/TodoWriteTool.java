@@ -8,8 +8,8 @@ import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
-import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
@@ -27,6 +27,12 @@ import java.util.Map;
 public class TodoWriteTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(TodoWriteTool.class);
 
+    private final ObjectMapper objectMapper;
+
+    public TodoWriteTool(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
     @Override
     public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         Object todosObj = arguments.get("todos");
@@ -38,7 +44,7 @@ public class TodoWriteTool implements ToolExecutor {
 
         List<TodoItem> items = new ArrayList<>();
         for (Object obj : todosList) {
-            JsonNode node = JsonMapper.get().valueToTree(obj);
+            JsonNode node = objectMapper.valueToTree(obj);
             String id = node.path("id").asText("");
             String content = node.path("content").asText("");
             String statusStr = node.path("status").asText("pending");
@@ -115,7 +121,7 @@ public class TodoWriteTool implements ToolExecutor {
         return null;
     }
 
-    public static ToolDescriptor descriptor() {
-        return ToolDescriptor.fromAnnotated(new TodoWriteTool(), ToolPermission.RESTRICTED_WRITE);
+    public static ToolDescriptor descriptor(ObjectMapper objectMapper) {
+        return ToolDescriptor.fromAnnotated(new TodoWriteTool(objectMapper), ToolPermission.RESTRICTED_WRITE);
     }
 }

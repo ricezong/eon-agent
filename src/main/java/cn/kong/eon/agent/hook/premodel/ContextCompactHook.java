@@ -33,18 +33,18 @@ public class ContextCompactHook implements Hook.PreModelHook {
     private final PairingRepairer pairingRepairer;
     private final String transcriptPath;
 
-    public ContextCompactHook(AgentConfig config, LlmClient llmClient, String transcriptPath) {
+        public ContextCompactHook(AgentConfig config, LlmClient llmClient, String transcriptPath) {
         this.config = config;
         this.transcriptPath = transcriptPath;
         var ctxCfg = config.getContext();
         this.compressionEngine = new CompressionEngine(
-                ctxCfg.snipThreshold,
-                ctxCfg.pruneThreshold,
-                ctxCfg.summarizeThreshold,
-                ctxCfg.SNIP_KEEP_CHARS,
-                ctxCfg.PRUNE_KEEP_CHARS,
-                ctxCfg.summarizeMaxInputChars,
-                ctxCfg.SUMMARIZE_MAX_OUTPUT_CHARS,
+                ctxCfg.getCompression().getSnipThreshold(),
+                ctxCfg.getCompression().getPruneThreshold(),
+                ctxCfg.getCompression().getSummarizeThreshold(),
+                ctxCfg.getSnipKeepChars(),
+                ctxCfg.getPruneKeepChars(),
+                ctxCfg.getSummarizeMaxInputChars(),
+                ctxCfg.getSummarizeMaxOutputChars(),
                 llmClient,
                 transcriptPath);
         this.pairingRepairer = new PairingRepairer();
@@ -53,7 +53,7 @@ public class ContextCompactHook implements Hook.PreModelHook {
     @Override
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
         long usedTokens = ctx.estimateTokens();
-        long maxTokens = config.getContext().maxTokens;
+        long maxTokens = config.getContext().getMaxTokens();
         double waterLevel = Math.min(1.0, (double) usedTokens / maxTokens);
         state.getCompressionState().setLastWaterLevel(waterLevel);
 
@@ -61,9 +61,9 @@ public class ContextCompactHook implements Hook.PreModelHook {
         List<ChatMessage> transcript = ctx.getTranscript();
         int turnsSinceLastCompress = state.getTurnCount() - state.getCompressionState().getLastTurnCompressed();
         boolean turnTriggered = turnsSinceLastCompress >= config.getSummarizeTurns()
-                && transcript != null && transcript.size() > config.getContext().TAIL_GUARD_MIN_TURNS * 2 + 2;
+                && transcript != null && transcript.size() > config.getContext().getTailGuardMinTurns() * 2 + 2;
 
-        boolean waterTriggered = waterLevel >= config.getContext().snipThreshold;
+        boolean waterTriggered = waterLevel >= config.getContext().getCompression().getSnipThreshold();
 
         if (!waterTriggered && !turnTriggered) {
             return HookResult.ok();
@@ -72,7 +72,7 @@ public class ContextCompactHook implements Hook.PreModelHook {
         if (transcript == null || transcript.isEmpty()) return HookResult.ok();
 
         CompressionState cs = state.getCompressionState();
-        int tailGuardTurns = config.getContext().TAIL_GUARD_MIN_TURNS;
+        int tailGuardTurns = config.getContext().getTailGuardMinTurns();
 
         List<ChatMessage> workingCopy = new ArrayList<>(transcript);
 

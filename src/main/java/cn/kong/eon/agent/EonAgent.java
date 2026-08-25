@@ -20,14 +20,13 @@ import cn.kong.eon.store.JsonlStore;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolRegistry;
 import cn.kong.eon.tool.ToolResultRenderer;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.*;
 
 /**
@@ -57,14 +56,15 @@ public class EonAgent {
 
     private TurnRecord currentRec;  // null 表示在 turn 之外
 
-    public EonAgent(AgentConfig config,
+        public EonAgent(AgentConfig config,
                     LlmClient llmClient,
                     ToolRegistry toolRegistry,
                     ToolResultRenderer resultRenderer,
                     JsonlStore jsonlStore,
                     String basePrompt,
                     ToolContext toolContext,
-                    LoopDetector loopDetector) {
+                    LoopDetector loopDetector,
+                    ObjectMapper objectMapper) {
         this.config = config;
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
@@ -72,7 +72,7 @@ public class EonAgent {
         this.basePrompt = basePrompt;
         this.toolContext = toolContext;
         this.logger = new TurnLogger(config);
-        this.toolHandler = new ToolExecutionHandler(toolRegistry, resultRenderer, toolContext, logger, loopDetector, config.getTools().parallelism);
+        this.toolHandler = new ToolExecutionHandler(toolRegistry, resultRenderer, toolContext, logger, loopDetector, config.getTools().getParallelism(), objectMapper);
         this.finalizer = new MessageFinalizer(jsonlStore, logger);
         this.stopStateMachine = new StopStateMachine(config, logger, finalizer);
     }
@@ -204,8 +204,8 @@ public class EonAgent {
 
     private boolean shouldContinue(SessionState state) {
         int effectiveMax = state.isStopRequested()
-                ? config.getLoop().absoluteMaxSteps
-                : config.getLoop().maxSteps;
+                ? config.getLoop().getAbsoluteMaxSteps()
+                : config.getLoop().getMaxSteps();
         return state.getTurnCount() < effectiveMax;
     }
 
@@ -397,16 +397,7 @@ public class EonAgent {
         if (state.getCompressionState().getLastSummary() != null) {
             ctx.setSummary(state.getCompressionState().getLastSummary());
         }
-        // 动态注入块
-        String userInfo = cn.kong.eon.context.dynamic.UserInfoProvider.generate(toolContext.workDir());
-        ctx.setUserInfo(userInfo);
-        String rules = loadUserRules();
-        if (rules != null) ctx.setRules(rules);
-        String mems = toolContext.memoryStore().renderForInjection();
-        ctx.setMemories(mems);
-        String skills = cn.kong.eon.context.dynamic.SkillsIndexProvider.generate(
-                Path.of(config.getStorage().baseDir, "skills").toString());
-        ctx.setAgentSkills(skills);
+        ctx.setMemories(toolContext.memoryStore().renderForInjection());
         ctx.setTranscript(jsonlStore.snapshot());
         // 渲染运行时提醒到上下文
         renderNudges(state, ctx);
@@ -418,43 +409,15 @@ public class EonAgent {
         if (state.getPendingNudges().isEmpty() && state.getFormatCorrections().isEmpty()) {
             return;
         }
-        StringBuilder sb = new StringBuilder("## [Runtime] 运行时提醒（本轮有效）\n");
+        StringBuilder sb = new StringBuilder("<runtime_nudges>\n");
         for (String nudge : state.getPendingNudges()) {
             sb.append("- ").append(nudge).append("\n");
         }
         for (String correction : state.getFormatCorrections()) {
             sb.append("- ").append(correction).append("\n");
         }
+        sb.append("</runtime_nudges>");
         ctx.setRuntimeNudges(sb.toString());
-    }
-
-    /** 从外部文件加载用户规则。 */
-    private String loadUserRules() {
-        Path externalPath = Path.of("prompts/user_rules.md");
-        if (!Files.exists(externalPath)) {
-            return null;
-        }
-        try {
-            String content = Files.readString(externalPath).trim();
-            if (content.isEmpty()) {
-                return null;
-            }
-            String actualContent = content.lines()
-                    .filter(line -> {
-                        String trimmed = line.trim();
-                        return !trimmed.isEmpty()
-                                && !trimmed.startsWith("#")
-                                && !trimmed.startsWith("<!--");
-                    })
-                    .reduce("", (a, b) -> a + "\n" + b).trim();
-            if (actualContent.isEmpty()) {
-                return null;
-            }
-            return "<rules>\n" + actualContent + "\n</rules>";
-        } catch (java.io.IOException e) {
-            log.debug("User rules not loaded: {}", e.getMessage());
-        }
-        return null;
     }
 
     /** 校验工具是否存在，不存在则注入格式纠正提示。 */

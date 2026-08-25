@@ -30,12 +30,12 @@ public class LlmClient {
         this.retryConfig = config.getRetry();
 
         this.chatModel = OpenAiChatModel.builder()
-                .baseUrl(llmConfig.baseUrl)
-                .apiKey(llmConfig.apiKey)
-                .modelName(llmConfig.modelName)
-                .temperature(llmConfig.temperature)
-                .maxTokens(llmConfig.maxTokens)
-                .timeout(Duration.ofSeconds(llmConfig.timeout))
+                .baseUrl(llmConfig.getBaseUrl())
+                .apiKey(llmConfig.getApiKey())
+                .modelName(llmConfig.getModelName())
+                .temperature(llmConfig.getTemperature())
+                .maxTokens(llmConfig.getMaxTokens())
+                .timeout(Duration.ofSeconds(llmConfig.getTimeout()))
                 .logRequests(false)
                 .logResponses(false)
                 .build();
@@ -43,16 +43,16 @@ public class LlmClient {
         // 创建精确的 Token 估算器；若模型名不被 JTokkit 识别则回退到 gpt-4o 编码
         TokenCountEstimator estimator;
         try {
-            estimator = new OpenAiTokenCountEstimator(llmConfig.modelName);
+            estimator = new OpenAiTokenCountEstimator(llmConfig.getModelName());
         } catch (Exception e) {
             log.warn("Failed to create tokenizer for model '{}', falling back to gpt-4o: {}",
-                    llmConfig.modelName, e.getMessage());
+                    llmConfig.getModelName(), e.getMessage());
             estimator = new OpenAiTokenCountEstimator("gpt-4o");
         }
         this.tokenCountEstimator = estimator;
 
         log.info("LlmClient initialized: provider={}, model={}, baseUrl={}",
-                llmConfig.provider, llmConfig.modelName, llmConfig.baseUrl);
+                llmConfig.getProvider(), llmConfig.getModelName(), llmConfig.getBaseUrl());
     }
 
     /** 暴露 TokenCountEstimator 供 ContextBuilder 做精确估算。 */
@@ -65,7 +65,7 @@ public class LlmClient {
         int attempt = 0;
         Exception lastException = null;
 
-        while (attempt < retryConfig.attempts) {
+        while (attempt < retryConfig.getAttempts()) {
             try {
                 ChatRequest.Builder requestBuilder = ChatRequest.builder()
                         .messages(messages);
@@ -97,9 +97,9 @@ public class LlmClient {
             } catch (Exception e) {
                 lastException = e;
                 attempt++;
-                log.warn("LLM call failed (attempt {}/{}): {}", attempt, retryConfig.attempts, e.getMessage());
+                log.warn("LLM call failed (attempt {}/{}): {}", attempt, retryConfig.getAttempts(), e.getMessage());
 
-                if (attempt < retryConfig.attempts) {
+                if (attempt < retryConfig.getAttempts()) {
                     long delay = calculateDelay(attempt);
                     try {
                         Thread.sleep(delay);
@@ -111,13 +111,13 @@ public class LlmClient {
             }
         }
 
-        log.error("LLM_STALLED: model failed after {} attempts", retryConfig.attempts, lastException);
-        throw new LlmStalledException("LLM 调用连续失败 " + retryConfig.attempts + " 次，模型不可用");
+        log.error("LLM_STALLED: model failed after {} attempts", retryConfig.getAttempts(), lastException);
+        throw new LlmStalledException("LLM 调用连续失败 " + retryConfig.getAttempts() + " 次，模型不可用");
     }
 
     private long calculateDelay(int attempt) {
-        long base = (long) (retryConfig.minDelayMs * Math.pow(2, attempt - 1));
-        long jitter = (long) (base * retryConfig.jitter * (Math.random() - 0.5) * 2);
-        return Math.min(retryConfig.maxDelayMs, base + jitter);
+        long base = (long) (retryConfig.getMinDelayMs() * Math.pow(2, attempt - 1));
+        long jitter = (long) (base * retryConfig.getJitter() * (Math.random() - 0.5) * 2);
+        return Math.min(retryConfig.getMaxDelayMs(), base + jitter);
     }
 }

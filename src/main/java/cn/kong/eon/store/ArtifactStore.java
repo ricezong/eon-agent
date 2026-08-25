@@ -1,7 +1,6 @@
 package cn.kong.eon.store;
 
 import cn.kong.eon.model.ArtifactRef;
-import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
@@ -25,9 +24,9 @@ public class ArtifactStore {
     private final Map<String, ArtifactRef> refs = new ConcurrentHashMap<>();  // 引用注册表
     private final AtomicInteger counter = new AtomicInteger(0); // 自增 ID 计数器
 
-    public ArtifactStore(Path artifactDir) {
+    public ArtifactStore(Path artifactDir, ObjectMapper objectMapper) {
         this.artifactDir = artifactDir;
-        this.mapper = JsonMapper.get().copy().enable(SerializationFeature.INDENT_OUTPUT);
+        this.mapper = objectMapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
         try {
             Files.createDirectories(artifactDir);
         } catch (IOException e) {

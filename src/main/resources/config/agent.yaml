@@ -23,6 +23,10 @@ context:
   budget_ratio: 0.7                       # 输入 token 占比上限
   system_prompt_path: "prompts/system_prompt.md"  # 系统提示词路径
   summarize_max_input_chars: 50000       # 摘要输入上限（字符数）
+  snip_keep_chars: 80                    # Snip 保留字符数
+  prune_keep_chars: 30                   # Prune 保留字符数
+  summarize_max_output_chars: 2000       # 摘要输出上限（字符数）
+  tail_guard_min_turns: 3                # 尾部保护最小轮次
   compression:
     snip_threshold: 0.65                  # 水位 ≥65%：截短旧工具结果
     prune_threshold: 0.82                 # 水位 ≥82%：替换为占位符
@@ -102,6 +106,6 @@ memory:
 mcp:
   servers:
     novel-mcp-server:
-      url: "http://localhost:8081/mcp"  # MCP 服务端点
+      url: "http://124.223.110.114:8081/mcp"  # MCP 服务端点
       enabled: true                            # 是否启用
       permission: "READONLY"                   # MCP 工具默认权限

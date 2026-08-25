@@ -137,7 +137,7 @@ public class TurnLogger {
 
     public void agentStart(SessionState state) {
         log.info("┌─ EonAgent 启动 │ session: {} │ maxSteps: {} │ budget: {} tokens",
-                state.getSessionId(), config.getLoop().maxSteps, config.getBudget().getMaxTokens());
+                state.getSessionId(), config.getLoop().getMaxSteps(), config.getBudget().getMaxTokens());
         log.info("├─ 用户请求: {}", state.getUserOriginalInput());
     }
 

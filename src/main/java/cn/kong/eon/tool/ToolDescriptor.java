@@ -1,7 +1,6 @@
 package cn.kong.eon.tool;
 
 import cn.kong.eon.model.ToolPermission;
-import cn.kong.eon.util.JsonMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.model.chat.request.json.*;

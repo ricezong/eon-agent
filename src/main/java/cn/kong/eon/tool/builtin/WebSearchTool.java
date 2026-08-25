@@ -7,7 +7,6 @@ import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
-import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -32,13 +31,14 @@ public class WebSearchTool implements ToolExecutor {
     private static final int TIMEOUT_SECONDS = 30;
     private static final int DEFAULT_TOP_K = 10;
 
-    private final ObjectMapper mapper = JsonMapper.get();
+        private final ObjectMapper mapper;
     private final HttpClient httpClient = SharedHttpClient.getInstance();
 
     private final String apiKey;
 
-    public WebSearchTool(String apiKey) {
+    public WebSearchTool(String apiKey, ObjectMapper objectMapper) {
         this.apiKey = apiKey != null ? apiKey : "";
+        this.mapper = objectMapper;
     }
 
     /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
@@ -57,8 +57,8 @@ public class WebSearchTool implements ToolExecutor {
         return null;
     }
 
-    public static ToolDescriptor descriptor(String apiKey) {
-        return ToolDescriptor.fromAnnotated(new WebSearchTool(apiKey), ToolPermission.READONLY);
+        public static ToolDescriptor descriptor(String apiKey, ObjectMapper objectMapper) {
+        return ToolDescriptor.fromAnnotated(new WebSearchTool(apiKey, objectMapper), ToolPermission.READONLY);
     }
 
     @Override

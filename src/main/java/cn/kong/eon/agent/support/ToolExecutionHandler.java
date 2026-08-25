@@ -7,8 +7,8 @@ import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.tool.ToolRegistry;
 import cn.kong.eon.tool.ToolResultRenderer;
-import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +32,7 @@ public class ToolExecutionHandler {
     private final ToolContext toolContext;
     private final TurnLogger logger;
     private final LoopDetector loopDetector;
+    private final ObjectMapper objectMapper;
     private final ExecutorService parallelExecutor;
 
     public ToolExecutionHandler(ToolRegistry toolRegistry,
@@ -39,12 +40,14 @@ public class ToolExecutionHandler {
                                 ToolContext toolContext,
                                 TurnLogger logger,
                                 LoopDetector loopDetector,
-                                int parallelism) {
+                                int parallelism,
+                                ObjectMapper objectMapper) {
         this.toolRegistry = toolRegistry;
         this.resultRenderer = resultRenderer;
         this.toolContext = toolContext;
         this.logger = logger;
         this.loopDetector = loopDetector;
+        this.objectMapper = objectMapper;
         this.parallelExecutor = Executors.newFixedThreadPool(Math.max(1, parallelism), r -> {
             Thread t = new Thread(r, "tool-exec");
             t.setDaemon(true);
@@ -178,7 +181,7 @@ public class ToolExecutionHandler {
     private Map<String, Object> parseArgs(String json) {
         if (json == null || json.isBlank()) return Map.of();
         try {
-            return JsonMapper.get().readValue(json, new TypeReference<>() {});
+            return objectMapper.readValue(json, new TypeReference<>() {});
         } catch (Exception e) {
             log.warn("[Tool] failed to parse arguments: {}", json, e);
             return Map.of();

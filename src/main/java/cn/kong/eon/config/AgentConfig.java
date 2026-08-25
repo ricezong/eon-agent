@@ -1,116 +1,100 @@
 package cn.kong.eon.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
 import java.util.*;
 
-/** Agent 配置加载器。从 agent.yaml 加载配置，提供类型安全的访问方法。 */
+/**
+ * Agent 配置加载器。从 agent.yaml 加载配置，使用 Jackson YAML POJO 绑定。
+ * <p>
+ * 采用 {@link PropertyNamingStrategies#SNAKE_CASE} 自动将 YAML snake_case key 映射到 Java 驼峰属性，
+ * 消除手动 Map 强转和类型不安全访问。
+ * 所有嵌套配置类使用无参构造 + setter，由 Jackson 自动注入；
+ * 对外通过 getter 暴露，构造完成后不可变。
+ * <p>
+ * 环境变量引用 {@code ${VAR}} / {@code ${VAR:-default}} 在加载后对敏感字段（api_key）执行。
+ */
 public class AgentConfig {
 
     private static final Logger log = LoggerFactory.getLogger(AgentConfig.class);
 
-    private final Map<String, Object> raw;
+    private LlmConfig llm;
+    private ContextConfig context;
+    private LoopConfig loop;
+    private LoopDetectConfig loopDetect;
+    private RetryConfig retry;
+    private StorageConfig storage;
+    private ToolsConfig tools;
+    private McpConfig mcp;
+    private WebSearchConfig webSearch;
+    private ModeConfig mode;
+    private BudgetConfig budget;
+    private CompressionConfig compression;
+    private MemoryConfig memory;
 
-    private final LlmConfig llm;
-    private final ContextConfig context;
-    private final LoopConfig loop;
-    private final LoopDetectConfig loopDetect;
-    private final RetryConfig retry;
-    private final StorageConfig storage;
-    private final ToolsConfig tools;
-    private final McpConfig mcp;
-    private final WebSearchConfig webSearch;
-    private final boolean checkpointEnabled;
-    private final BudgetConfig budget;
-    private final int summarizeTurns;       // 轮数触发摘要阈值
-
-    public AgentConfig(Map<String, Object> raw) {
-        this.raw = raw;
-        this.llm = new LlmConfig(getMap("llm"));
-        this.context = new ContextConfig(getMap("context"));
-        this.loop = new LoopConfig(getMap("loop"));
-        this.loopDetect = new LoopDetectConfig(getMap("loop_detect"));
-        this.retry = new RetryConfig(getMap("retry"));
-        this.storage = new StorageConfig(getMap("storage"));
-        this.tools = new ToolsConfig(getMap("tools"));
-        this.mcp = new McpConfig(getMap("mcp"));
-        this.webSearch = new WebSearchConfig(getMap("web_search"));
-        Map<String, Object> mode = getMap("mode");
-        this.checkpointEnabled = parseBoolean(mode, "checkpoint_enabled", false, "mode");
-        this.budget = new BudgetConfig(getMap("budget"));
-        Map<String, Object> comp = getMap("compression");
-        this.summarizeTurns = parseInt(comp, "summarize_turns", 4, "compression");
-    }
+    // ===== 加载入口 =====
 
     public static AgentConfig load(InputStream yamlStream) {
-        Yaml yaml = new Yaml();
-        Map<String, Object> data = yaml.load(yamlStream);
-        return new AgentConfig(data);
+        ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
+                .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+        try {
+            AgentConfig config = mapper.readValue(yamlStream, AgentConfig.class);
+            if (config == null) {
+                throw new IllegalStateException("agent.yaml 加载结果为空，请检查配置文件内容");
+            }
+            config.validate();
+            config.resolveEnvVars();
+            return config;
+        } catch (Exception e) {
+            throw new IllegalStateException("agent.yaml 加载失败: " + e.getMessage(), e);
+        }
     }
 
     public static AgentConfig loadFromClasspath(String path) {
         try (InputStream is = AgentConfig.class.getClassLoader().getResourceAsStream(path)) {
-            if (is == null) throw new RuntimeException("Config not found: " + path);
+            if (is == null) throw new IllegalStateException("Config not found in classpath: " + path);
             return load(is);
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Failed to load config: " + path, e);
+            throw new IllegalStateException("Failed to load config: " + path, e);
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> getMap(String key) {
-        Object v = raw.get(key);
-        return v instanceof Map ? (Map<String, Object>) v : Map.of();
+    /** 启动期校验：确保关键配置非 null，为缺失的节点提供默认值。 */
+    private void validate() {
+        if (llm == null) llm = new LlmConfig();
+        if (context == null) context = new ContextConfig();
+        if (loop == null) loop = new LoopConfig();
+        if (loopDetect == null) loopDetect = new LoopDetectConfig();
+        if (retry == null) retry = new RetryConfig();
+        if (storage == null) storage = new StorageConfig();
+        if (tools == null) tools = new ToolsConfig();
+        if (mcp == null) mcp = new McpConfig();
+        if (webSearch == null) webSearch = new WebSearchConfig();
+        if (mode == null) mode = new ModeConfig();
+        if (budget == null) budget = new BudgetConfig();
+        if (compression == null) compression = new CompressionConfig();
+        if (memory == null) memory = new MemoryConfig();
     }
 
-    static String parseString(Map<String, Object> m, String key, String fallback, String section) {
-        Object v = m.getOrDefault(key, fallback);
-        if (v == null) return fallback;
-        if (v instanceof String s) return s;
-        throw configTypeError(section, key, v, "String");
-    }
-
-    static int parseInt(Map<String, Object> m, String key, int fallback, String section) {
-        Object v = m.getOrDefault(key, fallback);
-        if (v == null) return fallback;
-        if (v instanceof Number n) return n.intValue();
-        throw configTypeError(section, key, v, "int");
-    }
-
-    static long parseLong(Map<String, Object> m, String key, long fallback, String section) {
-        Object v = m.getOrDefault(key, fallback);
-        if (v == null) return fallback;
-        if (v instanceof Number n) return n.longValue();
-        throw configTypeError(section, key, v, "long");
-    }
-
-    static double parseDouble(Map<String, Object> m, String key, double fallback, String section) {
-        Object v = m.getOrDefault(key, fallback);
-        if (v == null) return fallback;
-        if (v instanceof Number n) return n.doubleValue();
-        throw configTypeError(section, key, v, "double");
-    }
-
-    static boolean parseBoolean(Map<String, Object> m, String key, boolean fallback, String section) {
-        Object v = m.getOrDefault(key, fallback);
-        if (v == null) return fallback;
-        if (v instanceof Boolean b) return b;
-        throw configTypeError(section, key, v, "boolean");
-    }
-
-    private static IllegalStateException configTypeError(String section, String key, Object value, String expectedType) {
-        String actualType = value == null ? "null" : value.getClass().getSimpleName();
-        return new IllegalStateException(String.format(
-                "配置类型错误: %s.%s 期望 %s，实际得到 %s (值=%s)。" +
-                "请检查 agent.yaml 中该字段的类型是否正确。",
-                section, key, expectedType, actualType, value));
+    /** 对敏感字段执行环境变量解析。 */
+    private void resolveEnvVars() {
+        if (llm != null) {
+            llm.apiKey = resolveEnv(llm.apiKey);
+        }
+        if (webSearch != null) {
+            webSearch.apiKey = resolveEnv(webSearch.apiKey);
+        }
     }
 
     /**
-     * 解析环境变量引用。支持 ${VAR} 和 ${VAR:-default}。
+     * 解析环境变量引用。支持 {@code ${VAR}} 和 {@code ${VAR:-default}}。
      */
     static String resolveEnv(String value) {
         if (value == null) return "";
@@ -136,6 +120,8 @@ public class AgentConfig {
         return "";
     }
 
+    // ===== Getter =====
+
     public LlmConfig getLlm() { return llm; }
     public ContextConfig getContext() { return context; }
     public LoopConfig getLoop() { return loop; }
@@ -145,250 +131,284 @@ public class AgentConfig {
     public ToolsConfig getTools() { return tools; }
     public McpConfig getMcp() { return mcp; }
     public WebSearchConfig getWebSearch() { return webSearch; }
-    public boolean isCheckpointEnabled() { return checkpointEnabled; }
+    public boolean isCheckpointEnabled() { return mode != null && mode.checkpointEnabled; }
     public BudgetConfig getBudget() { return budget; }
-    public int getSummarizeTurns() { return summarizeTurns; }
+    public int getSummarizeTurns() { return compression != null ? compression.summarizeTurns : 4; }
+    public MemoryConfig getMemory() { return memory; }
+
+    // ===== Setter（供 Jackson 注入） =====
+
+    public void setLlm(LlmConfig llm) { this.llm = llm; }
+    public void setContext(ContextConfig context) { this.context = context; }
+    public void setLoop(LoopConfig loop) { this.loop = loop; }
+    public void setLoopDetect(LoopDetectConfig loopDetect) { this.loopDetect = loopDetect; }
+    public void setRetry(RetryConfig retry) { this.retry = retry; }
+    public void setStorage(StorageConfig storage) { this.storage = storage; }
+    public void setTools(ToolsConfig tools) { this.tools = tools; }
+    public void setMcp(McpConfig mcp) { this.mcp = mcp; }
+    public void setWebSearch(WebSearchConfig webSearch) { this.webSearch = webSearch; }
+    public void setMode(ModeConfig mode) { this.mode = mode; }
+    public void setBudget(BudgetConfig budget) { this.budget = budget; }
+    public void setCompression(CompressionConfig compression) { this.compression = compression; }
+    public void setMemory(MemoryConfig memory) { this.memory = memory; }
+
+    // ===== 嵌套配置类 =====
+
+    /** 顶层 mode 节。 */
+    public static class ModeConfig {
+        private boolean checkpointEnabled = false;
+        public boolean isCheckpointEnabled() { return checkpointEnabled; }
+        public void setCheckpointEnabled(boolean checkpointEnabled) { this.checkpointEnabled = checkpointEnabled; }
+    }
+
+    /** 顶层 compression 节。 */
+    public static class CompressionConfig {
+        private int summarizeTurns = 4;
+        public int getSummarizeTurns() { return summarizeTurns; }
+        public void setSummarizeTurns(int summarizeTurns) { this.summarizeTurns = summarizeTurns; }
+    }
+
+    /** 顶层 memory 节。 */
+    public static class MemoryConfig {
+        private boolean enabled = true;
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    }
 
     public static class LlmConfig {
-        public final String provider;
-        public final String baseUrl;
-        public final String apiKey;
-        public final String modelName;
-        public final double temperature;
-        public final int timeout;           // 请求超时（秒）
-        public final int maxTokens;         // 单次响应最大输出 token
+        private String provider = "deepseek";
+        private String baseUrl = "https://api.deepseek.com/v1";
+        private String apiKey = "";
+        private String modelName = "deepseek-chat";
+        private double temperature = 0.0;
+        private int timeout = 120;
+        private int maxTokens = 4096;
 
-        public LlmConfig(Map<String, Object> m) {
-            this.provider = parseString(m, "provider", "deepseek", "llm");
-            this.baseUrl = parseString(m, "base_url", "https://api.deepseek.com/v1", "llm");
-            this.apiKey = AgentConfig.resolveEnv(parseString(m, "api_key", "", "llm"));
-            this.modelName = parseString(m, "model_name", "deepseek-chat", "llm");
-            this.temperature = parseDouble(m, "temperature", 0.0, "llm");
-            this.timeout = parseInt(m, "timeout", 120, "llm");
-            this.maxTokens = parseInt(m, "max_tokens", 4096, "llm");
-        }
+        public String getProvider() { return provider; }
+        public void setProvider(String v) { this.provider = v; }
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String v) { this.baseUrl = v; }
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String v) { this.apiKey = v; }
+        public String getModelName() { return modelName; }
+        public void setModelName(String v) { this.modelName = v; }
+        public double getTemperature() { return temperature; }
+        public void setTemperature(double v) { this.temperature = v; }
+        public int getTimeout() { return timeout; }
+        public void setTimeout(int v) { this.timeout = v; }
+        public int getMaxTokens() { return maxTokens; }
+        public void setMaxTokens(int v) { this.maxTokens = v; }
     }
 
     public static class ContextConfig {
-        public final int maxTokens;           // 上下文窗口大小
-        public final double budgetRatio;      // 输入 token 占比上限
-        public final String systemPromptPath;
-        public final double snipThreshold;    // 截短水位
-        public final double pruneThreshold;   // 占位符水位
-        public final double summarizeThreshold; // 摘要水位
-        public final int summarizeMaxInputChars; // 摘要输入上限
+        private int maxTokens = 120000;
+        private double budgetRatio = 0.7;
+        private String systemPromptPath = "prompts/system_prompt.md";
+        private int summarizeMaxInputChars = 50000;
+        private Compression compression;
 
-        // 固定常量：压缩算法内部约束，非用户可调参数
-        public static final int PINNED_MAX_TOKENS = 2048;          // Navigator 最大 token
-        public static final int TAIL_GUARD_MIN_TOKENS = 8000;      // 尾部保护最小 token
-        public static final int TAIL_GUARD_MIN_TURNS = 3;          // 尾部保护最小轮次
-        public static final int SNIP_KEEP_CHARS = 80;              // Snip 保留字符数
-        public static final int PRUNE_KEEP_CHARS = 30;             // Prune 保留字符数
-        public static final int SUMMARY_TRIGGER_MESSAGES = 16;     // 摘要触发消息数
-        public static final int SUMMARIZE_MAX_OUTPUT_CHARS = 2000; // 摘要输出上限
+        // 压缩算法内部约束（可配置，从 agent.yaml context 节读取）
+        private int snipKeepChars = 80;
+        private int pruneKeepChars = 30;
+        private int summarizeMaxOutputChars = 2000;
+        private int tailGuardMinTurns = 3;
 
-        public ContextConfig(Map<String, Object> m) {
-            this.maxTokens = parseInt(m, "max_tokens", 120000, "context");
-            this.budgetRatio = parseDouble(m, "budget_ratio", 0.7, "context");
-            this.systemPromptPath = parseString(m, "system_prompt_path", "prompts/system_prompt.md", "context");
-            this.summarizeMaxInputChars = parseInt(m, "summarize_max_input_chars", 50000, "context");
-            Map<String, Object> comp = getSubMap(m, "compression");
-            this.snipThreshold = parseDouble(comp, "snip_threshold", 0.65, "context.compression");
-            this.pruneThreshold = parseDouble(comp, "prune_threshold", 0.82, "context.compression");
-            this.summarizeThreshold = parseDouble(comp, "summarize_threshold", 0.95, "context.compression");
-        }
-
-        @SuppressWarnings("unchecked")
-        private static Map<String, Object> getSubMap(Map<String, Object> m, String key) {
-            Object v = m.get(key);
-            return v instanceof Map ? (Map<String, Object>) v : Map.of();
+        public static class Compression {
+            private double snipThreshold = 0.65;
+            private double pruneThreshold = 0.82;
+            private double summarizeThreshold = 0.95;
+            public double getSnipThreshold() { return snipThreshold; }
+            public void setSnipThreshold(double v) { this.snipThreshold = v; }
+            public double getPruneThreshold() { return pruneThreshold; }
+            public void setPruneThreshold(double v) { this.pruneThreshold = v; }
+            public double getSummarizeThreshold() { return summarizeThreshold; }
+            public void setSummarizeThreshold(double v) { this.summarizeThreshold = v; }
         }
 
         public int getMaxTokens() { return maxTokens; }
+        public void setMaxTokens(int v) { this.maxTokens = v; }
         public double getBudgetRatio() { return budgetRatio; }
+        public void setBudgetRatio(double v) { this.budgetRatio = v; }
         public String getSystemPromptPath() { return systemPromptPath; }
-        public double getSnipThreshold() { return snipThreshold; }
-        public double getPruneThreshold() { return pruneThreshold; }
-        public double getSummarizeThreshold() { return summarizeThreshold; }
+        public void setSystemPromptPath(String v) { this.systemPromptPath = v; }
         public int getSummarizeMaxInputChars() { return summarizeMaxInputChars; }
+        public void setSummarizeMaxInputChars(int v) { this.summarizeMaxInputChars = v; }
+        public Compression getCompression() { return compression; }
+        public void setCompression(Compression v) { this.compression = v; }
+
+        public int getSnipKeepChars() { return snipKeepChars; }
+        public void setSnipKeepChars(int v) { this.snipKeepChars = v; }
+        public int getPruneKeepChars() { return pruneKeepChars; }
+        public void setPruneKeepChars(int v) { this.pruneKeepChars = v; }
+        public int getSummarizeMaxOutputChars() { return summarizeMaxOutputChars; }
+        public void setSummarizeMaxOutputChars(int v) { this.summarizeMaxOutputChars = v; }
+        public int getTailGuardMinTurns() { return tailGuardMinTurns; }
+        public void setTailGuardMinTurns(int v) { this.tailGuardMinTurns = v; }
     }
 
     public static class LoopConfig {
-        public final int maxSteps;           // 正常模式最大步数
-        public final int absoluteMaxSteps;   // stop 期间绝对上限
-
-
-        public LoopConfig(Map<String, Object> m) {
-            this.maxSteps = parseInt(m, "max_steps", 30, "loop");
-            this.absoluteMaxSteps = parseInt(m, "absolute_max_steps", 160, "loop");
-        }
-
+        private int maxSteps = 30;
+        private int absoluteMaxSteps = 160;
         public int getMaxSteps() { return maxSteps; }
+        public void setMaxSteps(int v) { this.maxSteps = v; }
         public int getAbsoluteMaxSteps() { return absoluteMaxSteps; }
+        public void setAbsoluteMaxSteps(int v) { this.absoluteMaxSteps = v; }
     }
 
     public static class BudgetConfig {
-        public final int maxTokens;          // 累计 token 上限
-        public final double softThreshold;   // 软阈值：注入收尾 nudge
-        public final double hardThreshold;   // 硬阈值：触发优雅停止
-        public final int graceSteps;         // 触发后额外轮次
-
-        public BudgetConfig(Map<String, Object> m) {
-            this.maxTokens = parseInt(m, "max_tokens", 500000, "budget");
-            this.softThreshold = parseDouble(m, "soft_threshold", 0.75, "budget");
-            this.hardThreshold = parseDouble(m, "hard_threshold", 1.0, "budget");
-            this.graceSteps = parseInt(m, "grace_steps", 3, "budget");
-        }
-
+        private int maxTokens = 500000;
+        private double softThreshold = 0.75;
+        private double hardThreshold = 1.0;
+        private int graceSteps = 3;
         public int getMaxTokens() { return maxTokens; }
+        public void setMaxTokens(int v) { this.maxTokens = v; }
         public double getSoftThreshold() { return softThreshold; }
+        public void setSoftThreshold(double v) { this.softThreshold = v; }
         public double getHardThreshold() { return hardThreshold; }
+        public void setHardThreshold(double v) { this.hardThreshold = v; }
         public int getGraceSteps() { return graceSteps; }
+        public void setGraceSteps(int v) { this.graceSteps = v; }
     }
 
     public static class LoopDetectConfig {
-        public final int repeatWarn;         // 重复调用告警阈值
-        public final int repeatStop;         // 重复调用停止阈值
-        public final int noProgressSteps;    // 无进展告警步数
-        public final int failureWarn;        // 连续失败告警阈值
-        public final int failureStop;        // 连续失败停止阈值
-        public final int stopGraceSteps;     // 循环检测/门禁停止后给 LLM 的 grace 步数
-
-        public LoopDetectConfig(Map<String, Object> m) {
-            this.repeatWarn = parseInt(m, "repeat_warn", 3, "loop_detect");
-            this.repeatStop = parseInt(m, "repeat_stop", 5, "loop_detect");
-            this.noProgressSteps = parseInt(m, "no_progress_steps", 6, "loop_detect");
-            this.failureWarn = parseInt(m, "failure_warn", 3, "loop_detect");
-            this.failureStop = parseInt(m, "failure_stop", 5, "loop_detect");
-            this.stopGraceSteps = parseInt(m, "stop_grace_steps", 2, "loop_detect");
-        }
-
+        private int repeatWarn = 3;
+        private int repeatStop = 5;
+        private int noProgressSteps = 6;
+        private int failureWarn = 3;
+        private int failureStop = 5;
+        private int stopGraceSteps = 2;
         public int getRepeatWarn() { return repeatWarn; }
+        public void setRepeatWarn(int v) { this.repeatWarn = v; }
         public int getRepeatStop() { return repeatStop; }
+        public void setRepeatStop(int v) { this.repeatStop = v; }
         public int getNoProgressSteps() { return noProgressSteps; }
+        public void setNoProgressSteps(int v) { this.noProgressSteps = v; }
         public int getFailureWarn() { return failureWarn; }
+        public void setFailureWarn(int v) { this.failureWarn = v; }
         public int getFailureStop() { return failureStop; }
+        public void setFailureStop(int v) { this.failureStop = v; }
         public int getStopGraceSteps() { return stopGraceSteps; }
+        public void setStopGraceSteps(int v) { this.stopGraceSteps = v; }
     }
 
     public static class RetryConfig {
-        public final int attempts;
-        public final long minDelayMs;
-        public final long maxDelayMs;
-        public final double jitter;
-
-        public RetryConfig(Map<String, Object> m) {
-            this.attempts = parseInt(m, "attempts", 3, "retry");
-            this.minDelayMs = parseLong(m, "min_delay_ms", 500, "retry");
-            this.maxDelayMs = parseLong(m, "max_delay_ms", 5000, "retry");
-            this.jitter = parseDouble(m, "jitter", 0.2, "retry");
-        }
-
+        private int attempts = 3;
+        private long minDelayMs = 500;
+        private long maxDelayMs = 5000;
+        private double jitter = 0.2;
         public int getAttempts() { return attempts; }
+        public void setAttempts(int v) { this.attempts = v; }
         public long getMinDelayMs() { return minDelayMs; }
+        public void setMinDelayMs(long v) { this.minDelayMs = v; }
         public long getMaxDelayMs() { return maxDelayMs; }
+        public void setMaxDelayMs(long v) { this.maxDelayMs = v; }
         public double getJitter() { return jitter; }
+        public void setJitter(double v) { this.jitter = v; }
     }
 
     public static class StorageConfig {
-        public final String baseDir;
-
-        public StorageConfig(Map<String, Object> m) {
-            this.baseDir = parseString(m, "base_dir", "./data", "storage");
-        }
+        private String baseDir = "./data";
+        public String getBaseDir() { return baseDir; }
+        public void setBaseDir(String v) { this.baseDir = v; }
     }
 
     public static class ToolsConfig {
-        public final Set<String> whitelist;
-        public final Set<String> destructive;
-        public final Set<String> readonly;
-        public final boolean sandboxEnabled;          // 路径沙箱开关
-        public final int parallelism;                 // 并行工具执行线程数
-        public final int httpConnectTimeoutSeconds;   // 共享 HttpClient 连接超时（秒）
-        public final int webFetchMaxContentLength;    // web_fetch 内容截断字符数
-        public final int webFetchCacheTtlMinutes;     // web_fetch 缓存 TTL（分钟）
-        public final int webFetchCacheMaxEntries;     // web_fetch LRU 缓存上限
-        public final long downloadMaxFileSizeMb;      // 下载文件大小上限（MB）
-        public final int grepMaxFileSizeMb;           // grep 单文件大小上限（MB）
-        public final int grepMaxMatchLines;           // grep 最大匹配行数
-        public final int grepMaxOutputChars;          // grep 输出截断字符数
+        private Set<String> whitelist = new LinkedHashSet<>();
+        private Set<String> destructive = new LinkedHashSet<>();
+        private Set<String> readonly = new LinkedHashSet<>();
+        private boolean sandboxEnabled = true;
+        private int parallelism = 4;
+        private int httpConnectTimeoutSeconds = 30;
+        private WebFetch webFetch;
+        private Download download;
+        private Grep grep;
 
-        @SuppressWarnings("unchecked")
-        public ToolsConfig(Map<String, Object> m) {
-            this.whitelist = new LinkedHashSet<>((List<String>) m.getOrDefault("whitelist", List.of()));
-            this.destructive = new LinkedHashSet<>((List<String>) m.getOrDefault("destructive", List.of()));
-            this.readonly = new LinkedHashSet<>((List<String>) m.getOrDefault("readonly", List.of()));
-            this.sandboxEnabled = parseBoolean(m, "sandbox_enabled", true, "tools");
-            this.parallelism = parseInt(m, "parallelism", 4, "tools");
-            this.httpConnectTimeoutSeconds = parseInt(m, "http_connect_timeout_seconds", 30, "tools");
-            Map<String, Object> webFetch = getSubMap(m, "web_fetch");
-            this.webFetchMaxContentLength = parseInt(webFetch, "max_content_length", 50000, "tools.web_fetch");
-            this.webFetchCacheTtlMinutes = parseInt(webFetch, "cache_ttl_minutes", 15, "tools.web_fetch");
-            this.webFetchCacheMaxEntries = parseInt(webFetch, "cache_max_entries", 64, "tools.web_fetch");
-            Map<String, Object> download = getSubMap(m, "download");
-            this.downloadMaxFileSizeMb = parseLong(download, "max_file_size_mb", 100, "tools.download");
-            Map<String, Object> grep = getSubMap(m, "grep");
-            this.grepMaxFileSizeMb = parseInt(grep, "max_file_size_mb", 10, "tools.grep");
-            this.grepMaxMatchLines = parseInt(grep, "max_match_lines", 500, "tools.grep");
-            this.grepMaxOutputChars = parseInt(grep, "max_output_chars", 50000, "tools.grep");
+        public static class WebFetch {
+            private int maxContentLength = 50000;
+            private int cacheTtlMinutes = 15;
+            private int cacheMaxEntries = 64;
+            public int getMaxContentLength() { return maxContentLength; }
+            public void setMaxContentLength(int v) { this.maxContentLength = v; }
+            public int getCacheTtlMinutes() { return cacheTtlMinutes; }
+            public void setCacheTtlMinutes(int v) { this.cacheTtlMinutes = v; }
+            public int getCacheMaxEntries() { return cacheMaxEntries; }
+            public void setCacheMaxEntries(int v) { this.cacheMaxEntries = v; }
         }
 
-        @SuppressWarnings("unchecked")
-        private static Map<String, Object> getSubMap(Map<String, Object> m, String key) {
-            Object v = m.get(key);
-            return v instanceof Map ? (Map<String, Object>) v : Map.of();
+        public static class Download {
+            private long maxFileSizeMb = 100;
+            public long getMaxFileSizeMb() { return maxFileSizeMb; }
+            public void setMaxFileSizeMb(long v) { this.maxFileSizeMb = v; }
         }
+
+        public static class Grep {
+            private int maxFileSizeMb = 10;
+            private int maxMatchLines = 500;
+            private int maxOutputChars = 50000;
+            public int getMaxFileSizeMb() { return maxFileSizeMb; }
+            public void setMaxFileSizeMb(int v) { this.maxFileSizeMb = v; }
+            public int getMaxMatchLines() { return maxMatchLines; }
+            public void setMaxMatchLines(int v) { this.maxMatchLines = v; }
+            public int getMaxOutputChars() { return maxOutputChars; }
+            public void setMaxOutputChars(int v) { this.maxOutputChars = v; }
+        }
+
+        public Set<String> getWhitelist() { return whitelist; }
+        public void setWhitelist(Set<String> v) { this.whitelist = v; }
+        public Set<String> getDestructive() { return destructive; }
+        public void setDestructive(Set<String> v) { this.destructive = v; }
+        public Set<String> getReadonly() { return readonly; }
+        public void setReadonly(Set<String> v) { this.readonly = v; }
+        public boolean isSandboxEnabled() { return sandboxEnabled; }
+        public void setSandboxEnabled(boolean v) { this.sandboxEnabled = v; }
+        public int getParallelism() { return parallelism; }
+        public void setParallelism(int v) { this.parallelism = v; }
+        public int getHttpConnectTimeoutSeconds() { return httpConnectTimeoutSeconds; }
+        public void setHttpConnectTimeoutSeconds(int v) { this.httpConnectTimeoutSeconds = v; }
+        public WebFetch getWebFetch() { return webFetch; }
+        public void setWebFetch(WebFetch v) { this.webFetch = v; }
+        public Download getDownload() { return download; }
+        public void setDownload(Download v) { this.download = v; }
+        public Grep getGrep() { return grep; }
+        public void setGrep(Grep v) { this.grep = v; }
     }
 
     public static class McpConfig {
-        public final Map<String, McpServerConfig> servers;
-
-        @SuppressWarnings("unchecked")
-        public McpConfig(Map<String, Object> m) {
-            Map<String, Object> serversRaw = (Map<String, Object>) m.getOrDefault("servers", Map.of());
-            Map<String, McpServerConfig> result = new LinkedHashMap<>();
-            for (Map.Entry<String, Object> entry : serversRaw.entrySet()) {
-                String key = entry.getKey();
-                if (entry.getValue() instanceof Map<?, ?> serverMap) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> sm = (Map<String, Object>) serverMap;
-                    result.put(key, new McpServerConfig(key, sm));
-                }
-            }
-            this.servers = Collections.unmodifiableMap(result);
-        }
-
+        private Map<String, McpServerConfig> servers = new LinkedHashMap<>();
+        public Map<String, McpServerConfig> getServers() { return servers; }
+        public void setServers(Map<String, McpServerConfig> v) { this.servers = v; }
         public List<McpServerConfig> getEnabledServers() {
             return servers.values().stream().filter(s -> s.enabled).toList();
         }
     }
 
     public static class McpServerConfig {
-        public final String key;
-        public final String url;
-        public final boolean enabled;
-        public final String permission;
-
-        public McpServerConfig(String key, Map<String, Object> m) {
-            this.key = key;
-            this.url = parseString(m, "url", "", "mcp.servers." + key);
-            this.enabled = parseBoolean(m, "enabled", true, "mcp.servers." + key);
-            this.permission = parseString(m, "permission", "READONLY", "mcp.servers." + key);
-        }
+        private String key;
+        private String url = "";
+        private boolean enabled = true;
+        private String permission = "READONLY";
+        public String getKey() { return key; }
+        public void setKey(String v) { this.key = v; }
+        public String getUrl() { return url; }
+        public void setUrl(String v) { this.url = v; }
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean v) { this.enabled = v; }
+        public String getPermission() { return permission; }
+        public void setPermission(String v) { this.permission = v; }
     }
 
     public static class WebSearchConfig {
-        public final String apiKey;
-        public final String searchSource;
-        public final int topK;               // 返回结果数
-        public final String recencyFilter;   // 时间过滤
-
-        public WebSearchConfig(Map<String, Object> m) {
-            this.apiKey = AgentConfig.resolveEnv(parseString(m, "api_key", "", "web_search"));
-            this.searchSource = parseString(m, "search_source", "baidu_search_v2", "web_search");
-            this.topK = parseInt(m, "top_k", 10, "web_search");
-            this.recencyFilter = parseString(m, "recency_filter", "year", "web_search");
-        }
+        private String apiKey = "";
+        private String searchSource = "baidu_search_v2";
+        private int topK = 10;
+        private String recencyFilter = "year";
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String v) { this.apiKey = v; }
+        public String getSearchSource() { return searchSource; }
+        public void setSearchSource(String v) { this.searchSource = v; }
+        public int getTopK() { return topK; }
+        public void setTopK(int v) { this.topK = v; }
+        public String getRecencyFilter() { return recencyFilter; }
+        public void setRecencyFilter(String v) { this.recencyFilter = v; }
     }
-
 }

@@ -57,10 +57,10 @@ public class StopStateMachine {
      * maxSteps 达到上限时的停止处理。
      */
     public TurnAction handleMaxSteps(SessionState state) {
-        log.warn("[STOP] max steps reached: {}", config.getLoop().maxSteps);
+        log.warn("[STOP] max steps reached: {}", config.getLoop().getMaxSteps());
         StopReason reason = new StopReason(
                 StopCategory.MAX_STEPS_REACHED,
-                "达到最大步数限制 (" + config.getLoop().maxSteps + ")",
+                "达到最大步数限制 (" + config.getLoop().getMaxSteps() + ")",
                 config.getBudget().getGraceSteps());
         FireResult sr = handleStop(state, reason);
         return sr instanceof FireResult.Exit exit ? new TurnAction.Exit(exit.output())

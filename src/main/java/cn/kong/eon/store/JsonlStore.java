@@ -1,6 +1,5 @@
 package cn.kong.eon.store;
 
-import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
@@ -23,9 +22,9 @@ public class JsonlStore {
     private final ObjectMapper mapper;
     private final List<ChatMessage> messages = new ArrayList<>();
 
-    public JsonlStore(Path jsonlFile) {
+    public JsonlStore(Path jsonlFile, ObjectMapper objectMapper) {
         this.jsonlFile = jsonlFile;
-        this.mapper = JsonMapper.get();
+        this.mapper = objectMapper;
         try {
             Files.createDirectories(jsonlFile.getParent());
             if (Files.exists(jsonlFile)) {

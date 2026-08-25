@@ -6,8 +6,8 @@ import cn.kong.eon.agent.hook.StopCategory;
 import cn.kong.eon.agent.hook.StopReason;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.tool.ToolRegistry;
-import cn.kong.eon.util.JsonMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,13 +31,15 @@ public class GateHook implements Hook.PreToolHook {
     );
 
     private final ToolRegistry toolRegistry;
+    private final ObjectMapper objectMapper;
 
-    public GateHook(ToolRegistry toolRegistry) {
-        this(toolRegistry, 2);
+    public GateHook(ToolRegistry toolRegistry, ObjectMapper objectMapper) {
+        this(toolRegistry, objectMapper, 2);
     }
 
-    public GateHook(ToolRegistry toolRegistry, int stopGraceSteps) {
+    public GateHook(ToolRegistry toolRegistry, ObjectMapper objectMapper, int stopGraceSteps) {
         this.toolRegistry = toolRegistry;
+        this.objectMapper = objectMapper;
         this.stopGraceSteps = stopGraceSteps;
     }
 
@@ -76,7 +78,7 @@ public class GateHook implements Hook.PreToolHook {
     private String extractParam(String argumentsJson, String fieldName) {
         if (argumentsJson == null || argumentsJson.isBlank()) return null;
         try {
-            JsonNode node = JsonMapper.get().readTree(argumentsJson);
+            JsonNode node = objectMapper.readTree(argumentsJson);
             if (node.has(fieldName)) return node.get(fieldName).asText();
             return null;
         } catch (Exception e) {

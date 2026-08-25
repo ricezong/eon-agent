@@ -1,5 +1,10 @@
 package cn.kong.eon.tool;
 
+import cn.kong.eon.config.AgentConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
 import java.net.http.HttpClient;
 import java.time.Duration;
 
@@ -10,36 +15,41 @@ import java.time.Duration;
  * 应共享同一实例，避免重复创建导致连接资源浪费。
  * <p>
  * 配置：
- * - 连接超时：可配置（默认 30 秒），通过 {@link #configure(int)} 在启动期设置
+ * - 连接超时：从 {@link AgentConfig} 读取（默认 30 秒）
  * - 重定向：NORMAL（自动跟随）
  * <p>
- * 用法：AgentBootstrapFactory 启动时调用 {@link #configure(int)} 设置超时，
- * 之后各工具通过 {@link #getInstance()} 获取共享实例。
+ * 在 Spring 环境下由 Spring 容器创建为单例 Bean；
+ * 会话级 Tool 类通过 {@link #getInstance()} 获取同一实例（委托到 Spring 注入的实例）。
  */
+@Component
 public final class SharedHttpClient {
+    private static final Logger log = LoggerFactory.getLogger(SharedHttpClient.class);
 
-    private static volatile Duration connectTimeout = Duration.ofSeconds(30);
     private static volatile HttpClient instance;
 
-    private SharedHttpClient() {
+    /**
+     * Spring 构造注入。从 {@link AgentConfig} 读取连接超时并创建 HttpClient。
+     */
+    public SharedHttpClient(AgentConfig config) {
+        int timeoutSeconds = config.getTools().getHttpConnectTimeoutSeconds();
+        instance = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(timeoutSeconds))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
+        log.info("SharedHttpClient initialized: connectTimeout={}s", timeoutSeconds);
     }
 
     /**
-     * 配置连接超时。必须在 {@link #getInstance()} 首次调用前执行，否则使用默认值 30 秒。
-     *
-     * @param connectTimeoutSeconds 连接超时（秒）
+     * 获取共享 HttpClient 实例。
+     * <p>
+     * 在 Spring 环境下由构造函数注入；在非 Spring 环境下（如单元测试）懒初始化默认实例。
      */
-    public static void configure(int connectTimeoutSeconds) {
-        connectTimeout = Duration.ofSeconds(connectTimeoutSeconds);
-    }
-
-    /** 获取共享 HttpClient 实例。首次调用时懒初始化。 */
     public static HttpClient getInstance() {
         if (instance == null) {
             synchronized (SharedHttpClient.class) {
                 if (instance == null) {
                     instance = HttpClient.newBuilder()
-                            .connectTimeout(connectTimeout)
+                            .connectTimeout(Duration.ofSeconds(30))
                             .followRedirects(HttpClient.Redirect.NORMAL)
                             .build();
                 }

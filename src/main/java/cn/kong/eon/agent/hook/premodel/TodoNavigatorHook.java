@@ -30,9 +30,7 @@ public class TodoNavigatorHook implements Hook.PreModelHook {
 
     @Override
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
-        StringBuilder sb = new StringBuilder();
-
-        sb.append("## [Pinned] 当前任务清单\n");
+        StringBuilder sb = new StringBuilder("<navigator>\n");
         List<TodoItem> todos = todoStore.getAll();
         if (todos.isEmpty()) {
             sb.append("（暂无任务）\n");
@@ -41,7 +39,7 @@ public class TodoNavigatorHook implements Hook.PreModelHook {
                 sb.append(t.toString()).append("\n");
             }
         }
-        sb.append("\n");
+        sb.append("</navigator>");
 
         ctx.setNavigator(sb.toString());
         log.debug("Navigator rendered: {} chars", sb.length());
