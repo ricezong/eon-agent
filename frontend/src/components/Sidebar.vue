@@ -1,5 +1,5 @@
 <script setup>
-import { store, createNewSession, selectSession, deleteSession, refreshSessions, getSessionMessageCount } from '../stores/app'
+import { store, newSession, selectSession, deleteSession, refreshSessions, getSessionMessageCount } from '../stores/app'
 import { formatTime } from '../utils/markdown'
 import { onMounted } from 'vue'
 import Icon from './Icon.vue'
@@ -24,7 +24,7 @@ onMounted(() => {
     </div>
 
     <!-- 新建会话 -->
-    <button class="new-session-btn" @click="createNewSession()">
+    <button class="new-session-btn" @click="newSession()">
       <Icon name="plus" :size="18" />
       <span>新建对话</span>
     </button>

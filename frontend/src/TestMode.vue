@@ -16,7 +16,7 @@ onMounted(() => {
     'test-session-002': 8,
     'test-session-003': 12,
   }
-  store.running = false
+  // running 状态现在由 per-session runtime 自动派生
   addMessage({
     id: 1,
     role: 'user',

@@ -1,78 +1,102 @@
-import { ref } from 'vue'
+import { ref, onBeforeUnmount } from 'vue'
 
 /**
- * 打字机效果 composable
- * 逐字渲染文本，支持中途追加新内容、跳过完成
+ * 打字机效果 composable（参考 frontend_old typewriter 引擎）
+ *
+ * 核心设计：
+ * 1. Buffer 累积 + 定时消费，与内容到达方式解耦
+ *    - 支持一次性 setBuffer（DONE 事件全量到达）
+ *    - 支持增量 appendBuffer（流式 content 事件，预留）
+ * 2. 自适应步长：根据剩余 buffer 长度动态调整每 tick 吐字数
+ *    - buffer < 40 字 → step 1（慢速，自然节奏）
+ *    - buffer 40~640 字 → step 1~16（逐渐加速）
+ *    - buffer > 640 字 → step 16（快速消化长文本，避免等待过久）
+ * 3. 16ms interval（~60fps），流畅无卡顿
+ * 4. finish() 可立即跳到末尾（点击跳过）
  */
-export function useTypewriter(opts = {}) {
-  const speed = opts.speed || 18 // ms per char
-  const fastSpeed = opts.fastSpeed || 3
-
+export function useTypewriter() {
   const displayed = ref('')
   const typing = ref(false)
-  const fullText = ref('')
 
+  let buffer = ''
   let timer = null
-  let charIndex = 0
-  let skip = false
 
-  function type(target) {
-    fullText.value = target
-    if (timer) clearInterval(timer)
-    typing.value = true
-    skip = false
-    charIndex = Math.min(charIndex, target.length)
-
-    timer = setInterval(() => {
-      if (skip || charIndex >= target.length) {
+  function tick() {
+    if (buffer.length === 0) {
+      if (timer) {
         clearInterval(timer)
         timer = null
-        typing.value = false
-        displayed.value = target
-        return
       }
-      // 每次推进 1-3 字符，模拟自然节奏
-      const step = Math.random() < 0.3 ? 2 : 1
-      charIndex = Math.min(charIndex + step, target.length)
-      displayed.value = target.slice(0, charIndex)
-    }, skip ? fastSpeed : speed)
+      typing.value = false
+      return
+    }
+
+    // 自适应步长：min(max(ceil(bufLen/40), 1), 16)
+    const step = Math.min(Math.max(Math.ceil(buffer.length / 40), 1), 16)
+    displayed.value += buffer.slice(0, step)
+    buffer = buffer.slice(step)
   }
 
-  /** 追加内容（用于流式增量更新） */
-  function append(text) {
-    fullText.value += text
-    type(fullText.value)
-  }
-
-  /** 直接设置完整文本并开始打字 */
-  function set(text) {
-    fullText.value = text
-    charIndex = 0
+  /**
+   * 设置完整文本并开始打字
+   * 用于 DONE 事件全量到达的场景
+   */
+  function setBuffer(text) {
+    buffer = text
     displayed.value = ''
-    type(text)
-  }
-
-  /** 跳过打字，直接显示全部 */
-  function finish() {
-    skip = true
     if (timer) {
       clearInterval(timer)
       timer = null
     }
-    typing.value = false
-    displayed.value = fullText.value
+    typing.value = true
+    timer = setInterval(tick, 16)
+    // 立即消费第一段，避免首帧空白
+    tick()
   }
 
-  /** 重置 */
+  /**
+   * 追加内容到 buffer（流式增量预留）
+   * 用于后端未来支持增量 content 事件时
+   */
+  function appendBuffer(text) {
+    buffer += text
+    if (!timer) {
+      typing.value = true
+      timer = setInterval(tick, 16)
+    }
+  }
+
+  /**
+   * 跳过打字，直接显示全部
+   */
+  function finish() {
+    if (timer) {
+      clearInterval(timer)
+      timer = null
+    }
+    if (buffer) {
+      displayed.value += buffer
+      buffer = ''
+    }
+    typing.value = false
+  }
+
+  /**
+   * 重置全部状态
+   */
   function reset() {
-    if (timer) clearInterval(timer)
-    timer = null
-    typing.value = false
+    if (timer) {
+      clearInterval(timer)
+      timer = null
+    }
+    buffer = ''
     displayed.value = ''
-    fullText.value = ''
-    charIndex = 0
-    skip = false
+    typing.value = false
   }
 
-  return { displayed, typing, set, append, finish, reset }
+  onBeforeUnmount(() => {
+    if (timer) clearInterval(timer)
+  })
+
+  return { displayed, typing, setBuffer, appendBuffer, finish, reset }
 }

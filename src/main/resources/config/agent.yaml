@@ -1,5 +1,4 @@
 # Eon Agent 配置文件
-
 llm:
   provider: "mimo"                        # LLM 提供商标识
   base_url: "https://token-plan-cn.xiaomimimo.com/v1"  # API 基础地址

@@ -1,6 +1,7 @@
 <script setup>
-import { computed, watch, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { renderMarkdown, formatTokens } from '../utils/markdown'
+import { useTypewriter } from '../composables/useTypewriter'
 import ToolBubble from './ToolBubble.vue'
 import ThoughtBlock from './ThoughtBlock.vue'
 import Icon from './Icon.vue'
@@ -12,77 +13,46 @@ const props = defineProps({
 const isUser = computed(() => props.message.role === 'user')
 const isRunning = computed(() => props.message.status === 'running')
 
-// 打字机效果：仅对助手最终输出启用
-const displayedContent = ref('')
-const typing = ref(false)
-let timer = null
+// 打字机效果（参考 frontend_old：buffer-based + 自适应步长）
+const { displayed, typing, setBuffer, finish, reset } = useTypewriter()
 
-function startTyping(target) {
-  if (!target) {
-    displayedContent.value = ''
-    return
-  }
-  if (timer) clearInterval(timer)
-  typing.value = true
-  let i = 0
-  const speed = 14
-  timer = setInterval(() => {
-    if (i >= target.length) {
-      clearInterval(timer)
-      timer = null
-      typing.value = false
-      return
-    }
-    const step = Math.random() < 0.25 ? 2 : 1
-    i = Math.min(i + step, target.length)
-    displayedContent.value = target.slice(0, i)
-  }, speed)
-}
-
-function finishTyping() {
-  if (timer) {
-    clearInterval(timer)
-    timer = null
-  }
-  typing.value = false
-  displayedContent.value = props.message.content || ''
-}
-
+// 监听 content 变化：DONE 事件到达时启动打字机
 watch(
   () => props.message.content,
   (newVal) => {
     if (isUser.value) return
     if (!newVal) return
-    if (!displayedContent.value) {
-      startTyping(newVal)
-    } else if (newVal.length > displayedContent.value.length) {
-      displayedContent.value = newVal
-    }
+    // 内容到达（DONE 事件），启动打字机
+    setBuffer(newVal)
   }
 )
 
+// 监听状态变化：终止/出错时立即完成打字
 watch(
   () => props.message.status,
   (s) => {
-    if (s === 'done' || s === 'terminated' || s === 'error') {
-      if (typing.value) {
-        // 让打字机自然完成
-      }
+    if (s === 'terminated' || s === 'error') {
+      finish()
     }
   }
 )
 
 onMounted(() => {
   if (!isUser.value && props.message.content) {
-    startTyping(props.message.content)
+    // 已完成的消息直接显示全文（切换会话回来时不重复打字）
+    if (props.message.status === 'done' || props.message.status === 'terminated' || props.message.status === 'error') {
+      displayed.value = props.message.content
+    } else {
+      setBuffer(props.message.content)
+    }
   }
 })
 
 onBeforeUnmount(() => {
-  if (timer) clearInterval(timer)
+  reset()
 })
 
-const renderedContent = computed(() => renderMarkdown(displayedContent.value))
+const renderedContent = computed(() => renderMarkdown(displayed.value))
 const renderedUserContent = computed(() => renderMarkdown(props.message.content))
 
 const toolEvents = computed(() =>
@@ -132,8 +102,8 @@ const showTypingIndicator = computed(
       <!-- 用户消息内容 -->
       <div v-if="isUser" class="content user-content" v-html="renderedUserContent"></div>
 
-      <!-- 助手消息内容（打字机效果） -->
-      <div v-else-if="displayedContent" class="content assistant-content">
+      <!-- 助手消息内容（打字机效果，点击跳过） -->
+      <div v-else-if="displayed" class="content assistant-content" @click="finish">
         <div class="markdown-body" v-html="renderedContent"></div>
         <span v-if="typing" class="cursor">▋</span>
       </div>
@@ -253,6 +223,7 @@ const showTypingIndicator = computed(
   border-radius: 4px 16px 16px 16px;
   border: 1px solid var(--border-default);
   max-width: 100%;
+  cursor: pointer;
 }
 
 .cursor {

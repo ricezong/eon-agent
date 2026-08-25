@@ -1,16 +1,14 @@
 <script setup>
 import { ref, computed, nextTick } from 'vue'
-import { store, addMessage, updateMessage, showToast } from '../stores/app'
+import { store, addMessage, updateMessage, getLastAssistantMessage, showToast, setSending, setConn, captureSessionId, stopStream } from '../stores/app'
 import { createSseStream } from '../api/sse'
-import { api } from '../api'
 import Icon from './Icon.vue'
 
 const input = ref('')
-const sending = ref(false)
 const textareaRef = ref(null)
 const focused = ref(false)
 
-const canSend = computed(() => input.value.trim() && !sending.value)
+const canSend = computed(() => input.value.trim() && !store.sending)
 
 async function autoResize() {
   await nextTick()
@@ -24,21 +22,12 @@ async function send() {
   if (!canSend.value) return
   const text = input.value.trim()
   input.value = ''
-  sending.value = true
+  setSending(true)
   await autoResize()
 
-  let sessionId = store.currentSessionId
-  if (!sessionId) {
-    try {
-      const resp = await api.createSession(text)
-      sessionId = resp.sessionId
-      store.currentSessionId = sessionId
-    } catch (e) {
-      showToast('创建会话失败：' + e.message, 'error')
-      sending.value = false
-      return
-    }
-  }
+  // 懒创建：不预创建会话，直接发起 SSE 流
+  // 后端 GET /api/v1/stream 无 sessionId 时自动创建会话
+  // RUN_START 事件返回 sessionId，由 captureSessionId 回填
 
   addMessage({
     id: Date.now(),
@@ -59,14 +48,14 @@ async function send() {
   }
   addMessage(assistantMsg)
 
-  startStream(sessionId, text, assistantMsg)
+  startStream(text, assistantMsg)
 }
 
-function startStream(sessionId, message, assistantMsg) {
+function startStream(message, assistantMsg) {
   let currentTurn = 0
 
-  createSseStream({
-    sessionId,
+  const conn = createSseStream({
+    sessionId: store.currentSessionId,
     message,
     onEvent: (eventType, data) => {
       handleEvent(eventType, data, assistantMsg, (t) => { currentTurn = t })
@@ -76,22 +65,27 @@ function startStream(sessionId, message, assistantMsg) {
         status: 'error',
         error: err.message || '连接失败',
       })
-      sending.value = false
+      setSending(false)
       showToast('SSE 连接失败：' + err.message, 'error')
     },
     onClose: () => {
       if (assistantMsg.status === 'running') {
         updateMessage(assistantMsg.id, { status: 'done' })
       }
-      sending.value = false
+      setSending(false)
     },
   })
+
+  setConn(conn)
 }
 
 function handleEvent(eventType, data, assistantMsg, setTurn) {
   switch (eventType) {
     case 'RUN_START':
-      store.running = true
+      // 懒创建回填：从 RUN_START 捕获 sessionId
+      if (data.sessionId) {
+        captureSessionId(data.sessionId)
+      }
       break
 
     case 'TURN_START':
@@ -141,8 +135,7 @@ function handleEvent(eventType, data, assistantMsg, setTurn) {
         tokens: data.totalTokens || assistantMsg.tokens,
         turn: data.turnCount || assistantMsg.turn,
       })
-      sending.value = false
-      store.running = false
+      setSending(false)
       break
 
     case 'TERMINATED':
@@ -151,8 +144,7 @@ function handleEvent(eventType, data, assistantMsg, setTurn) {
         error: data.error || '任务被强制终止',
         tokens: data.totalTokens || assistantMsg.tokens,
       })
-      sending.value = false
-      store.running = false
+      setSending(false)
       break
 
     case 'ERROR':
@@ -160,10 +152,18 @@ function handleEvent(eventType, data, assistantMsg, setTurn) {
         status: 'error',
         error: data.error || '执行出错',
       })
-      sending.value = false
-      store.running = false
+      setSending(false)
       break
   }
+}
+
+function stop() {
+  // 标记最后一条助手消息为已终止
+  const lastMsg = getLastAssistantMessage()
+  if (lastMsg && lastMsg.status === 'running') {
+    updateMessage(lastMsg.id, { status: 'terminated', error: '用户已停止生成' })
+  }
+  stopStream()
 }
 
 function onKeydown(e) {
@@ -176,14 +176,14 @@ function onKeydown(e) {
 
 <template>
   <div class="input-area">
-    <div :class="['input-wrapper', { focused, disabled: sending }]">
+    <div :class="['input-wrapper', { focused, disabled: store.sending }]">
       <textarea
         ref="textareaRef"
         v-model="input"
         class="input"
         placeholder="输入消息，Enter 发送，Shift+Enter 换行…"
         rows="1"
-        :disabled="sending"
+        :disabled="store.sending"
         @input="autoResize"
         @keydown="onKeydown"
         @focus="focused = true"
@@ -197,13 +197,21 @@ function onKeydown(e) {
         </div>
 
         <button
+          v-if="store.sending"
+          class="send-btn stop"
+          @click="stop"
+          title="停止生成"
+        >
+          <Icon name="stop" :size="14" />
+        </button>
+        <button
+          v-else
           class="send-btn"
           :disabled="!canSend"
           @click="send"
           :title="canSend ? '发送 (Enter)' : '输入消息后发送'"
         >
-          <Icon v-if="sending" name="loader" :size="18" class="spin" />
-          <Icon v-else name="arrow-up" :size="18" />
+          <Icon name="arrow-up" :size="18" />
         </button>
       </div>
     </div>
@@ -216,7 +224,7 @@ function onKeydown(e) {
         </span>
       </div>
       <div class="footer-right">
-        <span class="hint-item" v-if="sending">
+        <span class="hint-item" v-if="store.sending">
           <Icon name="loader" :size="11" class="spin" />
           正在思考…
         </span>
@@ -316,6 +324,14 @@ function onKeydown(e) {
   cursor: not-allowed;
   background: var(--bg-surface-hover);
   color: var(--t-tertiary);
+}
+
+/* 停止按钮样式 */
+.send-btn.stop {
+  background: var(--c-danger);
+}
+.send-btn.stop:hover {
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5);
 }
 
 .spin {
