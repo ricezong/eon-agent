@@ -110,7 +110,9 @@ public class TodoWriteTool implements ToolExecutor {
         return "{todos: " + count + " items}";
     }
 
-    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    /**
+     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
+     */
     @Tool(name = "todo_write", value = {
             "使用此工具为当前会话创建和管理结构化任务列表。",
             "这有助于跟踪进度、组织复杂任务并展示周密性。",

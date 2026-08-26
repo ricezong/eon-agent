@@ -25,7 +25,9 @@ public class GateHook implements Hook.PreToolHook {
 
     private final int stopGraceSteps;
 
-    /** 破坏性工具 → 必填参数名映射。当前无破坏性工具，保持空映射。 */
+    /**
+     * 破坏性工具 → 必填参数名映射。当前无破坏性工具，保持空映射。
+     */
     private static final Map<String, String> DESTRUCTIVE_REQUIRED_PARAMS = Map.of();
 
     private final ToolRegistry toolRegistry;
@@ -41,9 +43,20 @@ public class GateHook implements Hook.PreToolHook {
         this.stopGraceSteps = stopGraceSteps;
     }
 
-    @Override public String name() { return "Gate"; }
-    @Override public boolean isActive(SessionState state) { return true; }
-    @Override public int order() { return 20; }
+    @Override
+    public String name() {
+        return "Gate";
+    }
+
+    @Override
+    public boolean isActive(SessionState state) {
+        return true;
+    }
+
+    @Override
+    public int order() {
+        return 20;
+    }
 
     @Override
     public HookResult beforeToolExecution(SessionState state, List<ToolExecutionRequest> requests) {
@@ -52,7 +65,7 @@ public class GateHook implements Hook.PreToolHook {
         for (ToolExecutionRequest req : requests) {
             if (!toolRegistry.isDestructive(req.name())) continue;
 
-            log.warn("[PreTool] Gate: destructive '{}' approved | args: {} | turn: {}",
+            log.warn("[PreTool] Gate: 破坏性工具 '{}' 已批准 | 参数: {} | turn: {}",
                     req.name(), req.arguments(), state.getTurnCount());
 
             String requiredParam = DESTRUCTIVE_REQUIRED_PARAMS.get(req.name());
@@ -60,7 +73,7 @@ public class GateHook implements Hook.PreToolHook {
 
             String value = extractParam(req.arguments(), requiredParam);
             if (value == null || value.isBlank()) {
-                log.warn("[PreTool] Gate: REJECTED '{}' missing required param '{}' → STOP",
+                log.warn("[PreTool] Gate: 拒绝 '{}' 缺少必要参数 '{}' → STOP",
                         req.name(), requiredParam);
                 StopReason reason = new StopReason(
                         StopCategory.GATE_REJECTED,
@@ -72,7 +85,9 @@ public class GateHook implements Hook.PreToolHook {
         return HookResult.ok();
     }
 
-    /** 从 JSON 参数中提取指定字段值。 */
+    /**
+     * 从 JSON 参数中提取指定字段值。
+     */
     private String extractParam(String argumentsJson, String fieldName) {
         if (argumentsJson == null || argumentsJson.isBlank()) return null;
         try {
@@ -80,7 +95,7 @@ public class GateHook implements Hook.PreToolHook {
             if (node.has(fieldName)) return node.get(fieldName).asText();
             return null;
         } catch (Exception e) {
-            log.warn("[PreTool] Gate: failed to parse arguments: {}", argumentsJson);
+            log.warn("[PreTool] Gate: 参数解析失败: {}", argumentsJson);
             return null;
         }
     }

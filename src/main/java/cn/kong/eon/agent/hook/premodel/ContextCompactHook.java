@@ -24,9 +24,20 @@ import java.util.List;
 public class ContextCompactHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(ContextCompactHook.class);
 
-    @Override public String name() { return "ContextCompact"; }
-    @Override public boolean isActive(SessionState state) { return true; }
-    @Override public int order() { return 100; }
+    @Override
+    public String name() {
+        return "ContextCompact";
+    }
+
+    @Override
+    public boolean isActive(SessionState state) {
+        return true;
+    }
+
+    @Override
+    public int order() {
+        return 100;
+    }
 
     private final AgentConfig config;
     private final CompressionEngine compressionEngine;

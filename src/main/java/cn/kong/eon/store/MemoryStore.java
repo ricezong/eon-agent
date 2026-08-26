@@ -31,11 +31,13 @@ public class MemoryStore {
         try {
             Files.createDirectories(memoryDir);
         } catch (IOException e) {
-            throw new RuntimeException("Failed to create memory dir", e);
+            throw new RuntimeException("创建 memory 目录失败", e);
         }
     }
 
-    /** 记忆条目。 */
+    /**
+     * 记忆条目。
+     */
     public static class MemoryItem {
         public String id;
         public String title;
@@ -43,7 +45,8 @@ public class MemoryStore {
         public Instant createdAt;
         public Instant updatedAt;
 
-        public MemoryItem() {}
+        public MemoryItem() {
+        }
 
         public MemoryItem(String id, String title, String content) {
             this.id = id;
@@ -54,71 +57,81 @@ public class MemoryStore {
         }
     }
 
-    /** 创建新记忆。 */
+    /**
+     * 创建新记忆。
+     */
     public MemoryItem create(String title, String content) {
         String id = "mem_" + UUID.randomUUID().toString().substring(0, 8);
         MemoryItem item = new MemoryItem(id, title, content);
         save(item);
-        log.info("Memory created: {} - {}", id, title);
+        log.info("Memory 已创建: {} - {}", id, title);
         return item;
     }
 
-    /** 更新已有记忆。 */
+    /**
+     * 更新已有记忆。
+     */
     public MemoryItem update(String id, String title, String content) {
         MemoryItem existing = load(id);
         if (existing == null) {
-            throw new IllegalArgumentException("Memory not found: " + id);
+            throw new IllegalArgumentException("Memory 不存在: " + id);
         }
         if (title != null) existing.title = title;
         if (content != null) existing.content = content;
         existing.updatedAt = Instant.now();
         save(existing);
-        log.info("Memory updated: {}", id);
+        log.info("Memory 已更新: {}", id);
         return existing;
     }
 
-    /** 删除记忆。 */
+    /**
+     * 删除记忆。
+     */
     public boolean delete(String id) {
         Path file = memoryDir.resolve(id + ".json");
         try {
             boolean deleted = Files.deleteIfExists(file);
-            if (deleted) log.info("Memory deleted: {}", id);
+            if (deleted) log.info("Memory 已删除: {}", id);
             return deleted;
         } catch (IOException e) {
-            log.error("Failed to delete memory: {}", id, e);
+            log.error("删除 memory 失败: {}", id, e);
             return false;
         }
     }
 
-    /** 加载全部记忆（按创建时间排序，保证注入顺序确定性）。 */
+    /**
+     * 加载全部记忆（按创建时间排序，保证注入顺序确定性）。
+     */
     public List<MemoryItem> loadAll() {
         List<MemoryItem> items = new ArrayList<>();
         try (var stream = Files.list(memoryDir)) {
             stream.filter(p -> p.getFileName().toString().startsWith("mem_"))
-                  .filter(p -> p.toString().endsWith(".json"))
-                  .sorted(Comparator.comparing(p -> p.getFileName().toString()))
-                  .forEach(p -> {
-                      try {
-                          items.add(mapper.readValue(p.toFile(), MemoryItem.class));
-                      } catch (IOException e) {
-                          log.warn("Failed to read memory file: {}", p, e);
-                      }
-                  });
+                    .filter(p -> p.toString().endsWith(".json"))
+                    .sorted(Comparator.comparing(p -> p.getFileName().toString()))
+                    .forEach(p -> {
+                        try {
+                            items.add(mapper.readValue(p.toFile(), MemoryItem.class));
+                        } catch (IOException e) {
+                            log.warn("读取 memory 文件失败: {}", p, e);
+                        }
+                    });
         } catch (IOException e) {
-            log.warn("Failed to list memories: {}", e.getMessage());
+            log.warn("列出 memories 失败: {}", e.getMessage());
         }
         items.sort(Comparator.comparing(m -> m.createdAt));
         return items;
     }
 
-    /** 渲染为注入块文本。 */
+    /**
+     * 渲染为注入块文本。
+     */
     public String renderForInjection() {
         List<MemoryItem> items = loadAll();
         if (items.isEmpty()) return "";
         StringBuilder sb = new StringBuilder("<memories>\n");
         for (MemoryItem m : items) {
             sb.append("- [").append(m.id).append("] ").append(m.title)
-              .append(": ").append(truncate(m.content, 200)).append("\n");
+                    .append(": ").append(truncate(m.content, 200)).append("\n");
         }
         sb.append("</memories>");
         return sb.toString();
@@ -154,7 +167,7 @@ public class MemoryStore {
         try {
             return mapper.readValue(file.toFile(), MemoryItem.class);
         } catch (IOException e) {
-            log.error("Failed to read memory: {}", id, e);
+            log.error("读取 memory 失败: {}", id, e);
             return null;
         }
     }
@@ -164,7 +177,7 @@ public class MemoryStore {
         try {
             mapper.writeValue(file.toFile(), item);
         } catch (IOException e) {
-            log.error("Failed to save memory: {}", item.id, e);
+            log.error("保存 memory 失败: {}", item.id, e);
         }
     }
 

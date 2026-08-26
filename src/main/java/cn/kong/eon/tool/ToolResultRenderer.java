@@ -65,10 +65,10 @@ public class ToolResultRenderer {
 
         if (truncated && refId != null) {
             sb.append("\n├─ 截断提示: 内容过大（").append(rawResult.length())
-              .append(" 字符），已截断为头部 ").append(SUMMARY_HEAD)
-              .append(" + 尾部 ").append(SUMMARY_TAIL).append(" 字符摘要");
+                    .append(" 字符），已截断为头部 ").append(SUMMARY_HEAD)
+                    .append(" + 尾部 ").append(SUMMARY_TAIL).append(" 字符摘要");
             sb.append("\n└─ 元数据: 完整内容已保存至 artifact://").append(refId)
-              .append("，可用 read_file 工具读取该引用获取完整内容");
+                    .append("，可用 read_file 工具读取该引用获取完整内容");
         } else {
             sb.append("\n└─ 元数据: ").append(rawResult.length()).append(" 字符");
         }

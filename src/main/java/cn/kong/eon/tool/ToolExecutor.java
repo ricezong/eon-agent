@@ -30,5 +30,6 @@ public interface ToolExecutor {
      * 默认空操作，由持有资源的工具覆写。
      * 在会话销毁时由 ToolRegistry.closeAll() 统一调用。
      */
-    default void close() {}
+    default void close() {
+    }
 }

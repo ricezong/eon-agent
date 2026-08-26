@@ -26,7 +26,9 @@ public final class HttpConfig {
                 .build();
     }
 
-    /** 获取底层 HttpClient 实例。 */
+    /**
+     * 获取底层 HttpClient 实例。
+     */
     public HttpClient getClient() {
         return httpClient;
     }

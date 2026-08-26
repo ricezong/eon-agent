@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * 上下文构建器。分层组装发送给 LLM 的 messages。
  * 物理顺序：
- *   System Prompt → Summary → Transcript → Memories → Navigator → RuntimeNudges。
+ * System Prompt → Summary → Transcript → Memories → Navigator → RuntimeNudges。
  * System Prompt 不拼接动态内容，保证 KV Cache 前缀稳定。
  * 工具通过 API 请求的 tools 字段注入，不在 messages 中重复。
  */
@@ -25,14 +25,44 @@ public class ContextBuilder {
     private List<ChatMessage> transcript;
     private TokenCountEstimator tokenCountEstimator; // 精确 token 估算器
 
-    public ContextBuilder setSystemPrompt(String systemPrompt) { this.systemPrompt = systemPrompt; return this; }
-    public ContextBuilder setSummary(String summary) { this.summary = summary; return this; }
-    public ContextBuilder setMemories(String memories) { this.memories = memories; return this; }
-    public ContextBuilder setNavigator(String navigator) { this.navigator = navigator; return this; }
-    public ContextBuilder setRuntimeNudges(String runtimeNudges) { this.runtimeNudges = runtimeNudges; return this; }
-    public ContextBuilder setTranscript(List<ChatMessage> transcript) { this.transcript = transcript; return this; }
-    public List<ChatMessage> getTranscript() { return transcript; }
-    public ContextBuilder setTokenCountEstimator(TokenCountEstimator estimator) { this.tokenCountEstimator = estimator; return this; }
+    public ContextBuilder setSystemPrompt(String systemPrompt) {
+        this.systemPrompt = systemPrompt;
+        return this;
+    }
+
+    public ContextBuilder setSummary(String summary) {
+        this.summary = summary;
+        return this;
+    }
+
+    public ContextBuilder setMemories(String memories) {
+        this.memories = memories;
+        return this;
+    }
+
+    public ContextBuilder setNavigator(String navigator) {
+        this.navigator = navigator;
+        return this;
+    }
+
+    public ContextBuilder setRuntimeNudges(String runtimeNudges) {
+        this.runtimeNudges = runtimeNudges;
+        return this;
+    }
+
+    public ContextBuilder setTranscript(List<ChatMessage> transcript) {
+        this.transcript = transcript;
+        return this;
+    }
+
+    public List<ChatMessage> getTranscript() {
+        return transcript;
+    }
+
+    public ContextBuilder setTokenCountEstimator(TokenCountEstimator estimator) {
+        this.tokenCountEstimator = estimator;
+        return this;
+    }
 
     public List<ChatMessage> build() {
         List<ChatMessage> result = new ArrayList<>();
@@ -95,7 +125,8 @@ public class ContextBuilder {
         if (msg instanceof SystemMessage sm) return sm.text();
         if (msg instanceof UserMessage um) return um.singleText();
         if (msg instanceof dev.langchain4j.data.message.AiMessage am) return am.text() != null ? am.text() : "";
-        if (msg instanceof dev.langchain4j.data.message.ToolExecutionResultMessage trm) return trm.text() != null ? trm.text() : "";
+        if (msg instanceof dev.langchain4j.data.message.ToolExecutionResultMessage trm)
+            return trm.text() != null ? trm.text() : "";
         return "";
     }
 }

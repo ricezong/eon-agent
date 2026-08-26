@@ -10,7 +10,9 @@ import cn.kong.eon.model.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** 预算检查（PreModel, order=10）。软阈值注入收尾 nudge，硬阈值请求优雅停止。 */
+/**
+ * 预算检查（PreModel, order=10）。软阈值注入收尾 nudge，硬阈值请求优雅停止。
+ */
 public class BudgetHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(BudgetHook.class);
 
@@ -20,9 +22,20 @@ public class BudgetHook implements Hook.PreModelHook {
         this.config = config;
     }
 
-    @Override public String name() { return "Budget"; }
-    @Override public boolean isActive(SessionState state) { return true; }
-    @Override public int order() { return 10; }
+    @Override
+    public String name() {
+        return "Budget";
+    }
+
+    @Override
+    public boolean isActive(SessionState state) {
+        return true;
+    }
+
+    @Override
+    public int order() {
+        return 10;
+    }
 
     @Override
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
@@ -37,7 +50,7 @@ public class BudgetHook implements Hook.PreModelHook {
             // 请求优雅停止
             StopReason reason = new StopReason(
                     StopCategory.BUDGET_EXCEEDED,
-                    "Token 预算硬超限: " + used + " >= " + (long)(maxBudget * budget.getHardThreshold()),
+                    "Token 预算硬超限: " + used + " >= " + (long) (maxBudget * budget.getHardThreshold()),
                     budget.getGraceSteps());
             return HookResult.stop(reason);
         }
@@ -45,7 +58,7 @@ public class BudgetHook implements Hook.PreModelHook {
         // 优雅停止恢复后重置 softTriggered
         if (ratio < budget.getSoftThreshold() && state.isBudgetSoftTriggered()) {
             state.setBudgetSoftTriggered(false);
-            log.info("[PreModel] Budget: softTriggered reset (usage dropped below {}%)", String.format("%.0f", budget.getSoftThreshold() * 100));
+            log.warn("[PreModel] Budget: 软阈值重置（用量降至 {}% 以下）", String.format("%.0f", budget.getSoftThreshold() * 100));
         }
 
         if (ratio >= budget.getSoftThreshold() && !state.isBudgetSoftTriggered()) {

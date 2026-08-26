@@ -7,7 +7,9 @@ import cn.kong.eon.model.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** 失败熔断（PostTool, order=30）。检测单工具连续失败，注入 nudge 提示，不触发会话级停止。 */
+/**
+ * 失败熔断（PostTool, order=30）。检测单工具连续失败，注入 nudge 提示，不触发会话级停止。
+ */
 public class FailureBreakerHook implements Hook.PostToolHook {
     private static final Logger log = LoggerFactory.getLogger(FailureBreakerHook.class);
 
@@ -17,9 +19,20 @@ public class FailureBreakerHook implements Hook.PostToolHook {
         this.loopDetector = loopDetector;
     }
 
-    @Override public String name() { return "FailureBreaker"; }
-    @Override public boolean isActive(SessionState state) { return true; }
-    @Override public int order() { return 30; }
+    @Override
+    public String name() {
+        return "FailureBreaker";
+    }
+
+    @Override
+    public boolean isActive(SessionState state) {
+        return true;
+    }
+
+    @Override
+    public int order() {
+        return 30;
+    }
 
     @Override
     public HookResult afterToolExecution(SessionState state, String toolName, boolean success) {

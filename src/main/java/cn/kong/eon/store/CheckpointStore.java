@@ -16,7 +16,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Checkpoint 存储。每轮 todo_write 后保存快照。 */
+/**
+ * Checkpoint 存储。每轮 todo_write 后保存快照。
+ */
 public class CheckpointStore {
     private static final Logger log = LoggerFactory.getLogger(CheckpointStore.class);
 
@@ -31,11 +33,13 @@ public class CheckpointStore {
         try {
             Files.createDirectories(checkpointDir);
         } catch (IOException e) {
-            throw new RuntimeException("Failed to create checkpoint dir", e);
+            throw new RuntimeException("创建 checkpoint 目录失败", e);
         }
     }
 
-    /** 保存 checkpoint。 */
+    /**
+     * 保存 checkpoint。
+     */
     public Checkpoint save(String sessionId, int turnCount,
                            java.util.List<TodoItem> todoSnapshot,
                            TokenUsage usageAccum,
@@ -53,10 +57,10 @@ public class CheckpointStore {
         Path file = checkpointDir.resolve(cp.getCheckpointId() + ".json");
         try {
             mapper.writeValue(file.toFile(), cp);
-            log.info("Checkpoint saved: {} (turn={}, todos={})",
+            log.info("Checkpoint 已保存: {} (turn={}, todos={})",
                     cp.getCheckpointId(), turnCount, todoSnapshot.size());
         } catch (IOException e) {
-            log.error("Failed to save checkpoint", e);
+            log.error("保存 checkpoint 失败", e);
         }
         return cp;
     }

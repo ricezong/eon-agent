@@ -30,21 +30,29 @@ public class AskQuestionTool implements ToolExecutor {
         return "{questions: " + count + "}";
     }
 
-    /** Schema 专用 POJO：选项输入。 */
+    /**
+     * Schema 专用 POJO：选项输入。
+     */
     public record OptionInput(
             String id,
             String label
-    ) {}
+    ) {
+    }
 
-    /** Schema 专用 POJO：问题输入。 */
+    /**
+     * Schema 专用 POJO：问题输入。
+     */
     public record QuestionInput(
             String id,
             String prompt,
             List<OptionInput> options,
             Boolean allow_multiple
-    ) {}
+    ) {
+    }
 
-    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    /**
+     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
+     */
     @Tool(name = "AskQuestion", value = {
             "向用户收集结构化的多选答案。提供一个或多个带选项的问题，在适合多选时设置 allow_multiple。",
             "当你需要通过结构化的问题格式从用户处收集特定信息时使用此工具。",
@@ -85,7 +93,7 @@ public class AskQuestionTool implements ToolExecutor {
                                            SessionState state, String title) {
         List<Map<String, Object>> questions = (List<Map<String, Object>>) arguments.get("questions");
 
-        log.info("AskQuestion via callback: {} questions, session={}", questions.size(), state.getSessionId());
+        log.info("AskQuestion 通过回调: {} 个问题, 会话={}", questions.size(), state.getSessionId());
 
         Map<String, String> answers = callback.askQuestions(questions, title);
 
@@ -97,7 +105,7 @@ public class AskQuestionTool implements ToolExecutor {
             output.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
         }
 
-        log.info("AskQuestion callback collected {} answers", answers.size());
+        log.info("AskQuestion 回调收集 {} 个答案", answers.size());
         return ToolOutcome.success(output.toString());
     }
 }

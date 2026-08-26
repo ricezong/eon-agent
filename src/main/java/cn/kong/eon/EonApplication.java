@@ -98,12 +98,12 @@ public class EonApplication {
         this.objectMapper = createObjectMapper();
 
         // 1. 加载配置
-        log.info("Loading configuration from classpath: {}", CONFIG_PATH);
+        log.info("从 classpath 加载配置: {}", CONFIG_PATH);
         this.config = AgentConfig.loadFromClasspath(CONFIG_PATH);
 
         // 2. 加载系统提示词
         String systemPrompt = loadSystemPrompt(config.getContext().getSystemPromptPath());
-        log.info("System prompt loaded: {} chars", systemPrompt.length());
+        log.info("系统提示词已加载: {} 字符", systemPrompt.length());
 
         // 3. 初始化共享 HttpClient（从配置注入超时）
         this.httpConfig = new HttpConfig(config.getTools().getHttpConnectTimeoutSeconds());
@@ -118,7 +118,7 @@ public class EonApplication {
         try {
             Files.createDirectories(sessionDir);
         } catch (IOException e) {
-            throw new RuntimeException("Failed to create session dir: " + sessionDir, e);
+            throw new RuntimeException("创建会话目录失败: " + sessionDir, e);
         }
         this.todoStore = new TodoStore();
         this.artifactStore = new ArtifactStore(sessionDir.resolve("artifacts"));
@@ -129,7 +129,7 @@ public class EonApplication {
         Path jsonlPath = sessionDir.resolve("transcript.jsonl");
         this.jsonlStore = new JsonlStore(jsonlPath, objectMapper);
         this.transcriptPath = jsonlPath.toAbsolutePath().toString();
-        log.info("Session {} initialized, transcript: {}", sessionId, transcriptPath);
+        log.info("会话 {} 已初始化, transcript: {}", sessionId, transcriptPath);
 
         // 7. 初始化工具注册表
         this.toolRegistry = createToolRegistry();
@@ -161,7 +161,7 @@ public class EonApplication {
         // 13. 注册所有 Hook
         registerHooks();
 
-        log.info("EonApplication ready: {} tools, {} hooks",
+        log.info("EonApplication 就绪: {} 个工具, {} 个 hook",
                 toolRegistry.getAllToolNames().size(), agent.getHookCount());
     }
 
@@ -169,6 +169,7 @@ public class EonApplication {
 
     /**
      * 运行一轮对话。
+     *
      * @param userInput 用户输入文本
      * @return Agent 输出结果
      */
@@ -180,11 +181,11 @@ public class EonApplication {
         String sessionId = generateSessionId();
         SessionState state = SessionState.create(sessionId, userInput);
 
-        log.info("=== Session {} started ===", sessionId);
-        log.info("User input: {}", userInput.length() > 200 ? userInput.substring(0, 200) + "..." : userInput);
+        log.info("=== 会话 {} 开始 ===", sessionId);
+        log.info("用户输入: {}", userInput.length() > 200 ? userInput.substring(0, 200) + "..." : userInput);
 
         String output = agent.run(state);
-        log.info("=== Session {} finished, {} turns, {} tokens ===",
+        log.info("=== 会话 {} 结束, {} 轮, {} tokens ===",
                 sessionId, state.getTurnCount(), state.getUsageAccum().getTotalTokens());
         return output;
     }
@@ -200,21 +201,23 @@ public class EonApplication {
         String sessionId = generateSessionId();
         SessionState state = SessionState.create(sessionId, userInput);
 
-        log.info("=== Session {} started (stream) ===", sessionId);
+        log.info("=== 会话 {} 开始（stream） ===", sessionId);
         String output = agent.runStream(state, callback);
-        log.info("=== Session {} finished, {} turns, {} tokens ===",
+        log.info("=== 会话 {} 结束, {} 轮, {} tokens ===",
                 sessionId, state.getTurnCount(), state.getUsageAccum().getTotalTokens());
         return output;
     }
 
-    /** 关闭应用，释放资源。 */
+    /**
+     * 关闭应用，释放资源。
+     */
     public void shutdown() {
-        log.info("Shutting down EonApplication...");
+        log.info("正在关闭 EonApplication...");
         agent.shutdown();
         for (McpClientManager mcp : mcpClients) {
             mcp.close();
         }
-        log.info("EonApplication shutdown complete.");
+        log.info("EonApplication 已关闭。");
     }
 
     // ===== 初始化方法 =====
@@ -233,7 +236,7 @@ public class EonApplication {
                 return new String(is.readAllBytes(), StandardCharsets.UTF_8);
             }
         } catch (IOException e) {
-            log.warn("Failed to load system prompt from classpath: {}", path, e);
+            log.warn("从 classpath 加载系统提示词失败: {}", path, e);
         }
         // 回退到文件系统
         try {
@@ -242,9 +245,9 @@ public class EonApplication {
                 return Files.readString(promptPath, StandardCharsets.UTF_8);
             }
         } catch (IOException e) {
-            log.warn("Failed to load system prompt from file: {}", path, e);
+            log.warn("从文件加载系统提示词失败: {}", path, e);
         }
-        log.error("System prompt not found, using empty prompt");
+        log.error("系统提示词未找到，使用空提示词");
         return "";
     }
 
@@ -253,7 +256,7 @@ public class EonApplication {
         try {
             Files.createDirectories(base);
         } catch (IOException e) {
-            throw new RuntimeException("Failed to create storage base dir: " + base, e);
+            throw new RuntimeException("创建存储根目录失败: " + base, e);
         }
         return base;
     }
@@ -281,7 +284,7 @@ public class EonApplication {
         if (searchApiKey != null && !searchApiKey.isBlank()) {
             registry.register(WebSearchTool.descriptor(searchApiKey, objectMapper, httpConfig.getClient()));
         } else {
-            log.warn("web_search tool not registered: QIANFAN_API_KEY not configured");
+            log.warn("web_search 工具未注册: QIANFAN_API_KEY 未配置");
         }
 
         // web_fetch 带配置
@@ -316,15 +319,15 @@ public class EonApplication {
                 continue;
             }
 
-            log.info("Connecting to MCP server: key={}, url={}", serverKey, url);
+            log.info("连接 MCP 服务: key={}, url={}", serverKey, url);
             try {
                 McpClientManager mcpClient = new McpClientManager(serverKey, url);
                 mcpClient.connect();
                 int toolCount = toolRegistry.registerMcpTools(mcpClient, serverCfg.getPermission());
-                log.info("MCP server '{}' connected: {} tools registered", serverKey, toolCount);
+                log.info("MCP 服务 '{}' 已连接: 注册 {} 个工具", serverKey, toolCount);
                 mcpClients.add(mcpClient);
             } catch (Exception e) {
-                log.error("Failed to connect MCP server '{}': {}", serverKey, e.getMessage(), e);
+                log.error("连接 MCP 服务 '{}' 失败: {}", serverKey, e.getMessage(), e);
                 // MCP 连接失败不阻止启动，继续其他服务
             }
         }
@@ -351,20 +354,20 @@ public class EonApplication {
 
     public static void main(String[] args) {
         String workDir = System.getProperty("eon.workdir", DEFAULT_WORKDIR);
-        log.info("Starting Eon Agent, workDir={}", workDir);
+        log.info("启动 Eon Agent, 工作目录={}", workDir);
 
         EonApplication app = new EonApplication(workDir);
 
         // 注册关闭钩子
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            log.info("Shutdown hook triggered");
+            log.info("关闭钩子已触发");
             app.shutdown();
         }));
 
         // 检查是否有命令行参数（单次运行模式）
         if (args.length > 0) {
             String input = String.join(" ", args);
-            log.info("Single-run mode with input: {}", input);
+            log.info("单次运行模式，输入: {}", input);
             String result = app.run(input);
             System.out.println("\n" + result);
             app.shutdown();
@@ -429,8 +432,8 @@ public class EonApplication {
 
     // ===== CLI 格式化常量 =====
 
-    private static final String LINE_THIN  = "─".repeat(44);
-    private static final String LINE_BOLD   = "━".repeat(44);
+    private static final String LINE_THIN = "─".repeat(44);
+    private static final String LINE_BOLD = "━".repeat(44);
     private static final String LINE_DOUBLE = "═".repeat(44);
 
     // ===== CLI 输出 =====

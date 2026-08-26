@@ -33,9 +33,20 @@ public class LoopDetectHook implements Hook.PostModelHook {
         this.stopGraceSteps = stopGraceSteps;
     }
 
-    @Override public String name() { return "LoopDetect"; }
-    @Override public boolean isActive(SessionState state) { return true; }
-    @Override public int order() { return 30; }
+    @Override
+    public String name() {
+        return "LoopDetect";
+    }
+
+    @Override
+    public boolean isActive(SessionState state) {
+        return true;
+    }
+
+    @Override
+    public int order() {
+        return 30;
+    }
 
     @Override
     public HookResult afterModelCall(SessionState state, LlmResponse response) {

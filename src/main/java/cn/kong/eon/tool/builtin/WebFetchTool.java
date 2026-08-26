@@ -41,7 +41,9 @@ public class WebFetchTool implements ToolExecutor {
     // LRU 缓存：URL → (内容, 时间戳)，带容量上限和 TTL 过期
     private final Map<String, CacheEntry> cache;
 
-    /** 仅供测试使用，生产环境通过 {@link #descriptor(int, long, int, HttpClient)} 传入配置。 */
+    /**
+     * 仅供测试使用，生产环境通过 {@link #descriptor(int, long, int, HttpClient)} 传入配置。
+     */
     public WebFetchTool() {
         this(50000, 15 * 60 * 1000L, 64, HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
@@ -70,7 +72,9 @@ public class WebFetchTool implements ToolExecutor {
         return "{urls: " + count + "}";
     }
 
-    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    /**
+     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
+     */
     @Tool(name = "web_fetch", value = {
             "从一个或多个指定 URL 获取内容并返回。用法：以 URL 数组作为输入，抓取 URL 内容并将 HTML 转换为 markdown。",
             "返回所有 URL 的抓取内容。当你需要检索和分析网页内容时使用此工具。",
@@ -124,7 +128,7 @@ public class WebFetchTool implements ToolExecutor {
                 output.append("--- ").append(url).append("（失败）---\n");
                 output.append("错误: ").append(e.getMessage()).append("\n\n");
                 failed++;
-                log.warn("web_fetch failed for {}: {}", url, e.getMessage());
+                log.warn("web_fetch 失败 {}: {}", url, e.getMessage());
             }
         }
 
@@ -139,11 +143,11 @@ public class WebFetchTool implements ToolExecutor {
 
         String cached = getFromCache(url);
         if (cached != null) {
-            log.debug("Cache hit for: {}", url);
+            log.debug("缓存命中: {}", url);
             return cached;
         }
 
-        log.info("Fetching: {}", url);
+        log.info("抓取: {}", url);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -210,5 +214,6 @@ public class WebFetchTool implements ToolExecutor {
         }
     }
 
-    private record CacheEntry(String content, long timestamp) {}
+    private record CacheEntry(String content, long timestamp) {
+    }
 }

@@ -6,7 +6,9 @@ import cn.kong.eon.store.JsonlStore;
 import cn.kong.eon.store.MemoryStore;
 import cn.kong.eon.store.TodoStore;
 
-/** 工具执行上下文，为工具提供运行时依赖。 */
+/**
+ * 工具执行上下文，为工具提供运行时依赖。
+ */
 public record ToolContext(
         TodoStore todoStore,
         ArtifactStore artifactStore,
@@ -17,11 +19,13 @@ public record ToolContext(
         String workDir,
         InteractionCallback interactionCallback
 ) {
-    /** 无交互回调（CLI 模式）。 */
+    /**
+     * 无交互回调（CLI 模式）。
+     */
     public ToolContext(TodoStore todoStore, ArtifactStore artifactStore,
-                      MemoryStore memoryStore, JsonlStore jsonlStore,
-                      CheckpointStore checkpointStore, PathResolver pathResolver,
-                      String workDir) {
+                       MemoryStore memoryStore, JsonlStore jsonlStore,
+                       CheckpointStore checkpointStore, PathResolver pathResolver,
+                       String workDir) {
         this(todoStore, artifactStore, memoryStore, jsonlStore, checkpointStore, pathResolver, workDir, null);
     }
 }

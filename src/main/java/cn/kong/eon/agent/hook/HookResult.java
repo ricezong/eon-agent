@@ -14,7 +14,9 @@ public final class HookResult {
         this.stopReason = stopReason;
     }
 
-    /** 继续，一切正常。 */
+    /**
+     * 继续，一切正常。
+     */
     public static HookResult ok() {
         return new HookResult(Action.CONTINUE, null);
     }
@@ -26,11 +28,17 @@ public final class HookResult {
         return new HookResult(Action.STOP, stopReason);
     }
 
-    public boolean isStop() { return action == Action.STOP; }
+    public boolean isStop() {
+        return action == Action.STOP;
+    }
 
-    public StopReason getStopReason() { return stopReason; }
+    public StopReason getStopReason() {
+        return stopReason;
+    }
 
-    /** Hook 动作枚举。 */
+    /**
+     * Hook 动作枚举。
+     */
     public enum Action {
         CONTINUE,
         STOP

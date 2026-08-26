@@ -9,7 +9,9 @@ import dev.langchain4j.data.message.ChatMessage;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 会话级运行时状态，贯穿整个 Agent Loop，所有组件共享。 */
+/**
+ * 会话级运行时状态，贯穿整个 Agent Loop，所有组件共享。
+ */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class SessionState {
     private String sessionId;
@@ -51,55 +53,137 @@ public class SessionState {
         return s;
     }
 
-    public void incrementTurn() { this.turnCount++; }
+    public void incrementTurn() {
+        this.turnCount++;
+    }
 
-    public void addNudge(String nudge) { pendingNudges.add(nudge); }
-    public void addFormatCorrection(String correction) { formatCorrections.add(correction); }
+    public void addNudge(String nudge) {
+        pendingNudges.add(nudge);
+    }
 
-    public String getSessionId() { return sessionId; }
-    public void setSessionId(String sessionId) { this.sessionId = sessionId; }
+    public void addFormatCorrection(String correction) {
+        formatCorrections.add(correction);
+    }
 
-    public String getUserOriginalInput() { return userOriginalInput; }
-    public void setUserOriginalInput(String userOriginalInput) { this.userOriginalInput = userOriginalInput; }
+    public String getSessionId() {
+        return sessionId;
+    }
 
-    public int getTurnCount() { return turnCount; }
-    public void setTurnCount(int turnCount) { this.turnCount = turnCount; }
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
 
-    public TokenUsage getUsageAccum() { return usageAccum; }
-    public void setUsageAccum(TokenUsage usageAccum) { this.usageAccum = usageAccum; }
+    public String getUserOriginalInput() {
+        return userOriginalInput;
+    }
 
-    public CompressionState getCompressionState() { return compressionState; }
-    public void setCompressionState(CompressionState compressionState) { this.compressionState = compressionState; }
+    public void setUserOriginalInput(String userOriginalInput) {
+        this.userOriginalInput = userOriginalInput;
+    }
 
-    public List<String> getPendingNudges() { return pendingNudges; }
-    public void setPendingNudges(List<String> pendingNudges) { this.pendingNudges = pendingNudges; }
+    public int getTurnCount() {
+        return turnCount;
+    }
 
-    public List<String> getFormatCorrections() { return formatCorrections; }
-    public void setFormatCorrections(List<String> formatCorrections) { this.formatCorrections = formatCorrections; }
+    public void setTurnCount(int turnCount) {
+        this.turnCount = turnCount;
+    }
 
-    public String getLastAssistantText() { return lastAssistantText; }
-    public void setLastAssistantText(String lastAssistantText) { this.lastAssistantText = lastAssistantText; }
+    public TokenUsage getUsageAccum() {
+        return usageAccum;
+    }
 
-    public boolean hasTodoBeenUsed() { return todoBeenUsed; }
-    public void setTodoBeenUsed(boolean todoBeenUsed) { this.todoBeenUsed = todoBeenUsed; }
+    public void setUsageAccum(TokenUsage usageAccum) {
+        this.usageAccum = usageAccum;
+    }
 
-    public boolean isBudgetSoftTriggered() { return budgetSoftTriggered; }
-    public void setBudgetSoftTriggered(boolean budgetSoftTriggered) { this.budgetSoftTriggered = budgetSoftTriggered; }
+    public CompressionState getCompressionState() {
+        return compressionState;
+    }
 
-    public List<ChatMessage> getCurrentMessages() { return currentMessages; }
-    public void setCurrentMessages(List<ChatMessage> currentMessages) { this.currentMessages = currentMessages; }
+    public void setCompressionState(CompressionState compressionState) {
+        this.compressionState = compressionState;
+    }
 
-    public LlmResponse getLastResponse() { return lastResponse; }
-    public void setLastResponse(LlmResponse lastResponse) { this.lastResponse = lastResponse; }
+    public List<String> getPendingNudges() {
+        return pendingNudges;
+    }
 
-    public List<ToolExecutionRequest> getPendingToolCalls() { return pendingToolCalls; }
-    public void setPendingToolCalls(List<ToolExecutionRequest> pendingToolCalls) { this.pendingToolCalls = pendingToolCalls; }
+    public void setPendingNudges(List<String> pendingNudges) {
+        this.pendingNudges = pendingNudges;
+    }
 
-    public List<ToolExecutionResult> getLastToolResults() { return lastToolResults; }
-    public void setLastToolResults(List<ToolExecutionResult> lastToolResults) { this.lastToolResults = lastToolResults; }
+    public List<String> getFormatCorrections() {
+        return formatCorrections;
+    }
 
-    public StopState getStopState() { return stopState; }
-    public void setStopState(StopState stopState) { this.stopState = stopState; }
+    public void setFormatCorrections(List<String> formatCorrections) {
+        this.formatCorrections = formatCorrections;
+    }
+
+    public String getLastAssistantText() {
+        return lastAssistantText;
+    }
+
+    public void setLastAssistantText(String lastAssistantText) {
+        this.lastAssistantText = lastAssistantText;
+    }
+
+    public boolean hasTodoBeenUsed() {
+        return todoBeenUsed;
+    }
+
+    public void setTodoBeenUsed(boolean todoBeenUsed) {
+        this.todoBeenUsed = todoBeenUsed;
+    }
+
+    public boolean isBudgetSoftTriggered() {
+        return budgetSoftTriggered;
+    }
+
+    public void setBudgetSoftTriggered(boolean budgetSoftTriggered) {
+        this.budgetSoftTriggered = budgetSoftTriggered;
+    }
+
+    public List<ChatMessage> getCurrentMessages() {
+        return currentMessages;
+    }
+
+    public void setCurrentMessages(List<ChatMessage> currentMessages) {
+        this.currentMessages = currentMessages;
+    }
+
+    public LlmResponse getLastResponse() {
+        return lastResponse;
+    }
+
+    public void setLastResponse(LlmResponse lastResponse) {
+        this.lastResponse = lastResponse;
+    }
+
+    public List<ToolExecutionRequest> getPendingToolCalls() {
+        return pendingToolCalls;
+    }
+
+    public void setPendingToolCalls(List<ToolExecutionRequest> pendingToolCalls) {
+        this.pendingToolCalls = pendingToolCalls;
+    }
+
+    public List<ToolExecutionResult> getLastToolResults() {
+        return lastToolResults;
+    }
+
+    public void setLastToolResults(List<ToolExecutionResult> lastToolResults) {
+        this.lastToolResults = lastToolResults;
+    }
+
+    public StopState getStopState() {
+        return stopState;
+    }
+
+    public void setStopState(StopState stopState) {
+        this.stopState = stopState;
+    }
 
     public boolean isStopRequested() {
         return stopState != null && stopState.isActive();
@@ -121,7 +205,9 @@ public class SessionState {
             this.remainingGraceSteps = reason.getGraceSteps();
         }
 
-        /** 消耗一个 grace step，返回是否还有剩余。 */
+        /**
+         * 消耗一个 grace step，返回是否还有剩余。
+         */
         public boolean consumeGraceStep() {
             if (remainingGraceSteps > 0) {
                 remainingGraceSteps--;
@@ -129,8 +215,16 @@ public class SessionState {
             return remainingGraceSteps > 0;
         }
 
-        public boolean isActive() { return reason != null; }
-        public StopReason getReason() { return reason; }
-        public int getRemainingGraceSteps() { return remainingGraceSteps; }
+        public boolean isActive() {
+            return reason != null;
+        }
+
+        public StopReason getReason() {
+            return reason;
+        }
+
+        public int getRemainingGraceSteps() {
+            return remainingGraceSteps;
+        }
     }
 }

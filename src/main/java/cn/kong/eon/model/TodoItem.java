@@ -37,38 +37,93 @@ public class TodoItem {
         return t;
     }
 
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
+    public String getId() {
+        return id;
+    }
 
-    public String getContent() { return content; }
-    public void setContent(String content) { this.content = content; }
+    public void setId(String id) {
+        this.id = id;
+    }
 
-    public TodoStatus getStatus() { return status; }
-    public void setStatus(TodoStatus status) { this.status = status; }
+    public String getContent() {
+        return content;
+    }
 
-    public String getPriority() { return priority; }
-    public void setPriority(String priority) { this.priority = priority; }
+    public void setContent(String content) {
+        this.content = content;
+    }
 
-    public String getParentId() { return parentId; }
-    public void setParentId(String parentId) { this.parentId = parentId; }
+    public TodoStatus getStatus() {
+        return status;
+    }
 
-    public List<String> getDependsOn() { return dependsOn; }
-    public void setDependsOn(List<String> dependsOn) { this.dependsOn = dependsOn != null ? dependsOn : new ArrayList<>(); }
+    public void setStatus(TodoStatus status) {
+        this.status = status;
+    }
 
-    public List<String> getArtifacts() { return artifacts; }
-    public void setArtifacts(List<String> artifacts) { this.artifacts = artifacts != null ? artifacts : new ArrayList<>(); }
+    public String getPriority() {
+        return priority;
+    }
 
-    public String getNotes() { return notes; }
-    public void setNotes(String notes) { this.notes = notes; }
+    public void setPriority(String priority) {
+        this.priority = priority;
+    }
 
-    public String getBlockReason() { return blockReason; }
-    public void setBlockReason(String blockReason) { this.blockReason = blockReason; }
+    public String getParentId() {
+        return parentId;
+    }
 
-    public int getVersion() { return version; }
-    public void setVersion(int version) { this.version = version; }
+    public void setParentId(String parentId) {
+        this.parentId = parentId;
+    }
 
-    public int getLastModifiedTurn() { return lastModifiedTurn; }
-    public void setLastModifiedTurn(int lastModifiedTurn) { this.lastModifiedTurn = lastModifiedTurn; }
+    public List<String> getDependsOn() {
+        return dependsOn;
+    }
+
+    public void setDependsOn(List<String> dependsOn) {
+        this.dependsOn = dependsOn != null ? dependsOn : new ArrayList<>();
+    }
+
+    public List<String> getArtifacts() {
+        return artifacts;
+    }
+
+    public void setArtifacts(List<String> artifacts) {
+        this.artifacts = artifacts != null ? artifacts : new ArrayList<>();
+    }
+
+    public String getNotes() {
+        return notes;
+    }
+
+    public void setNotes(String notes) {
+        this.notes = notes;
+    }
+
+    public String getBlockReason() {
+        return blockReason;
+    }
+
+    public void setBlockReason(String blockReason) {
+        this.blockReason = blockReason;
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    public void setVersion(int version) {
+        this.version = version;
+    }
+
+    public int getLastModifiedTurn() {
+        return lastModifiedTurn;
+    }
+
+    public void setLastModifiedTurn(int lastModifiedTurn) {
+        this.lastModifiedTurn = lastModifiedTurn;
+    }
 
     @Override
     public String toString() {

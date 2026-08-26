@@ -38,7 +38,8 @@ public class TodoStore {
 
     /**
      * 按 id 合并 Todo 列表。已存在 id 更新内容/状态，新 id 追加。
-     * @param newTodos 新传入的 todo 列表
+     *
+     * @param newTodos    新传入的 todo 列表
      * @param currentTurn 当前轮次
      * @return 合并后的完整列表
      */
@@ -60,7 +61,9 @@ public class TodoStore {
         return list;
     }
 
-    /** 校验单一焦点约束：同时最多一个 in_progress。 */
+    /**
+     * 校验单一焦点约束：同时最多一个 in_progress。
+     */
     public boolean validateSingleFocus(List<TodoItem> newTodos) {
         long inProgressCount = newTodos.stream()
                 .filter(t -> t.getStatus() == TodoStatus.IN_PROGRESS)
@@ -72,7 +75,9 @@ public class TodoStore {
         return todos.stream().filter(t -> t.getStatus() == status).count();
     }
 
-    /** 格式化 Todo 进度统计行，如 "2/5 完成 (1 进行中, 2 待办, 0 阻塞)"。 */
+    /**
+     * 格式化 Todo 进度统计行，如 "2/5 完成 (1 进行中, 2 待办, 0 阻塞)"。
+     */
     public static String formatProgress(List<TodoItem> todos) {
         if (todos == null || todos.isEmpty()) return "";
         return countByStatus(todos, TodoStatus.COMPLETED) + "/" + todos.size()

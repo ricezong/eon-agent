@@ -77,9 +77,9 @@ public class CompressionEngine {
      * 如果水位已达 prune 阈值，额外执行 Prune。
      */
     public List<ChatMessage> compressByTurnCount(List<ChatMessage> messages,
-                                                   CompressionState state,
-                                                   double waterLevel,
-                                                   int tailGuardTurns) {
+                                                 CompressionState state,
+                                                 double waterLevel,
+                                                 int tailGuardTurns) {
         boolean willSnip = waterLevel >= snipThreshold;
         boolean willPrune = waterLevel >= pruneThreshold;
         if (!willSnip && !willPrune) {
@@ -98,7 +98,9 @@ public class CompressionEngine {
         return messages;
     }
 
-    /** 计算尾部保护区起始索引：tail guard 范围内的消息不压缩。 */
+    /**
+     * 计算尾部保护区起始索引：tail guard 范围内的消息不压缩。
+     */
     private int tailStartIndex(int messageCount, int tailGuardTurns) {
         return Math.max(0, messageCount - tailGuardTurns * 2 - 2);
     }
@@ -157,7 +159,9 @@ public class CompressionEngine {
         return head + "\n... [中间内容已省略] ...\n" + tail;
     }
 
-    /** Prune：替换 tool result 为占位符。 */
+    /**
+     * Prune：替换 tool result 为占位符。
+     */
     private void applyPrune(List<ChatMessage> messages, CompressionState state, int tailGuardTurns) {
         int tailStart = tailStartIndex(messages.size(), tailGuardTurns);
         int pruneCount = 0;
@@ -192,11 +196,11 @@ public class CompressionEngine {
      * 增量摘要：旧摘要 + 被裁剪对话一起送 LLM 重生成（非字符串拼接）。
      * 删除旧消息会导致配对断裂，由 ContextCompactHook 调用 PairingRepairer 修复。
      * 摘要结构（个人助手版）：
-     *   1. Primary Request and Intent — 用户的核心诉求
-     *   2. Key Context and Decisions — 关键上下文、已做的决策、已获取的关键信息
-     *   3. User Preferences and Updates — 用户偏好和记忆更新
-     *   4. Pending Tasks and Current Work — 未完成任务与当前进展
-     *   5. All User Messages and Transcript — 用户原始消息 + 记录文件路径
+     * 1. Primary Request and Intent — 用户的核心诉求
+     * 2. Key Context and Decisions — 关键上下文、已做的决策、已获取的关键信息
+     * 3. User Preferences and Updates — 用户偏好和记忆更新
+     * 4. Pending Tasks and Current Work — 未完成任务与当前进展
+     * 5. All User Messages and Transcript — 用户原始消息 + 记录文件路径
      */
     private void applySummarize(List<ChatMessage> messages, CompressionState state, int tailGuardTurns) {
         int tailStart = tailStartIndex(messages.size(), tailGuardTurns);
@@ -237,26 +241,26 @@ public class CompressionEngine {
         // 5 段式摘要提示词（个人助手优化版）
         String summaryPrompt = """
                 请将以下历史对话压缩为结构化摘要，严格按以下 5 段格式输出：
-
+                
                 1. Primary Request and Intent — 用户的核心诉求（逐条列出）
                 2. Key Context and Decisions — 关键上下文、已做的决策、已获取的关键信息
                 3. User Preferences and Updates — 本轮中发现/更新/确认的用户偏好和记忆
                 4. Pending Tasks and Current Work — 未完成任务与当前进展
                 5. All User Messages and Transcript — 用户原始消息（逐条）+ 原始记录文件路径与回溯指引
-
+                
                 第 5 段必须包含（固定模板）：
                 "原始对话完整记录: %s
                 当任务或状态不清楚时，请用搜索工具检索该文件而不是猜测。
                 回溯方法：先按关键词（任务名/文件名/ID/错误信息/工具名）定位匹配行，
                 再用读取文件工具查看匹配位置附近的内容，还原意图和状态；
                 不要从头到尾通读整个文件（文件可能非常大）。"
-
+                
                 摘要要求：不超过 %d 字符；陈述句；保留关键事实与数字；省略过程性描述。
                 如有旧摘要，请合并旧摘要与新对话生成新版摘要（增量），不要直接拼接。
-
+                
                 === 旧摘要（如有） ===
                 %s
-
+                
                 === 本次被裁剪的对话 ===
                 %s
                 """.formatted(transcriptPath, summarizeMaxOutputChars, existingSummarySection, dialogText);
@@ -270,7 +274,7 @@ public class CompressionEngine {
             String summary = response.aiMessage().text();
 
             if (summary == null || summary.isBlank()) {
-                log.warn("[Compress] Summarize: LLM returned empty summary, skipping");
+                log.warn("[Compress] Summarize: LLM 返回空摘要，跳过");
                 return;
             }
 
@@ -292,12 +296,12 @@ public class CompressionEngine {
                     removeCount, summary.length(), summaryPreview);
 
         } catch (Exception e) {
-            log.error("[Compress] Summarize failed: {} → 降级为 Prune 旧消息", e.getMessage());
+            log.error("[Compress] Summarize 失败: {} → 降级为 Prune 旧消息", e.getMessage());
             // 降级策略：删除已被覆盖的旧消息，防止上下文继续膨胀
             int removeCount = tailStart;
             messages.subList(0, removeCount).clear();
             state.setSummarizedUpToIndex(tailStart);
-            log.info("[Compress] Fallback Prune: removed {} msgs (summarize failed)", removeCount);
+            log.info("[Compress] 降级 Prune: 删除 {} 条消息（摘要生成失败）", removeCount);
         }
     }
 

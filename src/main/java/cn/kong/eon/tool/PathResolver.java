@@ -20,6 +20,7 @@ public class PathResolver {
 
     /**
      * 解析路径为绝对路径。
+     *
      * @param rawPath 用户传入的路径（相对或绝对）
      * @return 解析后的绝对路径
      * @throws IllegalArgumentException 路径穿越沙箱边界时抛出

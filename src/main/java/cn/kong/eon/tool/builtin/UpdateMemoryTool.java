@@ -37,7 +37,9 @@ public class UpdateMemoryTool implements ToolExecutor {
         return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
-    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    /**
+     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
+     */
     @Tool(name = "update_memory", value = {
             "在持久化知识库中创建、更新或删除记忆，供 AI 将来参考。如果用户补充了已有记忆，必须使用此工具的 'update' 操作。",
             "如果用户反驳了已有记忆，必须使用此工具的 'delete' 操作，而非 'update' 或 'create'。",
@@ -75,7 +77,7 @@ public class UpdateMemoryTool implements ToolExecutor {
                         yield ToolOutcome.failure("create 操作需要 'knowledge_to_store' 参数");
                     }
                     MemoryItem item = memoryStore.create(title, content);
-                    log.info("Memory created: {} - {}", item.id, title);
+                    log.info("Memory 已创建: {} - {}", item.id, title);
                     yield ToolOutcome.success("记忆创建成功。\nID: " + item.id + "\n标题: " + title);
                 }
                 case "update" -> {
@@ -89,7 +91,7 @@ public class UpdateMemoryTool implements ToolExecutor {
                         yield ToolOutcome.failure("update 操作至少需要提供 'title' 或 'knowledge_to_store' 中的一个");
                     }
                     MemoryItem item = memoryStore.update(id, title, content);
-                    log.info("Memory updated: {}", id);
+                    log.info("Memory 已更新: {}", id);
                     yield ToolOutcome.success("记忆更新成功。\nID: " + id + "\n标题: " + item.title);
                 }
                 case "delete" -> {
@@ -99,7 +101,7 @@ public class UpdateMemoryTool implements ToolExecutor {
                     }
                     boolean deleted = memoryStore.delete(id);
                     if (deleted) {
-                        log.info("Memory deleted: {}", id);
+                        log.info("Memory 已删除: {}", id);
                         yield ToolOutcome.success("记忆删除成功。\nID: " + id);
                     } else {
                         yield ToolOutcome.failure("记忆不存在或无法删除: " + id);
@@ -110,7 +112,7 @@ public class UpdateMemoryTool implements ToolExecutor {
         } catch (IllegalArgumentException e) {
             return ToolOutcome.failure(e.getMessage());
         } catch (Exception e) {
-            log.error("update_memory failed: {}", e.getMessage(), e);
+            log.error("update_memory 失败: {}", e.getMessage(), e);
             return ToolOutcome.failure("记忆操作失败: " + e.getMessage());
         }
     }

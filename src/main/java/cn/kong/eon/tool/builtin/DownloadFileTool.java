@@ -119,13 +119,13 @@ public class DownloadFileTool implements ToolExecutor {
                     + "（" + formatSize(bytesWritten) + "）");
 
         } catch (java.net.ConnectException e) {
-            log.error("download_file connect failed: {}", e.getMessage());
+            log.error("download_file 连接失败: {}", e.getMessage());
             return ToolOutcome.failure("连接失败: " + e.getMessage());
         } catch (java.net.SocketTimeoutException e) {
-            log.error("download_file timeout: {}", e.getMessage());
+            log.error("download_file 超时: {}", e.getMessage());
             return ToolOutcome.failure("下载超时: " + e.getMessage());
         } catch (Exception e) {
-            log.error("download_file failed: {}", e.getMessage(), e);
+            log.error("download_file 失败: {}", e.getMessage(), e);
             return ToolOutcome.failure("下载失败: " + e.getMessage());
         }
     }
@@ -147,7 +147,9 @@ public class DownloadFileTool implements ToolExecutor {
         return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
-    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    /**
+     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
+     */
     @Tool(name = "download_file", value = {
             "从指定 URL 下载文件并保存到本地。当用户要求下载文件、保存远程内容到本地时使用此工具。",
             "文件以流式方式直接写入本地磁盘，不经过对话上下文，支持大文件（上限 100MB）。"
@@ -159,7 +161,9 @@ public class DownloadFileTool implements ToolExecutor {
         return null;
     }
 
-    /** 仅供测试使用，生产环境通过 {@link #descriptor(long, HttpClient)} 传入配置。 */
+    /**
+     * 仅供测试使用，生产环境通过 {@link #descriptor(long, HttpClient)} 传入配置。
+     */
     public static ToolDescriptor descriptor() {
         return ToolDescriptor.fromAnnotated(new DownloadFileTool(), ToolPermission.RESTRICTED_WRITE);
     }

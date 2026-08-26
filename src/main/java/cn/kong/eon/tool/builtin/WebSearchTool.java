@@ -22,7 +22,9 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
 
-/** web_search 工具：使用百度千帆 AI Search API 搜索网页。 */
+/**
+ * web_search 工具：使用百度千帆 AI Search API 搜索网页。
+ */
 public class WebSearchTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(WebSearchTool.class);
 
@@ -58,7 +60,9 @@ public class WebSearchTool implements ToolExecutor {
         return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
-    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    /**
+     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
+     */
     @Tool(name = "web_search", value = {
             "将查询发送至搜索引擎并显示结果。使用此工具查找当前信息。当需要搜索网络、查找最新新闻或获取实时数据时，请使用此工具。",
             "将查询发送至搜索引擎并显示结果。使用此工具查找有关人物、地点、公司、历史研究、新闻或其他主题的信息。",
@@ -74,7 +78,7 @@ public class WebSearchTool implements ToolExecutor {
         return null;
     }
 
-        public static ToolDescriptor descriptor(String apiKey, ObjectMapper objectMapper, HttpClient httpClient) {
+    public static ToolDescriptor descriptor(String apiKey, ObjectMapper objectMapper, HttpClient httpClient) {
         return ToolDescriptor.fromAnnotated(new WebSearchTool(apiKey, objectMapper, httpClient), ToolPermission.READONLY);
     }
 
@@ -106,7 +110,7 @@ public class WebSearchTool implements ToolExecutor {
             return ToolOutcome.success(parseResponse(responseJson, query));
 
         } catch (Exception e) {
-            log.error("WebSearch(千帆) failed: {}", e.getMessage(), e);
+            log.error("WebSearch(千帆) 失败: {}", e.getMessage(), e);
             return ToolOutcome.failure("搜索失败: " + e.getMessage());
         }
     }
@@ -164,7 +168,8 @@ public class WebSearchTool implements ToolExecutor {
                 if (errNode.has("message")) {
                     errorMsg = errNode.get("message").asText();
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
             throw new RuntimeException("千帆 API 错误: " + errorMsg);
         }
 

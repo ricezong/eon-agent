@@ -24,9 +24,20 @@ public class TodoNavigatorHook implements Hook.PreModelHook {
         this.todoStore = todoStore;
     }
 
-    @Override public String name() { return "TodoNavigator"; }
-    @Override public boolean isActive(SessionState state) { return state.hasTodoBeenUsed(); }
-    @Override public int order() { return 20; }
+    @Override
+    public String name() {
+        return "TodoNavigator";
+    }
+
+    @Override
+    public boolean isActive(SessionState state) {
+        return state.hasTodoBeenUsed();
+    }
+
+    @Override
+    public int order() {
+        return 20;
+    }
 
     @Override
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
@@ -42,7 +53,7 @@ public class TodoNavigatorHook implements Hook.PreModelHook {
         sb.append("</navigator>");
 
         ctx.setNavigator(sb.toString());
-        log.debug("Navigator rendered: {} chars", sb.length());
+        log.debug("Navigator 已渲染: {} 字符", sb.length());
 
         return HookResult.ok();
     }

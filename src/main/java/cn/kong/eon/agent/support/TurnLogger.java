@@ -25,7 +25,6 @@ public class TurnLogger {
         this.config = config;
     }
 
-    // ===== Turn 收集方法 =====
 
     public TurnRecord newRecord() {
         return new TurnRecord();
@@ -36,20 +35,16 @@ public class TurnLogger {
         long max = config.getBudget().getMaxTokens();
         rec.turnHeader(state.getTurnCount(), used, max);
         if (state.isStopRequested()) {
-            rec.stopInfo(state.getStopState().getReason().getCategory(),
-                    state.getStopState().getRemainingGraceSteps());
+            rec.stopInfo(state.getStopState().getReason().getCategory(), state.getStopState().getRemainingGraceSteps());
         }
     }
 
-    public void contextInfo(TurnRecord rec, ContextBuilder ctx, List<ChatMessage> messages,
-                            SessionState state, int toolCount) {
+    public void contextInfo(TurnRecord rec, ContextBuilder ctx, List<ChatMessage> messages, SessionState state, int toolCount) {
         rec.context(messages.size(), ctx.estimateTokens(), toolCount);
     }
 
     public void llmResponse(TurnRecord rec, List<ToolExecutionRequest> requests, int deltaTokens) {
-        List<String> toolNames = (requests != null && !requests.isEmpty())
-                ? requests.stream().map(ToolExecutionRequest::name).toList()
-                : List.of();
+        List<String> toolNames = (requests != null && !requests.isEmpty()) ? requests.stream().map(ToolExecutionRequest::name).toList() : List.of();
         rec.llm(toolNames, deltaTokens);
     }
 
@@ -77,22 +72,17 @@ public class TurnLogger {
     public void turnDone(TurnRecord rec, SessionState state, int turnStartTokens) {
         List<ToolExecutionResult> results = state.getLastToolResults();
         int toolCount = results != null ? results.size() : 0;
-        int okCount = results != null
-                ? (int) results.stream().filter(ToolExecutionResult::success).count()
-                : 0;
-        rec.turnDone(turnStartTokens, state.getUsageAccum().getTotalTokens(),
-                config.getBudget().getMaxTokens(), okCount, toolCount - okCount);
+        int okCount = results != null ? (int) results.stream().filter(ToolExecutionResult::success).count() : 0;
+        rec.turnDone(turnStartTokens, state.getUsageAccum().getTotalTokens(), config.getBudget().getMaxTokens(), okCount, toolCount - okCount);
     }
 
-    // ===== 统一 flush：2 行摘要 =====
 
     public void flush(TurnRecord rec) {
         // Line 1: Header — Turn 号 + 上下文 + LLM 摘要
         StringBuilder header = new StringBuilder(256);
         header.append("Turn ").append(rec.turnNumber);
         if (rec.stopCategory != null) {
-            header.append(" ⚠").append(rec.stopCategory)
-                  .append("(grace=").append(rec.stopGraceRemaining).append(")");
+            header.append(" ⚠").append(rec.stopCategory).append("(grace=").append(rec.stopGraceRemaining).append(")");
         }
         header.append(" │ ctx ").append(rec.messageCount).append("msgs/~").append(rec.estimatedTokens).append("tok");
         header.append(" │ LLM: ").append(rec.toolNames.isEmpty() ? "—" : rec.toolNames.toString());
@@ -119,7 +109,8 @@ public class TurnLogger {
         // Stop 事件（如有）
         for (TurnRecord.StopEvent event : rec.stopEvents) {
             String detail = switch (event.type()) {
-                case REQUESTED -> "STOP requested: " + event.category() + " │ " + event.message() + " │ grace=" + event.graceRemaining();
+                case REQUESTED ->
+                        "STOP requested: " + event.category() + " │ " + event.message() + " │ grace=" + event.graceRemaining();
                 case ESCALATED -> "STOP escalated: " + event.category() + " │ " + event.message();
                 case GRACE_CONSUMED -> "GRACE consumed (" + event.message() + ") │ remaining=" + event.graceRemaining();
             };
@@ -127,23 +118,19 @@ public class TurnLogger {
         }
     }
 
-    // ===== Agent 级别日志（立即打印）=====
 
     public void agentStart(SessionState state) {
-        log.info("┌─ EonAgent 启动 │ session: {} │ maxSteps: {} │ budget: {} tokens",
-                state.getSessionId(), config.getLoop().getMaxSteps(), config.getBudget().getMaxTokens());
+        log.info("┌─ EonAgent 启动 │ 会话: {} │ 最大步数: {} │ 预算: {} tokens", state.getSessionId(), config.getLoop().getMaxSteps(), config.getBudget().getMaxTokens());
         log.info("├─ 用户请求: {}", state.getUserOriginalInput());
     }
 
     public void agentComplete(SessionState state) {
-        log.info("└─ EonAgent 完成 │ turns={} │ tokens={}",
-                state.getTurnCount(), state.getUsageAccum().getTotalTokens());
+        log.info("└─ EonAgent 完成 │ turns={} │ tokens={}", state.getTurnCount(), state.getUsageAccum().getTotalTokens());
     }
 
     public void stopForced(String category, int turns, int tokens) {
         log.warn("└─ ⚠ 强制终止: {} │ turns={} │ tokens={}", category, turns, tokens);
     }
 
-    // ===== 工具方法 =====
 
 }

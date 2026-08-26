@@ -18,7 +18,9 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.util.List;
 
-/** LLM 客户端封装，使用 LangChain4j OpenAiChatModel，支持指数退避重试。 */
+/**
+ * LLM 客户端封装，使用 LangChain4j OpenAiChatModel，支持指数退避重试。
+ */
 public class LlmClient {
     private static final Logger log = LoggerFactory.getLogger(LlmClient.class);
 
@@ -46,22 +48,26 @@ public class LlmClient {
         try {
             estimator = new OpenAiTokenCountEstimator(llmConfig.getModelName());
         } catch (Exception e) {
-            log.warn("Failed to create tokenizer for model '{}', falling back to gpt-4o: {}",
+            log.warn("为模型 '{}' 创建 tokenizer 失败，回退到 gpt-4o: {}",
                     llmConfig.getModelName(), e.getMessage());
             estimator = new OpenAiTokenCountEstimator("gpt-4o");
         }
         this.tokenCountEstimator = estimator;
 
-        log.info("LlmClient initialized: provider={}, model={}, baseUrl={}",
+        log.info("LlmClient 已初始化: provider={}, model={}, baseUrl={}",
                 llmConfig.getProvider(), llmConfig.getModelName(), llmConfig.getBaseUrl());
     }
 
-    /** 暴露 TokenCountEstimator 供 ContextBuilder 做精确估算。 */
+    /**
+     * 暴露 TokenCountEstimator 供 ContextBuilder 做精确估算。
+     */
     public TokenCountEstimator getTokenCountEstimator() {
         return tokenCountEstimator;
     }
 
-    /** 调用 LLM，带指数退避重试。 */
+    /**
+     * 调用 LLM，带指数退避重试。
+     */
     public LlmResponse chat(List<ChatMessage> messages, List<ToolSpecification> tools) {
         int attempt = 0;
         Exception lastException = null;
@@ -88,7 +94,7 @@ public class LlmClient {
 
                 String finishReason = response.finishReason() != null ? response.finishReason().name() : "STOP";
 
-                log.debug("LLM responded: text={}, toolCalls={}, usage={}",
+                log.debug("LLM 响应: text={}, toolCalls={}, usage={}",
                         aiMessage.text() != null ? aiMessage.text().length() : 0,
                         aiMessage.hasToolExecutionRequests() ? aiMessage.toolExecutionRequests().size() : 0,
                         usage);
@@ -97,12 +103,12 @@ public class LlmClient {
 
             } catch (NonRetriableException e) {
                 // 不可重试异常（401 认证失败 / 400 请求格式错误等），立即失败
-                log.error("LLM call failed (non-retriable): {} - {}", e.getClass().getSimpleName(), e.getMessage());
+                log.error("LLM 调用失败（不可重试）: {} - {}", e.getClass().getSimpleName(), e.getMessage());
                 throw new LlmStalledException("LLM 调用失败（不可重试）: " + e.getMessage());
             } catch (Exception e) {
                 lastException = e;
                 attempt++;
-                log.warn("LLM call failed (attempt {}/{}): {} - {}", attempt, retryConfig.getAttempts(),
+                log.warn("LLM 调用失败（尝试 {}/{}）: {} - {}", attempt, retryConfig.getAttempts(),
                         e.getClass().getSimpleName(), e.getMessage());
 
                 if (attempt < retryConfig.getAttempts()) {
@@ -111,13 +117,13 @@ public class LlmClient {
                         Thread.sleep(delay);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
-                        throw new RuntimeException("LLM call interrupted", ie);
+                        throw new RuntimeException("LLM 调用被中断", ie);
                     }
                 }
             }
         }
 
-        log.error("LLM_STALLED: model failed after {} attempts", retryConfig.getAttempts(), lastException);
+        log.error("LLM_STALLED: 模型连续 {} 次调用失败", retryConfig.getAttempts(), lastException);
         throw new LlmStalledException("LLM 调用连续失败 " + retryConfig.getAttempts() + " 次，模型不可用");
     }
 

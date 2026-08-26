@@ -42,7 +42,7 @@ public class StopStateMachine {
      * 处理 Agent 主循环中的异常。LLM 不可用时直接硬终止；其他异常尝试优雅停止。
      */
     public TurnAction handleLoopException(SessionState state, Exception e) {
-        log.error("Agent loop unexpected error: {}", e.getMessage(), e);
+        log.error("Agent 循环异常: {}", e.getMessage(), e);
         if (e instanceof LlmStalledException) {
             return new TurnAction.Exit(forceTerminate(state, new StopReason(
                     StopCategory.UNEXPECTED_ERROR, "LLM 调用连续失败，模型不可用", 0)));
@@ -57,7 +57,7 @@ public class StopStateMachine {
      * maxSteps 达到上限时的停止处理。
      */
     public TurnAction handleMaxSteps(SessionState state) {
-        log.warn("[STOP] max steps reached: {}", config.getLoop().getMaxSteps());
+        log.warn("[STOP] 达到最大步数: {}", config.getLoop().getMaxSteps());
         StopReason reason = new StopReason(
                 StopCategory.MAX_STEPS_REACHED,
                 "达到最大步数限制 (" + config.getLoop().getMaxSteps() + ")",
@@ -91,7 +91,7 @@ public class StopStateMachine {
             if (rec != null) {
                 logger.stopRequested(rec, reason.getCategory(), reason.getMessage(), reason.getGraceSteps());
             } else {
-                log.warn("[STOP] requested: {} | msg: {} | grace: {}",
+                log.warn("[STOP] 请求停止: {} | 原因: {} | 宽限期: {}",
                         reason.getCategory(), reason.getMessage(), reason.getGraceSteps());
             }
             finalizer.finalizeIfPending(rec, state);
@@ -106,19 +106,23 @@ public class StopStateMachine {
         if (rec != null) {
             logger.stopEscalated(rec, reason.getCategory(), reason.getMessage());
         } else {
-            log.warn("[STOP] escalated: {} | msg: {}", reason.getCategory(), reason.getMessage());
+            log.warn("[STOP] 升级停止: {} | 原因: {}", reason.getCategory(), reason.getMessage());
         }
         finalizer.finalizeIfPending(rec, state);
         return new FireResult.Continue();
     }
 
-    /** 硬终止：记录日志并返回终止输出。 */
+    /**
+     * 硬终止：记录日志并返回终止输出。
+     */
     private String forceTerminate(SessionState state, StopReason reason) {
         logger.stopForced(reason.getCategory().name(), state.getTurnCount(), state.getUsageAccum().getTotalTokens());
         return formatTerminationOutput(state, reason);
     }
 
-    /** 拼接硬终止输出：终止原因 + 消耗统计。 */
+    /**
+     * 拼接硬终止输出：终止原因 + 消耗统计。
+     */
     private String formatTerminationOutput(SessionState state, StopReason reason) {
         return "任务终止: " + reason.getCategory().getDisplayName() + "\n"
                 + "原因: " + reason.getMessage() + "\n"

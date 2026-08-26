@@ -20,17 +20,30 @@ public class HookDispatcher {
      * Hook 调度统一返回值。三态枚举，无 null 歧义。
      */
     public sealed interface FireResult permits FireResult.Continue, FireResult.Skip, FireResult.Exit {
-        /** 继续，一切正常。 */
-        record Continue() implements FireResult {}
+        /**
+         * 继续，一切正常。
+         */
+        record Continue() implements FireResult {
+        }
 
-        /** 跳过后续步骤（stop 已 finalize）。 */
-        record Skip() implements FireResult {}
+        /**
+         * 跳过后续步骤（stop 已 finalize）。
+         */
+        record Skip() implements FireResult {
+        }
 
-        /** 退出整个循环，携带最终输出。 */
-        record Exit(String output) implements FireResult {}
+        /**
+         * 退出整个循环，携带最终输出。
+         */
+        record Exit(String output) implements FireResult {
+        }
 
-        /** 便捷判断：是否为 Exit。 */
-        default boolean isExit() { return this instanceof Exit; }
+        /**
+         * 便捷判断：是否为 Exit。
+         */
+        default boolean isExit() {
+            return this instanceof Exit;
+        }
     }
 
     /**

@@ -14,7 +14,9 @@ import org.slf4j.LoggerFactory;
 import java.util.Collections;
 import java.util.List;
 
-/** MCP 客户端管理器。负责连接 MCP 服务、获取工具列表、执行工具调用。 */
+/**
+ * MCP 客户端管理器。负责连接 MCP 服务、获取工具列表、执行工具调用。
+ */
 public class McpClientManager {
     private static final Logger log = LoggerFactory.getLogger(McpClientManager.class);
 
@@ -27,9 +29,11 @@ public class McpClientManager {
         this.serverUrl = serverUrl;
     }
 
-    /** 连接 MCP 服务。 */
+    /**
+     * 连接 MCP 服务。
+     */
     public void connect() {
-        log.info("Connecting to MCP server: key={}, url={}", serverKey, serverUrl);
+        log.info("连接 MCP 服务: key={}, url={}", serverKey, serverUrl);
         try {
             McpTransport transport = StreamableHttpMcpTransport.builder()
                     .url(serverUrl)
@@ -40,36 +44,40 @@ public class McpClientManager {
                     .key(serverKey)
                     .transport(transport)
                     .build();
-            log.info("MCP client connected: {}", serverKey);
+            log.info("MCP 客户端已连接: {}", serverKey);
         } catch (Exception e) {
-            log.error("Failed to connect MCP server '{}': {}", serverKey, e.getMessage(), e);
-            throw new RuntimeException("MCP connection failed: " + serverKey, e);
+            log.error("连接 MCP 服务 '{}' 失败: {}", serverKey, e.getMessage(), e);
+            throw new RuntimeException("MCP 连接失败: " + serverKey, e);
         }
     }
 
-    /** 获取 MCP 服务提供的工具列表。 */
+    /**
+     * 获取 MCP 服务提供的工具列表。
+     */
     public List<ToolSpecification> listTools() {
         if (mcpClient == null) {
-            log.warn("MCP client not connected, cannot list tools");
+            log.warn("MCP 客户端未连接，无法获取工具列表");
             return Collections.emptyList();
         }
         try {
             List<ToolSpecification> tools = mcpClient.listTools();
-            log.info("MCP server '{}' provides {} tools", serverKey, tools.size());
+            log.info("MCP 服务 '{}' 提供 {} 个工具", serverKey, tools.size());
             for (ToolSpecification t : tools) {
                 log.info("  - {}: {}", t.name(), t.description() != null ? t.description() : "");
             }
             return tools;
         } catch (Exception e) {
-            log.error("Failed to list MCP tools from '{}': {}", serverKey, e.getMessage(), e);
+            log.error("从 '{}' 获取 MCP 工具列表失败: {}", serverKey, e.getMessage(), e);
             return Collections.emptyList();
         }
     }
 
-    /** 执行 MCP 工具调用。 */
+    /**
+     * 执行 MCP 工具调用。
+     */
     public ToolOutcome executeTool(String toolName, String arguments) {
         if (mcpClient == null) {
-            return ToolOutcome.failure("MCP client not connected");
+            return ToolOutcome.failure("MCP 客户端未连接");
         }
         try {
             ToolExecutionRequest request = ToolExecutionRequest.builder()
@@ -78,11 +86,11 @@ public class McpClientManager {
                     .build();
             ToolExecutionResult result = mcpClient.executeTool(request);
             String resultText = result != null ? result.resultText() : "";
-            log.debug("MCP tool '{}' executed, result {} chars", toolName, resultText != null ? resultText.length() : 0);
+            log.debug("MCP 工具 '{}' 执行完成，结果 {} 字符", toolName, resultText != null ? resultText.length() : 0);
             return ToolOutcome.success(resultText != null ? resultText : "");
         } catch (Exception e) {
-            log.error("MCP tool execution failed: {} - {}", toolName, e.getMessage(), e);
-            return ToolOutcome.failure("MCP tool execution failed: " + e.getMessage());
+            log.error("MCP 工具执行失败: {} - {}", toolName, e.getMessage(), e);
+            return ToolOutcome.failure("MCP 工具执行失败: " + e.getMessage());
         }
     }
 
@@ -90,12 +98,14 @@ public class McpClientManager {
         if (mcpClient != null) {
             try {
                 mcpClient.close();
-                log.info("MCP client closed: {}", serverKey);
+                log.info("MCP 客户端已关闭: {}", serverKey);
             } catch (Exception e) {
-                log.warn("Failed to close MCP client: {}", e.getMessage());
+                log.warn("关闭 MCP 客户端失败: {}", e.getMessage());
             }
         }
     }
 
-    public String getServerKey() { return serverKey; }
+    public String getServerKey() {
+        return serverKey;
+    }
 }

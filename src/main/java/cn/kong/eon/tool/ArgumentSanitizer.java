@@ -71,7 +71,9 @@ public class ArgumentSanitizer {
         return raw;
     }
 
-    /** 转 List：如果 raw 是 String 且能解析为 JSON 数组，则转换。 */
+    /**
+     * 转 List：如果 raw 是 String 且能解析为 JSON 数组，则转换。
+     */
     private Object toArray(Object raw) {
         if (raw instanceof List<?>) return raw;
         if (raw instanceof String s) {
@@ -84,7 +86,9 @@ public class ArgumentSanitizer {
         return raw;
     }
 
-    /** 转 Boolean：如果 raw 是 String "true"/"false"（不区分大小写），则转换。 */
+    /**
+     * 转 Boolean：如果 raw 是 String "true"/"false"（不区分大小写），则转换。
+     */
     private Object toBoolean(Object raw) {
         if (raw instanceof Boolean) return raw;
         if (raw instanceof String s) {
@@ -95,7 +99,9 @@ public class ArgumentSanitizer {
         return raw;
     }
 
-    /** 转 Integer：如果 raw 是 String 且是纯数字，则转换。 */
+    /**
+     * 转 Integer：如果 raw 是 String 且是纯数字，则转换。
+     */
     private Object toInteger(Object raw) {
         if (raw instanceof Integer) return raw;
         if (raw instanceof Number n) return n.intValue();
@@ -108,7 +114,9 @@ public class ArgumentSanitizer {
         return raw;
     }
 
-    /** 转 Double：如果 raw 是 String 且是数字，则转换。 */
+    /**
+     * 转 Double：如果 raw 是 String 且是数字，则转换。
+     */
     private Object toNumber(Object raw) {
         if (raw instanceof Double) return raw;
         if (raw instanceof Number n) return n.doubleValue();

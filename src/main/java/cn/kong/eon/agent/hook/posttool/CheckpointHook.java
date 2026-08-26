@@ -9,7 +9,9 @@ import cn.kong.eon.store.TodoStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Checkpoint 管理（PostTool, order=100）。todo_write 成功后保存快照。 */
+/**
+ * Checkpoint 管理（PostTool, order=100）。todo_write 成功后保存快照。
+ */
 public class CheckpointHook implements Hook.PostToolHook {
     private static final Logger log = LoggerFactory.getLogger(CheckpointHook.class);
 
@@ -23,9 +25,20 @@ public class CheckpointHook implements Hook.PostToolHook {
         this.todoStore = todoStore;
     }
 
-    @Override public String name() { return "Checkpoint"; }
-    @Override public boolean isActive(SessionState state) { return config.isCheckpointEnabled(); }
-    @Override public int order() { return 100; }
+    @Override
+    public String name() {
+        return "Checkpoint";
+    }
+
+    @Override
+    public boolean isActive(SessionState state) {
+        return config.isCheckpointEnabled();
+    }
+
+    @Override
+    public int order() {
+        return 100;
+    }
 
     @Override
     public HookResult afterToolExecution(SessionState state, String toolName, boolean success) {
@@ -39,7 +52,7 @@ public class CheckpointHook implements Hook.PostToolHook {
                 state.getUsageAccum(),
                 state.getCompressionState()
         );
-        log.info("Checkpoint saved: turn={}", state.getTurnCount());
+        log.info("Checkpoint 已保存: turn={}", state.getTurnCount());
 
         return HookResult.ok();
     }

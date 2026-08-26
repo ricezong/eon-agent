@@ -98,7 +98,7 @@ public class ReadFileTool implements ToolExecutor {
             return ToolOutcome.success(result);
 
         } catch (IOException e) {
-            log.error("read_file failed: {}", e.getMessage());
+            log.error("read_file 失败: {}", e.getMessage());
             return ToolOutcome.failure("读取文件失败: " + e.getMessage());
         }
     }
@@ -113,7 +113,9 @@ public class ReadFileTool implements ToolExecutor {
         return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
-    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    /**
+     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
+     */
     @Tool(name = "read_file", value = {
             "读取本地文件的内容。当用户需要查看文件、文档或笔记时使用此工具。",
             "对于较长的文件，可以通过 offset 和 limit 参数分段读取。",
@@ -125,7 +127,7 @@ public class ReadFileTool implements ToolExecutor {
             @P(name = "offset", description = "从第几行开始读取（从 1 开始计数）。不指定则从头读取。", required = false) Integer offset,
             @P(name = "limit", description = "最多读取多少行。不指定则读取整个文件。", required = false) Integer limit
     ) {
-        return null; // Schema definition only; actual execution via execute()
+        return null; // 仅供 Schema 定义，实际执行走 execute()
     }
 
     public static ToolDescriptor descriptor() {

@@ -59,7 +59,7 @@ public class LoopDetector {
         }
         if (!trippedNames.isEmpty()) {
             String names = String.join(", ", trippedNames);
-            log.warn("[LoopDetector] circuit breaker tripped: tools [{}] are blocked", names);
+            log.warn("[LoopDetector] 熔断工具: [{}] 已被封锁", names);
             return DetectionResult.warn("工具 " + names + " 已被熔断（连续失败过多），" +
                     "请标记 blocked 或调整计划，不要再调用这些工具");
         }
@@ -70,10 +70,10 @@ public class LoopDetector {
             callFingerprintCount.put(fingerprint, count);
 
             if (count >= repeatStop) {
-                log.warn("[LoopDetector] loop detected: tool '{}' called {} times with same args", req.name(), count);
+                log.warn("[LoopDetector] 死循环检测: 工具 '{}' 以相同参数调用 {} 次", req.name(), count);
                 return DetectionResult.stop("重复调用同一工具同一参数 " + count + " 次，疑似死循环");
             } else if (count >= repeatWarn) {
-                log.warn("[LoopDetector] loop warning: tool '{}' called {} times with same args", req.name(), count);
+                log.warn("[LoopDetector] 循环告警: 工具 '{}' 以相同参数调用 {} 次", req.name(), count);
                 return DetectionResult.warn("工具 " + req.name() + " 已重复调用 " + count + " 次，请考虑换参数或换工具");
             }
         }
@@ -100,12 +100,12 @@ public class LoopDetector {
         int toolFails = toolFailureCount.getOrDefault(toolName, 0) + 1;
         toolFailureCount.put(toolName, toolFails);
 
-        log.warn("[LoopDetector] tool '{}' failed: toolFails={}", toolName, toolFails);
+        log.warn("[LoopDetector] 工具 '{}' 失败: 连续失败次数={}", toolName, toolFails);
 
         // 单工具熔断
         if (toolFails >= failureStopThreshold) {
             trippedTools.add(toolName);
-            log.error("[LoopDetector] circuit breaker TRIPPED for tool '{}': {} consecutive failures", toolName, toolFails);
+            log.error("[LoopDetector] 工具 '{}' 已熔断: 连续失败 {} 次", toolName, toolFails);
             return DetectionResult.stop("工具 " + toolName + " 连续失败 " + toolFails + " 次，已熔断。" +
                     "请标记 blocked 或调整计划，不要再调用此工具，其他工具仍可正常使用");
         }
@@ -120,7 +120,9 @@ public class LoopDetector {
         return DetectionResult.ok();
     }
 
-    /** 记录 Todo 快照，检测无进展。 */
+    /**
+     * 记录 Todo 快照，检测无进展。
+     */
     public DetectionResult recordTodoSnapshot(String snapshot) {
         todoSnapshots.addLast(snapshot);
         if (todoSnapshots.size() > noProgressSteps) {
@@ -132,7 +134,7 @@ public class LoopDetector {
             if (uniqueSnapshots.size() == 1) {
                 stepsWithoutProgress++;
                 if (stepsWithoutProgress >= 2) {
-                    log.warn("[LoopDetector] no progress: todo unchanged for {} consecutive windows ({} steps)", stepsWithoutProgress, noProgressSteps);
+                    log.warn("[LoopDetector] 无进展: Todo 连续 {} 个窗口（{} 步）未变化", stepsWithoutProgress, noProgressSteps);
                     return DetectionResult.warn("连续 " + (noProgressSteps * stepsWithoutProgress) + " 步 Todo 无变化，请检查是否陷入循环");
                 }
             } else {
@@ -142,21 +144,38 @@ public class LoopDetector {
         return DetectionResult.ok();
     }
 
-    public boolean isToolTripped(String toolName) { return trippedTools.contains(toolName); }
+    public boolean isToolTripped(String toolName) {
+        return trippedTools.contains(toolName);
+    }
 
-    /** 重置指定工具的指纹计数（成功调用后允许相同参数再次使用）。 */
+    /**
+     * 重置指定工具的指纹计数（成功调用后允许相同参数再次使用）。
+     */
     private void resetFingerprintsForTool(String toolName) {
         callFingerprintCount.entrySet().removeIf(e -> e.getKey().startsWith(toolName + "|"));
     }
 
     public record DetectionResult(Level level, String message) {
-        public static DetectionResult ok() { return new DetectionResult(Level.OK, null); }
-        public static DetectionResult warn(String msg) { return new DetectionResult(Level.WARN, msg); }
-        public static DetectionResult stop(String msg) { return new DetectionResult(Level.STOP, msg); }
+        public static DetectionResult ok() {
+            return new DetectionResult(Level.OK, null);
+        }
 
-        public boolean shouldStop() { return level == Level.STOP; }
-        public boolean shouldWarn() { return level == Level.WARN; }
+        public static DetectionResult warn(String msg) {
+            return new DetectionResult(Level.WARN, msg);
+        }
+
+        public static DetectionResult stop(String msg) {
+            return new DetectionResult(Level.STOP, msg);
+        }
+
+        public boolean shouldStop() {
+            return level == Level.STOP;
+        }
+
+        public boolean shouldWarn() {
+            return level == Level.WARN;
+        }
     }
 
-    public enum Level { OK, WARN, STOP }
+    public enum Level {OK, WARN, STOP}
 }

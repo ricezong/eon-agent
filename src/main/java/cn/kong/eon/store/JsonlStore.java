@@ -31,11 +31,13 @@ public class JsonlStore {
                 loadAll();
             }
         } catch (IOException e) {
-            throw new RuntimeException("Failed to init JSONL store: " + jsonlFile, e);
+            throw new RuntimeException("JSONL 存储初始化失败: " + jsonlFile, e);
         }
     }
 
-    /** 追加一条消息（永不修改已有消息）。 */
+    /**
+     * 追加一条消息（永不修改已有消息）。
+     */
     public synchronized void append(ChatMessage message) {
         messages.add(message);
         String json = serialize(message);
@@ -44,11 +46,13 @@ public class JsonlStore {
                     java.nio.file.StandardOpenOption.CREATE,
                     java.nio.file.StandardOpenOption.APPEND);
         } catch (IOException e) {
-            log.error("Failed to append JSONL: {}", e.getMessage(), e);
+            log.error("JSONL 追加失败: {}", e.getMessage(), e);
         }
     }
 
-    /** 返回消息快照（浅拷贝，修改不影响原始账本）。 */
+    /**
+     * 返回消息快照（浅拷贝，修改不影响原始账本）。
+     */
     public synchronized List<ChatMessage> snapshot() {
         return new ArrayList<>(messages);
     }
@@ -63,9 +67,9 @@ public class JsonlStore {
                     messages.add(msg);
                 }
             }
-            log.info("Loaded {} messages from JSONL", messages.size());
+            log.info("从 JSONL 加载 {} 条消息", messages.size());
         } catch (IOException e) {
-            log.error("Failed to load JSONL: {}", e.getMessage(), e);
+            log.error("JSONL 加载失败: {}", e.getMessage(), e);
         }
     }
 
@@ -74,7 +78,7 @@ public class JsonlStore {
             SerializedMessage sm = SerializedMessage.from(message);
             return mapper.writeValueAsString(sm);
         } catch (Exception e) {
-            log.error("Serialize failed: {}", e.getMessage(), e);
+            log.error("序列化失败: {}", e.getMessage(), e);
             return "{}";
         }
     }
@@ -84,12 +88,14 @@ public class JsonlStore {
             SerializedMessage sm = mapper.readValue(json, SerializedMessage.class);
             return sm.toChatMessage();
         } catch (Exception e) {
-            log.error("Deserialize failed: {}", e.getMessage(), e);
+            log.error("反序列化失败: {}", e.getMessage(), e);
             return null;
         }
     }
 
-    /** JSONL 序列化中间结构。 */
+    /**
+     * JSONL 序列化中间结构。
+     */
     public static class SerializedMessage {
         public String type;       // 消息类型：system/user/ai/tool
         public String content;
@@ -98,7 +104,8 @@ public class JsonlStore {
         public String toolName;
         public List<ToolCallRef> toolCalls;
 
-        public SerializedMessage() {}
+        public SerializedMessage() {
+        }
 
         public static SerializedMessage from(ChatMessage msg) {
             SerializedMessage sm = new SerializedMessage();
@@ -159,7 +166,8 @@ public class JsonlStore {
                     }
                     yield ai;
                 }
-                case "tool" -> ToolExecutionResultMessage.from(toolCallId, toolName != null ? toolName : "unknown", content != null ? content : "");
+                case "tool" ->
+                        ToolExecutionResultMessage.from(toolCallId, toolName != null ? toolName : "unknown", content != null ? content : "");
                 default -> throw new IllegalStateException("Unknown message type: " + type);
             };
         }

@@ -93,7 +93,6 @@ public class EonAgent {
         this.stopStateMachine = new StopStateMachine(config, logger, finalizer);
     }
 
-    // ===== Hook 注册 =====
 
     public void addHook(Hook hook) {
         boolean added = false;
@@ -103,7 +102,7 @@ public class EonAgent {
         added |= tryAddHook(hook, Hook.PostToolHook.class, postToolHooks);
         if (added) {
             totalHookCount++;
-            log.debug("Hook added: {}", hook.name());
+            log.debug("Hook 已注册: {}", hook.name());
         }
     }
 
@@ -119,18 +118,21 @@ public class EonAgent {
         return totalHookCount;
     }
 
-    /** 关闭 Agent 释放资源（工具线程池、工具持有的资源等）。 */
+    /**
+     * 关闭 Agent 释放资源（工具线程池、工具持有的资源等）。
+     */
     public void shutdown() {
         if (toolHandler != null) {
             toolHandler.shutdown();
         }
         toolRegistry.closeAll();
-        log.info("EonAgent resources released");
+        log.info("EonAgent 资源已释放");
     }
 
-    // ===== 主循环 =====
 
-    /** 运行 Agent 主循环。 */
+    /**
+     * 运行 Agent 主循环。
+     */
     public String run(SessionState state) {
         return runStream(state, null);
     }
@@ -159,7 +161,7 @@ public class EonAgent {
                 return completeExit(state, output, callback, true);
             }
 
-            state.incrementTurn();
+            state.incrementTurn(); // 达到步数上限时切换 absoluteMaxSteps
             int turnStartTokens = state.getUsageAccum().getTotalTokens();
 
             if (callback != null) {
@@ -190,6 +192,7 @@ public class EonAgent {
 
     /**
      * 统一的退出处理：渲染记忆引用 → 记录完成日志 → 回调输出。
+     *
      * @param forced true 表示被强制终止（maxSteps/异常），调用 onTerminate；false 表示正常完成，调用 onOutput
      */
     private String completeExit(SessionState state, String rawOutput, TurnCallback callback, boolean forced) {
@@ -207,7 +210,9 @@ public class EonAgent {
         return output;
     }
 
-    /** 将 [[memory:xxx]] 引用替换为标题（内容摘要）。 */
+    /**
+     * 将 [[memory:xxx]] 引用替换为标题（内容摘要）。
+     */
     private String renderMemoryReferences(String text) {
         if (text == null || text.isEmpty()) return text;
         return toolContext.memoryStore().renderReferences(text);
@@ -219,9 +224,10 @@ public class EonAgent {
         jsonlStore.append(UserMessage.from(state.getUserOriginalInput()));
     }
 
-    // ===== Turn 执行 =====
 
-    /** 执行单个 Turn。try-finally 确保 finalize + flushTurn 一定被执行。 */
+    /**
+     * 执行单个 Turn。try-finally 确保 finalize + flushTurn 一定被执行。
+     */
     private TurnAction executeTurn(SessionState state, int turnStartTokens, TurnCallback callback) {
         TurnRecord rec = logger.newRecord();
         this.currentRec = rec;
@@ -275,7 +281,7 @@ public class EonAgent {
 
             // 8. stop 期间消耗 grace（LLM 仍在调用工具时消耗 grace step）
             if (state.isStopRequested()) {
-                return stopStateMachine.consumeGraceStep(rec, state, "LLM called tool during stop");
+                return stopStateMachine.consumeGraceStep(rec, state, "stop 期间 LLM 仍在调用工具");
             }
 
             return new TurnAction.Continue();
@@ -286,17 +292,20 @@ public class EonAgent {
         }
     }
 
-    /** flush 当前 turn 日志并清理 currentRec 引用。 */
+    /**
+     * flush 当前 turn 日志并清理 currentRec 引用。
+     */
     private void flushTurn(TurnRecord rec) {
         logger.flush(rec);
         this.currentRec = null;
     }
 
-    // ===== Extension Loop =====
 
-    /** Extension Loop: PreTool → Execute → PostTool。 */
+    /**
+     * Extension Loop: PreTool → Execute → PostTool。
+     */
     private FireResult executeExtensionLoop(TurnRecord rec, SessionState state,
-                                           List<ToolExecutionRequest> requests, TurnCallback callback) {
+                                            List<ToolExecutionRequest> requests, TurnCallback callback) {
         FireResult preTool = firePreToolHooks(state, requests);
         if (preTool instanceof FireResult.Exit) return preTool;
         if (preTool instanceof FireResult.Skip) return new FireResult.Continue();
@@ -323,7 +332,6 @@ public class EonAgent {
         return new FireResult.Continue();
     }
 
-    // ===== SSE 回调通知 =====
 
     private void notifyLlmResponse(TurnCallback callback, String thought, List<ToolExecutionRequest> requests) {
         List<String> toolNames = requests != null
@@ -348,18 +356,21 @@ public class EonAgent {
         }
     }
 
-    /** 安全执行回调，吞掉异常以免中断 Agent 主循环。 */
+    /**
+     * 安全执行回调，吞掉异常以免中断 Agent 主循环。
+     */
     private void safeCallback(Runnable action) {
         try {
             action.run();
         } catch (Exception e) {
-            log.warn("TurnCallback error: {}", e.getMessage(), e);
+            log.warn("TurnCallback 回调异常: {}", e.getMessage(), e);
         }
     }
 
-    // ===== 无工具调用处理 =====
 
-    /** 处理无工具调用的情况（方案语义：无工具调用 = 任务完成，直接退出）。 */
+    /**
+     * 处理无工具调用的情况（方案语义：无工具调用 = 任务完成，直接退出）。
+     */
     private TurnAction handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
         // 截断检测
         if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
@@ -375,7 +386,6 @@ public class EonAgent {
         return new TurnAction.Exit(thought);
     }
 
-    // ===== Hook 调度 =====
 
     private FireResult firePreModelHooks(SessionState state, ContextBuilder ctx) {
         return HookDispatcher.dispatchPreModel(
@@ -408,11 +418,11 @@ public class EonAgent {
                 postToolHooks, state,
                 (hook, s) -> hook.afterToolExecution(s, toolName, success),
                 reason -> stopStateMachine.handleStop(currentRec, state, reason),
-                () -> {}  // PostTool stop 不 finalize
+                () -> {
+                }  // PostTool stop 不 finalize
         );
     }
 
-    // ===== 上下文构建 =====
 
     private ContextBuilder buildContext(SessionState state) {
         ContextBuilder ctx = new ContextBuilder();
@@ -427,7 +437,9 @@ public class EonAgent {
         return ctx;
     }
 
-    /** 将 pendingNudges 和 formatCorrections 渲染到 ContextBuilder。 */
+    /**
+     * 将 pendingNudges 和 formatCorrections 渲染到 ContextBuilder。
+     */
     private void renderNudges(SessionState state, ContextBuilder ctx) {
         if (state.getPendingNudges().isEmpty() && state.getFormatCorrections().isEmpty()) {
             return;
@@ -443,7 +455,9 @@ public class EonAgent {
         ctx.setRuntimeNudges(sb.toString());
     }
 
-    /** 校验工具是否存在，不存在则注入格式纠正提示。 */
+    /**
+     * 校验工具是否存在，不存在则注入格式纠正提示。
+     */
     private void validateToolExistence(SessionState state, List<ToolExecutionRequest> requests) {
         for (ToolExecutionRequest req : requests) {
             if (!toolRegistry.contains(req.name())) {

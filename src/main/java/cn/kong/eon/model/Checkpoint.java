@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.Instant;
 
-/** Checkpoint 快照，崩溃后从最新 checkpoint 恢复。 */
+/**
+ * Checkpoint 快照，崩溃后从最新 checkpoint 恢复。
+ */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class Checkpoint {
     private String checkpointId;
@@ -15,26 +17,62 @@ public class Checkpoint {
     private CompressionState compressionState;
     private Instant createdAt;
 
-    public Checkpoint() {}
+    public Checkpoint() {
+    }
 
-    public String getCheckpointId() { return checkpointId; }
-    public void setCheckpointId(String checkpointId) { this.checkpointId = checkpointId; }
+    public String getCheckpointId() {
+        return checkpointId;
+    }
 
-    public String getSessionId() { return sessionId; }
-    public void setSessionId(String sessionId) { this.sessionId = sessionId; }
+    public void setCheckpointId(String checkpointId) {
+        this.checkpointId = checkpointId;
+    }
 
-    public int getTurnCount() { return turnCount; }
-    public void setTurnCount(int turnCount) { this.turnCount = turnCount; }
+    public String getSessionId() {
+        return sessionId;
+    }
 
-    public java.util.List<TodoItem> getTodoSnapshot() { return todoSnapshot; }
-    public void setTodoSnapshot(java.util.List<TodoItem> todoSnapshot) { this.todoSnapshot = todoSnapshot; }
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
 
-    public TokenUsage getUsageAccum() { return usageAccum; }
-    public void setUsageAccum(TokenUsage usageAccum) { this.usageAccum = usageAccum; }
+    public int getTurnCount() {
+        return turnCount;
+    }
 
-    public CompressionState getCompressionState() { return compressionState; }
-    public void setCompressionState(CompressionState compressionState) { this.compressionState = compressionState; }
+    public void setTurnCount(int turnCount) {
+        this.turnCount = turnCount;
+    }
 
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public java.util.List<TodoItem> getTodoSnapshot() {
+        return todoSnapshot;
+    }
+
+    public void setTodoSnapshot(java.util.List<TodoItem> todoSnapshot) {
+        this.todoSnapshot = todoSnapshot;
+    }
+
+    public TokenUsage getUsageAccum() {
+        return usageAccum;
+    }
+
+    public void setUsageAccum(TokenUsage usageAccum) {
+        this.usageAccum = usageAccum;
+    }
+
+    public CompressionState getCompressionState() {
+        return compressionState;
+    }
+
+    public void setCompressionState(CompressionState compressionState) {
+        this.compressionState = compressionState;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
 }

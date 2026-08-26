@@ -28,7 +28,7 @@ public class MessageFinalizer {
         boolean hasText = assistantText != null && !assistantText.isBlank();
         boolean hasCalls = pendingCalls != null && !pendingCalls.isEmpty();
 
-        // Only append AiMessage if there is text or tool calls to record
+        // 仅当有文本或工具调用时才回填 AiMessage
         if (hasText || hasCalls) {
             AiMessage aiMsg = hasText
                     ? AiMessage.from(assistantText, pendingCalls)

@@ -2,14 +2,17 @@ package cn.kong.eon.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-/** Token 用量累计。 */
+/**
+ * Token 用量累计。
+ */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class TokenUsage {
     private int promptTokens;
     private int completionTokens;
     private int totalTokens;
 
-    public TokenUsage() {}
+    public TokenUsage() {
+    }
 
     public static TokenUsage zero() {
         return new TokenUsage();
@@ -21,14 +24,29 @@ public class TokenUsage {
         this.totalTokens += other.totalTokens;
     }
 
-    public int getPromptTokens() { return promptTokens; }
-    public void setPromptTokens(int promptTokens) { this.promptTokens = promptTokens; }
+    public int getPromptTokens() {
+        return promptTokens;
+    }
 
-    public int getCompletionTokens() { return completionTokens; }
-    public void setCompletionTokens(int completionTokens) { this.completionTokens = completionTokens; }
+    public void setPromptTokens(int promptTokens) {
+        this.promptTokens = promptTokens;
+    }
 
-    public int getTotalTokens() { return totalTokens; }
-    public void setTotalTokens(int totalTokens) { this.totalTokens = totalTokens; }
+    public int getCompletionTokens() {
+        return completionTokens;
+    }
+
+    public void setCompletionTokens(int completionTokens) {
+        this.completionTokens = completionTokens;
+    }
+
+    public int getTotalTokens() {
+        return totalTokens;
+    }
+
+    public void setTotalTokens(int totalTokens) {
+        this.totalTokens = totalTokens;
+    }
 
     @Override
     public String toString() {

@@ -6,7 +6,9 @@ import dev.langchain4j.agent.tool.ToolSpecifications;
 
 import java.util.List;
 
-/** 工具描述符。包含名称、描述、权限、ToolSpecification 和执行器。 */
+/**
+ * 工具描述符。包含名称、描述、权限、ToolSpecification 和执行器。
+ */
 public class ToolDescriptor {
 
     private final String name;
@@ -24,11 +26,25 @@ public class ToolDescriptor {
         this.executor = executor;
     }
 
-    public String getName() { return name; }
-    public String getDescription() { return description; }
-    public ToolPermission getPermission() { return permission; }
-    public ToolSpecification getSpecification() { return specification; }
-    public ToolExecutor getExecutor() { return executor; }
+    public String getName() {
+        return name;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public ToolPermission getPermission() {
+        return permission;
+    }
+
+    public ToolSpecification getSpecification() {
+        return specification;
+    }
+
+    public ToolExecutor getExecutor() {
+        return executor;
+    }
 
     /**
      * 从 @Tool 注解方法自动构建 ToolDescriptor。

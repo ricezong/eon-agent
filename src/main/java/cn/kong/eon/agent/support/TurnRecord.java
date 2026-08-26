@@ -5,7 +5,9 @@ import cn.kong.eon.agent.hook.StopCategory;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 单轮 Turn 的结构化日志记录，由 TurnLogger.flush 统一输出。 */
+/**
+ * 单轮 Turn 的结构化日志记录，由 TurnLogger.flush 统一输出。
+ */
 public class TurnRecord {
 
     int turnNumber;
@@ -14,17 +16,17 @@ public class TurnRecord {
     StopCategory stopCategory;
     int stopGraceRemaining;
 
-        // Context
+    // Context
     int messageCount;
     long estimatedTokens;
     int catalogToolCount;
 
-        // LLM
+    // LLM
     List<String> toolNames = new ArrayList<>();
     int llmDeltaTokens;
     boolean outputTruncated;
 
-        // Tools
+    // Tools
     final List<ToolEntry> tools = new ArrayList<>();
 
     // Turn 汇总
@@ -36,13 +38,14 @@ public class TurnRecord {
     // Stop 事件
     final List<StopEvent> stopEvents = new ArrayList<>();
 
-    record ToolEntry(String name, boolean success, String argsSummary, int renderedLen) {}
+    record ToolEntry(String name, boolean success, String argsSummary, int renderedLen) {
+    }
 
-    enum StopEventType { REQUESTED, ESCALATED, GRACE_CONSUMED }
+    enum StopEventType {REQUESTED, ESCALATED, GRACE_CONSUMED}
 
-    record StopEvent(StopEventType type, StopCategory category, String message, int graceRemaining) {}
+    record StopEvent(StopEventType type, StopCategory category, String message, int graceRemaining) {
+    }
 
-    // ===== Setter 方法 =====
 
     TurnRecord turnHeader(int turnNumber, long usedTokens, long maxTokens) {
         this.turnNumber = turnNumber;

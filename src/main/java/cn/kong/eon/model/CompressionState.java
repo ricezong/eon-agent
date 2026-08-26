@@ -25,30 +25,68 @@ public class CompressionState {
         this.lastTurnCompressed = 0;
     }
 
-    public boolean isSnipped(String id) { return snippedIds.contains(id); }
-    public boolean isPruned(String id) { return prunedIds.contains(id); }
+    public boolean isSnipped(String id) {
+        return snippedIds.contains(id);
+    }
 
-    public void markSnipped(String id) { snippedIds.add(id); }
+    public boolean isPruned(String id) {
+        return prunedIds.contains(id);
+    }
+
+    public void markSnipped(String id) {
+        snippedIds.add(id);
+    }
+
     public void markPruned(String id) {
         prunedIds.add(id);
         snippedIds.add(id);  // Prune 隐含 Snip
     }
 
-    public Set<String> getSnippedIds() { return snippedIds; }
-    public void setSnippedIds(Set<String> snippedIds) { this.snippedIds = snippedIds; }
+    public Set<String> getSnippedIds() {
+        return snippedIds;
+    }
 
-    public Set<String> getPrunedIds() { return prunedIds; }
-    public void setPrunedIds(Set<String> prunedIds) { this.prunedIds = prunedIds; }
+    public void setSnippedIds(Set<String> snippedIds) {
+        this.snippedIds = snippedIds;
+    }
 
-    public String getLastSummary() { return lastSummary; }
-    public void setLastSummary(String lastSummary) { this.lastSummary = lastSummary; }
+    public Set<String> getPrunedIds() {
+        return prunedIds;
+    }
 
-    public int getSummarizedUpToIndex() { return summarizedUpToIndex; }
-    public void setSummarizedUpToIndex(int summarizedUpToIndex) { this.summarizedUpToIndex = summarizedUpToIndex; }
+    public void setPrunedIds(Set<String> prunedIds) {
+        this.prunedIds = prunedIds;
+    }
 
-    public double getLastWaterLevel() { return lastWaterLevel; }
-    public void setLastWaterLevel(double lastWaterLevel) { this.lastWaterLevel = lastWaterLevel; }
+    public String getLastSummary() {
+        return lastSummary;
+    }
 
-    public int getLastTurnCompressed() { return lastTurnCompressed; }
-    public void setLastTurnCompressed(int lastTurnCompressed) { this.lastTurnCompressed = lastTurnCompressed; }
+    public void setLastSummary(String lastSummary) {
+        this.lastSummary = lastSummary;
+    }
+
+    public int getSummarizedUpToIndex() {
+        return summarizedUpToIndex;
+    }
+
+    public void setSummarizedUpToIndex(int summarizedUpToIndex) {
+        this.summarizedUpToIndex = summarizedUpToIndex;
+    }
+
+    public double getLastWaterLevel() {
+        return lastWaterLevel;
+    }
+
+    public void setLastWaterLevel(double lastWaterLevel) {
+        this.lastWaterLevel = lastWaterLevel;
+    }
+
+    public int getLastTurnCompressed() {
+        return lastTurnCompressed;
+    }
+
+    public void setLastTurnCompressed(int lastTurnCompressed) {
+        this.lastTurnCompressed = lastTurnCompressed;
+    }
 }

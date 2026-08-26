@@ -24,7 +24,9 @@ public class ToolExecutionHandler {
     private static final Logger log = LoggerFactory.getLogger(ToolExecutionHandler.class);
 
     private static final String TODO_WRITE = "todo_write";
-    /** 串行豁免清单：顺序敏感或交互互斥的工具，即使与其他工具同轮也强制串行。 */
+    /**
+     * 串行豁免清单：顺序敏感或交互互斥的工具，即使与其他工具同轮也强制串行。
+     */
     private static final Set<String> SERIAL_ONLY = Set.of(TODO_WRITE, "AskQuestion");
 
     private final ToolRegistry toolRegistry;
@@ -105,7 +107,7 @@ public class ToolExecutionHandler {
                             "并行执行被中断: " + e.getMessage(), rec, state));
                 } catch (ExecutionException e) {
                     // 单工具失败不影响其他工具
-                    log.error("[Tool] parallel execution failed for {}: {}",
+                    log.error("[Tool] 并行执行失败 {}: {}",
                             requests.get(originalIdx).name(), e.getMessage(), e);
                     results.set(originalIdx, syntheticError(requests.get(originalIdx),
                             "工具执行异常: " + e.getCause().getMessage(), rec, state));
@@ -158,7 +160,7 @@ public class ToolExecutionHandler {
         if (TODO_WRITE.equals(req.name()) && outcome.success()) {
             if (!state.hasTodoBeenUsed()) {
                 state.setTodoBeenUsed(true);
-                log.info("TodoNavigator activated: todo_write called");
+                log.info("TodoNavigator 已激活: todo_write 被调用");
             }
             var snapResult = loopDetector.recordTodoSnapshot(toolContext.todoStore().getAll().toString());
             if (snapResult.shouldWarn()) {
@@ -169,9 +171,11 @@ public class ToolExecutionHandler {
         return result;
     }
 
-    /** 合成错误结果（用于并行异常隔离）。 */
+    /**
+     * 合成错误结果（用于并行异常隔离）。
+     */
     private ToolExecutionResult syntheticError(ToolExecutionRequest req, String errorMsg,
-                                                TurnRecord rec, SessionState state) {
+                                               TurnRecord rec, SessionState state) {
         ToolOutcome outcome = ToolOutcome.failure(errorMsg);
         String rendered = resultRenderer.render(req.name(), outcome, state);
         logger.toolExecuted(rec, req.name(), false, "(error)", rendered.length());
@@ -181,9 +185,10 @@ public class ToolExecutionHandler {
     private Map<String, Object> parseArgs(String json) {
         if (json == null || json.isBlank()) return Map.of();
         try {
-            return objectMapper.readValue(json, new TypeReference<>() {});
+            return objectMapper.readValue(json, new TypeReference<>() {
+            });
         } catch (Exception e) {
-            log.warn("[Tool] failed to parse arguments: {}", json, e);
+            log.warn("[Tool] 参数解析失败: {}", json, e);
             return Map.of();
         }
     }
@@ -192,7 +197,9 @@ public class ToolExecutionHandler {
         return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
-    /** 关闭线程池。 */
+    /**
+     * 关闭线程池。
+     */
     public void shutdown() {
         parallelExecutor.shutdown();
         try {

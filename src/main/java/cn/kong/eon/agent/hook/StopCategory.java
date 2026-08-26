@@ -1,6 +1,8 @@
 package cn.kong.eon.agent.hook;
 
-/** 优雅停止类别枚举，用于分类终止原因并展示给用户。 */
+/**
+ * 优雅停止类别枚举，用于分类终止原因并展示给用户。
+ */
 public enum StopCategory {
     BUDGET_EXCEEDED("预算超限"),
     LOOP_DETECTED("检测到死循环"),

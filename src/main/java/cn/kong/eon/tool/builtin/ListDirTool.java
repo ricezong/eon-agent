@@ -73,7 +73,7 @@ public class ListDirTool implements ToolExecutor {
             return ToolOutcome.success(sb.toString());
 
         } catch (IOException e) {
-            log.error("list_dir failed: {}", e.getMessage());
+            log.error("list_dir 失败: {}", e.getMessage());
             return ToolOutcome.failure("列出目录失败: " + e.getMessage());
         }
     }
@@ -100,7 +100,9 @@ public class ListDirTool implements ToolExecutor {
         return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
-    /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
+    /**
+     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
+     */
     @Tool(name = "list_dir", value = {
             "浏览目录中的文件和子目录。当用户需要查看某个文件夹里有什么文件时使用此工具。",
             "返回文件名、类型和大小信息。"

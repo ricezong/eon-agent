@@ -1,6 +1,8 @@
 package cn.kong.eon.model;
 
-/** Todo 任务状态。 */
+/**
+ * Todo 任务状态。
+ */
 public enum TodoStatus {
     PENDING("⏸️", "待办"),
     IN_PROGRESS("🔄", "进行中"),
@@ -16,6 +18,11 @@ public enum TodoStatus {
         this.label = label;
     }
 
-    public String icon() { return icon; }
-    public String label() { return label; }
+    public String icon() {
+        return icon;
+    }
+
+    public String label() {
+        return label;
+    }
 }
