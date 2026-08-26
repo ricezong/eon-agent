@@ -33,7 +33,7 @@ context:
 
 # 会话级 Token 预算（控制整个会话累计消耗）
 budget:
-  max_tokens: 100000                      # 会话允许消耗的累计 token 上限
+  max_tokens: 700000                      # 会话允许消耗的累计 token 上限
   soft_threshold: 0.75                    # 软阈值（75%）：注入 nudge 提示 LLM 收尾
   hard_threshold: 1.0                     # 硬阈值（100%）：触发优雅停止
   grace_steps: 3                          # 软/硬阈值触发后给的额外轮次
