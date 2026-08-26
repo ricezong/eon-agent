@@ -113,14 +113,20 @@ public class EonApplication {
 
         // 5. 初始化存储层
         Path sessionBaseDir = resolveSessionBaseDir();
+        String sessionId = generateSessionId();
+        Path sessionDir = sessionBaseDir.resolve(sessionId);
+        try {
+            Files.createDirectories(sessionDir);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create session dir: " + sessionDir, e);
+        }
         this.todoStore = new TodoStore();
-        this.artifactStore = new ArtifactStore(sessionBaseDir.resolve("artifacts"));
-        this.checkpointStore = new CheckpointStore(sessionBaseDir.resolve("checkpoints"), objectMapper);
-        this.memoryStore = new MemoryStore(Path.of(config.getStorage().getBaseDir()), objectMapper);
+        this.artifactStore = new ArtifactStore(sessionDir.resolve("artifacts"));
+        this.checkpointStore = new CheckpointStore(sessionDir.resolve("checkpoints"), objectMapper);
+        this.memoryStore = new MemoryStore(sessionBaseDir, objectMapper);
 
         // 6. 创建 JSONL 存储和 transcript 路径
-        String sessionId = generateSessionId();
-        Path jsonlPath = sessionBaseDir.resolve(sessionId).resolve("transcript.jsonl");
+        Path jsonlPath = sessionDir.resolve("transcript.jsonl");
         this.jsonlStore = new JsonlStore(jsonlPath, objectMapper);
         this.transcriptPath = jsonlPath.toAbsolutePath().toString();
         log.info("Session {} initialized, transcript: {}", sessionId, transcriptPath);
@@ -421,41 +427,74 @@ public class EonApplication {
         app.shutdown();
     }
 
+    // ===== CLI 格式化常量 =====
+
+    private static final String LINE_THIN  = "─".repeat(44);
+    private static final String LINE_BOLD   = "━".repeat(44);
+    private static final String LINE_DOUBLE = "═".repeat(44);
+
+    // ===== CLI 输出 =====
+
     private static void printWelcome() {
         System.out.println();
-        System.out.println("╔══════════════════════════════════════════╗");
-        System.out.println("║          Eon - AI 个人助手                ║");
-        System.out.println("║          由孔明灯开发                     ║");
-        System.out.println("╚══════════════════════════════════════════╝");
+        System.out.println("╔" + LINE_DOUBLE + "╗");
+        System.out.println("║  Eon — AI 个人助手                          ║");
+        System.out.println("║  由孔明灯开发                               ║");
+        System.out.println("╚" + LINE_DOUBLE + "╝");
         System.out.println();
-        System.out.println("输入你的问题，或使用以下命令：");
-        System.out.println("  /help   - 查看帮助");
-        System.out.println("  /tools  - 列出可用工具");
-        System.out.println("  /clear  - 清屏");
-        System.out.println("  /exit   - 退出");
+        System.out.println(" 直接输入问题开始对话，或使用以下命令：");
+        System.out.println();
+        System.out.println("   /help    查看帮助");
+        System.out.println("   /tools   列出可用工具");
+        System.out.println("   /clear   清屏");
+        System.out.println("   /exit    退出");
+        System.out.println();
     }
 
     private static void printHelp() {
-        System.out.println("Eon 个人助手 - 帮助");
-        System.out.println("─────────────────────────────");
-        System.out.println("直接输入文本即可与助手对话。");
-        System.out.println("助手可以：搜索网络、读取/写入文件、下载文件、管理待办事项、记忆你的偏好。");
         System.out.println();
-        System.out.println("命令：");
-        System.out.println("  /help   - 显示本帮助");
-        System.out.println("  /tools  - 列出可用工具");
-        System.out.println("  /clear  - 清屏");
-        System.out.println("  /exit   - 退出程序");
+        System.out.println(" Eon 个人助手 — 帮助");
+        System.out.println(" " + LINE_BOLD);
+        System.out.println();
+        System.out.println(" 直接输入文本即可与助手对话，助手能够：");
+        System.out.println("   • 搜索网络、抓取网页");
+        System.out.println("   • 读取/写入文件、下载文件");
+        System.out.println("   • 管理待办事项、记忆你的偏好");
+        System.out.println();
+        System.out.println(" 命令：");
+        System.out.println("   /help    显示本帮助");
+        System.out.println("   /tools   列出可用工具");
+        System.out.println("   /clear   清屏");
+        System.out.println("   /exit    退出程序");
+        System.out.println();
     }
 
     private static void printTools(EonApplication app) {
-        System.out.println("可用工具列表：");
-        System.out.println("─────────────────────────────");
-        for (String name : app.toolRegistry.getAllToolNames()) {
+        var names = app.toolRegistry.getAllToolNames();
+        System.out.println();
+        System.out.println(" 可用工具列表（" + names.size() + "）");
+        System.out.println(" " + LINE_BOLD);
+        System.out.println();
+
+        for (String name : names) {
+            var perm = app.toolRegistry.getPermission(name);
+            String permTag = perm != null ? formatPermission(perm) : "?";
+            boolean isMcp = app.toolRegistry.isMcpTool(name);
             var desc = app.toolRegistry.get(name);
-            String description = desc != null ? desc.getDescription() : "(MCP tool)";
-            System.out.printf("  %-16s %s%n", name, description != null ? description : "");
+            String description = desc != null ? desc.getDescription() : "";
+            String source = isMcp ? "MCP" : "";
+            System.out.printf("  %-14s [%s] %s  %s%n", name, permTag, description != null ? description : "", source);
         }
-        System.out.printf("%n共 %d 个工具%n", app.toolRegistry.getAllToolNames().size());
+        System.out.println();
+        System.out.println(" 权限: R=只读 W=受限写 D=危险操作    MCP=远程工具");
+        System.out.println();
+    }
+
+    private static String formatPermission(cn.kong.eon.model.ToolPermission perm) {
+        return switch (perm) {
+            case READONLY -> "R";
+            case RESTRICTED_WRITE -> "W";
+            case DESTRUCTIVE -> "D";
+        };
     }
 }

@@ -31,6 +31,23 @@ import java.util.*;
 
 /**
  * Agent 统一引擎。Core Loop 组装上下文并调用 LLM，Extension Loop 执行工具后回到 Core Loop。
+ * <p>
+ * 架构分层：
+ * <pre>
+ *   runStream ──→ while loop ──→ executeTurn ──→ { PreModel → LLM → PostModel → Extension Loop }
+ *                                      ↑                              ↓
+ *                                      └──────── TurnAction ─────────┘
+ *
+ *   executeTurn 内部阶段（序号即执行顺序）：
+ *     1. PreModel Hooks   — 预算检查、上下文压缩
+ *     2. 构建 messages     — 从 transcript + memories + nudges 组装
+ *     3. 调用 LLM          — 获取 AI 响应和工具调用请求
+ *     4. 无工具调用？      — 是→ handleNoToolCalls（截断/完成）
+ *     5. PostModel Hooks   — 循环检测
+ *     6. Extension Loop    — PreTool → Execute → PostTool
+ *     7. 回填              — AI 消息和工具结果写入 JSONL
+ *     8. Grace 消耗        — stop 期间 LLM 仍在调用工具时消耗 grace step
+ * </pre>
  */
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
@@ -76,32 +93,26 @@ public class EonAgent {
         this.stopStateMachine = new StopStateMachine(config, logger, finalizer);
     }
 
+    // ===== Hook 注册 =====
+
     public void addHook(Hook hook) {
         boolean added = false;
-        if (hook instanceof Hook.PreModelHook h) {
-            preModelHooks.add(h);
-            preModelHooks.sort(Comparator.comparingInt(Hook::order));
-            added = true;
-        }
-        if (hook instanceof Hook.PostModelHook h) {
-            postModelHooks.add(h);
-            postModelHooks.sort(Comparator.comparingInt(Hook::order));
-            added = true;
-        }
-        if (hook instanceof Hook.PreToolHook h) {
-            preToolHooks.add(h);
-            preToolHooks.sort(Comparator.comparingInt(Hook::order));
-            added = true;
-        }
-        if (hook instanceof Hook.PostToolHook h) {
-            postToolHooks.add(h);
-            postToolHooks.sort(Comparator.comparingInt(Hook::order));
-            added = true;
-        }
+        added |= tryAddHook(hook, Hook.PreModelHook.class, preModelHooks);
+        added |= tryAddHook(hook, Hook.PostModelHook.class, postModelHooks);
+        added |= tryAddHook(hook, Hook.PreToolHook.class, preToolHooks);
+        added |= tryAddHook(hook, Hook.PostToolHook.class, postToolHooks);
         if (added) {
             totalHookCount++;
             log.debug("Hook added: {}", hook.name());
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private <H extends Hook> boolean tryAddHook(Hook hook, Class<H> hookType, List<H> list) {
+        if (!hookType.isInstance(hook)) return false;
+        list.add((H) hook);
+        list.sort(Comparator.comparingInt(Hook::order));
+        return true;
     }
 
     public int getHookCount() {
@@ -132,12 +143,22 @@ public class EonAgent {
      */
     public String runStream(SessionState state, TurnCallback callback) {
         initRun(state);
-
         if (callback != null) {
             safeCallback(() -> callback.onRunStart(state.getSessionId(), state.getUserOriginalInput()));
         }
 
-        while (shouldContinue(state)) {
+        while (true) {
+            // 步数上限检查：正常用 maxSteps，stop 期间切换到 absoluteMaxSteps
+            int effectiveMax = state.isStopRequested()
+                    ? config.getLoop().getAbsoluteMaxSteps()
+                    : config.getLoop().getMaxSteps();
+            if (state.getTurnCount() >= effectiveMax) {
+                // maxSteps 达到上限，尝试优雅停止
+                TurnAction action = stopStateMachine.handleMaxSteps(state);
+                String output = action instanceof TurnAction.Exit exit ? exit.output() : "";
+                return completeExit(state, output, callback, true);
+            }
+
             state.incrementTurn();
             int turnStartTokens = state.getUsageAccum().getTotalTokens();
 
@@ -149,14 +170,7 @@ public class EonAgent {
             try {
                 TurnAction action = executeTurn(state, turnStartTokens, callback);
                 if (action instanceof TurnAction.Exit exit) {
-                    String output = renderMemoryReferences(exit.output());
-                    logger.agentComplete(state);
-                    if (callback != null) {
-                        final int tc = state.getTurnCount();
-                        final int tokens = state.getUsageAccum().getTotalTokens();
-                        safeCallback(() -> callback.onOutput(output, tc, tokens));
-                    }
-                    return output;
+                    return completeExit(state, exit.output(), callback, false);
                 }
                 if (callback != null) {
                     safeCallback(() -> callback.onTurnEnd(
@@ -168,26 +182,27 @@ public class EonAgent {
                 }
                 TurnAction action = stopStateMachine.handleLoopException(state, e);
                 if (action instanceof TurnAction.Exit exit) {
-                    String output = renderMemoryReferences(exit.output());
-                    logger.agentComplete(state);
-                    if (callback != null) {
-                        final int tc = state.getTurnCount();
-                        final int tokens = state.getUsageAccum().getTotalTokens();
-                        safeCallback(() -> callback.onOutput(output, tc, tokens));
-                    }
-                    return output;
+                    return completeExit(state, exit.output(), callback, true);
                 }
             }
         }
+    }
 
-        // maxSteps 在 while 循环外触发
-        TurnAction action = stopStateMachine.handleMaxSteps(state);
-        String output = action instanceof TurnAction.Exit exit ? exit.output() : "";
-        output = renderMemoryReferences(output);
+    /**
+     * 统一的退出处理：渲染记忆引用 → 记录完成日志 → 回调输出。
+     * @param forced true 表示被强制终止（maxSteps/异常），调用 onTerminate；false 表示正常完成，调用 onOutput
+     */
+    private String completeExit(SessionState state, String rawOutput, TurnCallback callback, boolean forced) {
+        String output = renderMemoryReferences(rawOutput);
         logger.agentComplete(state);
         if (callback != null) {
-            String reason = output;
-            safeCallback(() -> callback.onTerminate(reason, state.getTurnCount(), state.getUsageAccum().getTotalTokens()));
+            final int tc = state.getTurnCount();
+            final int tokens = state.getUsageAccum().getTotalTokens();
+            if (forced) {
+                safeCallback(() -> callback.onTerminate(output, tc, tokens));
+            } else {
+                safeCallback(() -> callback.onOutput(output, tc, tokens));
+            }
         }
         return output;
     }
@@ -204,34 +219,27 @@ public class EonAgent {
         jsonlStore.append(UserMessage.from(state.getUserOriginalInput()));
     }
 
-    private boolean shouldContinue(SessionState state) {
-        int effectiveMax = state.isStopRequested()
-                ? config.getLoop().getAbsoluteMaxSteps()
-                : config.getLoop().getMaxSteps();
-        return state.getTurnCount() < effectiveMax;
-    }
+    // ===== Turn 执行 =====
 
-    /** 执行单个 Turn。try-finally 确保 flushTurn 一定被执行。 */
+    /** 执行单个 Turn。try-finally 确保 finalize + flushTurn 一定被执行。 */
     private TurnAction executeTurn(SessionState state, int turnStartTokens, TurnCallback callback) {
         TurnRecord rec = logger.newRecord();
         this.currentRec = rec;
         try {
             logger.turnHeader(rec, state);
 
-            // 1. 组装上下文 + PreModel Hooks
+            // 1. PreModel Hooks（预算检查、上下文压缩等）
             ContextBuilder ctx = buildContext(state);
             FireResult preModel = firePreModelHooks(state, ctx);
             if (preModel instanceof FireResult.Exit exit) return new TurnAction.Exit(exit.output());
 
-            // 2. 构建 messages + 获取全部工具 Schema
+            // 2. 构建 messages + 获取工具 Schema
             List<ChatMessage> messages = ctx.build();
             state.setCurrentMessages(messages);
             logger.contextInfo(rec, ctx, messages, state, toolRegistry.getAllToolNames().size());
 
-            List<ToolSpecification> tools = toolRegistry.getSpecifications();
-
             // 3. 调用 LLM
-            LlmResponse response = llmClient.chat(messages, tools);
+            LlmResponse response = llmClient.chat(messages, toolRegistry.getSpecifications());
             state.setLastResponse(response);
             int deltaTokens = response.usage() != null ? response.usage().getTotalTokens() : 0;
             state.getUsageAccum().add(response.usage());
@@ -241,20 +249,16 @@ public class EonAgent {
             List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
             logger.llmResponse(rec, requests, deltaTokens);
 
-            // SSE 回调：LLM 响应到达
             if (callback != null) {
-                final List<String> toolNames = requests != null
-                        ? requests.stream().map(ToolExecutionRequest::name).toList()
-                        : List.of();
-                safeCallback(() -> callback.onLlmResponse(thought, toolNames));
+                notifyLlmResponse(callback, thought, requests);
             }
 
-            // 4. 无工具调用
+            // 4. 无工具调用 → 任务完成或截断处理
             if (requests == null || requests.isEmpty()) {
                 return handleNoToolCalls(rec, state, thought);
             }
 
-            // 5. PostModel Hooks (循环检测等)
+            // 5. PostModel Hooks（循环检测等）
             validateToolExistence(state, requests);
             state.setPendingToolCalls(requests);
             FireResult postModel = firePostModelHooks(state, response);
@@ -265,7 +269,7 @@ public class EonAgent {
             FireResult extension = executeExtensionLoop(rec, state, requests, callback);
             if (extension instanceof FireResult.Exit exit) return new TurnAction.Exit(exit.output());
 
-            // 7. 回填
+            // 7. 回填 AI 消息和工具结果到 JSONL
             finalizer.finalizeAndAppend(rec, state);
             logger.turnDone(rec, state, turnStartTokens);
 
@@ -276,15 +280,19 @@ public class EonAgent {
 
             return new TurnAction.Continue();
         } finally {
+            // 兜底：确保任何退出路径都不会丢失未回填的 AI 消息和工具结果
+            finalizer.finalizeIfPending(rec, state);
             flushTurn(rec);
         }
     }
 
-    /** flush 当前 turn 日志并清理引用。 */
+    /** flush 当前 turn 日志并清理 currentRec 引用。 */
     private void flushTurn(TurnRecord rec) {
         logger.flush(rec);
         this.currentRec = null;
     }
+
+    // ===== Extension Loop =====
 
     /** Extension Loop: PreTool → Execute → PostTool。 */
     private FireResult executeExtensionLoop(TurnRecord rec, SessionState state,
@@ -293,7 +301,6 @@ public class EonAgent {
         if (preTool instanceof FireResult.Exit) return preTool;
         if (preTool instanceof FireResult.Skip) return new FireResult.Continue();
 
-        // SSE 回调：工具开始执行
         if (callback != null) {
             for (ToolExecutionRequest req : requests) {
                 safeCallback(() -> callback.onToolStart(req.name(), req.id()));
@@ -302,19 +309,8 @@ public class EonAgent {
 
         List<ToolExecutionResult> results = toolHandler.execute(rec, state);
 
-        // SSE 回调：工具执行完成
         if (callback != null) {
-            for (int i = 0; i < requests.size() && i < results.size(); i++) {
-                ToolExecutionResult result = results.get(i);
-                String summary = result.content();
-                if (summary != null && summary.length() > 200) {
-                    summary = summary.substring(0, 200) + "...(truncated)";
-                }
-                final String toolName = requests.get(i).name();
-                final boolean success = result.success();
-                final String toolSummary = summary;
-                safeCallback(() -> callback.onToolResult(toolName, success, toolSummary));
-            }
+            notifyToolResults(callback, requests, results);
         }
 
         for (int i = 0; i < requests.size(); i++) {
@@ -327,6 +323,31 @@ public class EonAgent {
         return new FireResult.Continue();
     }
 
+    // ===== SSE 回调通知 =====
+
+    private void notifyLlmResponse(TurnCallback callback, String thought, List<ToolExecutionRequest> requests) {
+        List<String> toolNames = requests != null
+                ? requests.stream().map(ToolExecutionRequest::name).toList()
+                : List.of();
+        safeCallback(() -> callback.onLlmResponse(thought, toolNames));
+    }
+
+    private void notifyToolResults(TurnCallback callback,
+                                   List<ToolExecutionRequest> requests,
+                                   List<ToolExecutionResult> results) {
+        for (int i = 0; i < requests.size() && i < results.size(); i++) {
+            ToolExecutionResult result = results.get(i);
+            String summary = result.content();
+            if (summary != null && summary.length() > 200) {
+                summary = summary.substring(0, 200) + "...(truncated)";
+            }
+            final String toolName = requests.get(i).name();
+            final boolean success = result.success();
+            final String toolSummary = summary;
+            safeCallback(() -> callback.onToolResult(toolName, success, toolSummary));
+        }
+    }
+
     /** 安全执行回调，吞掉异常以免中断 Agent 主循环。 */
     private void safeCallback(Runnable action) {
         try {
@@ -335,6 +356,8 @@ public class EonAgent {
             log.warn("TurnCallback error: {}", e.getMessage(), e);
         }
     }
+
+    // ===== 无工具调用处理 =====
 
     /** 处理无工具调用的情况（方案语义：无工具调用 = 任务完成，直接退出）。 */
     private TurnAction handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
@@ -355,7 +378,6 @@ public class EonAgent {
     // ===== Hook 调度 =====
 
     private FireResult firePreModelHooks(SessionState state, ContextBuilder ctx) {
-        // PreModel 的 stop 语义：handleStop 返回 Continue 后继续遍历后续 hook
         return HookDispatcher.dispatchPreModel(
                 preModelHooks, state,
                 (hook, s) -> hook.beforeModelCall(s, ctx),
@@ -390,7 +412,7 @@ public class EonAgent {
         );
     }
 
-    // ===== 上下文与工具方法 =====
+    // ===== 上下文构建 =====
 
     private ContextBuilder buildContext(SessionState state) {
         ContextBuilder ctx = new ContextBuilder();
@@ -401,7 +423,6 @@ public class EonAgent {
         }
         ctx.setMemories(toolContext.memoryStore().renderForInjection());
         ctx.setTranscript(jsonlStore.snapshot());
-        // 渲染运行时提醒到上下文
         renderNudges(state, ctx);
         return ctx;
     }
