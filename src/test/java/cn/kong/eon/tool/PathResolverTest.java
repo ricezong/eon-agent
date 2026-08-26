@@ -38,7 +38,7 @@ class PathResolverTest {
         PathResolver resolver = new PathResolver(tempDir.toString(), true);
         assertThatThrownBy(() -> resolver.resolve("../../etc/passwd"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("escapes workspace boundary");
+                .hasMessageContaining("超出工作区边界");
     }
 
     @Test
@@ -54,7 +54,7 @@ class PathResolverTest {
         PathResolver resolver = new PathResolver(tempDir.toString(), true);
         assertThatThrownBy(() -> resolver.resolve(""))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("empty");
+                .hasMessageContaining("为空");
     }
 
     @Test
@@ -62,7 +62,7 @@ class PathResolverTest {
         PathResolver resolver = new PathResolver(tempDir.toString(), true);
         assertThatThrownBy(() -> resolver.resolve(null))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("empty");
+                .hasMessageContaining("为空");
     }
 
     @Test
@@ -70,7 +70,7 @@ class PathResolverTest {
         PathResolver resolver = new PathResolver(tempDir.toString(), true);
         assertThatThrownBy(() -> resolver.resolve("   "))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("empty");
+                .hasMessageContaining("为空");
     }
 
     @Test
@@ -89,7 +89,7 @@ class PathResolverTest {
         PathResolver resolver = new PathResolver(tempDir.toString(), true);
         assertThatThrownBy(() -> resolver.resolve("/etc/passwd"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("escapes workspace boundary");
+                .hasMessageContaining("超出工作区边界");
     }
 
     @Test

@@ -73,7 +73,7 @@ class ToolRegistryTest {
         ToolOutcome result = registry.execute("nonexistent", Map.of(), state, null);
 
         assertThat(result.success()).isFalse();
-        assertThat(result.content()).contains("Tool not found");
+        assertThat(result.content()).contains("工具不存在");
     }
 
     @Test

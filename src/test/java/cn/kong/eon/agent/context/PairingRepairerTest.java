@@ -81,7 +81,7 @@ class PairingRepairerTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(synthetic.id()).isEqualTo("call_2");
-        assertThat(synthetic.text()).contains("[SYNTHETIC]");
+        assertThat(synthetic.text()).contains("[合成]");
     }
 
     @Test
