@@ -21,6 +21,7 @@ import cn.kong.eon.store.MemoryStore;
 import cn.kong.eon.store.TodoStore;
 import cn.kong.eon.config.HttpConfig;
 import cn.kong.eon.tool.PathResolver;
+import cn.kong.eon.tool.CliInteractionCallback;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolRegistry;
 import cn.kong.eon.tool.ToolResultRenderer;
@@ -69,6 +70,8 @@ public class EonApplication {
     private final EonAgent agent;
     private final String workDir;
     private final String transcriptPath;
+    /** CLI 交互回调（共享 Scanner） */
+    private final CliInteractionCallback cliInteractionCallback;
 
     /** MCP 客户端（生命周期管理） */
     private final java.util.List<McpClientManager> mcpClients = new java.util.ArrayList<>();
@@ -112,10 +115,18 @@ public class EonApplication {
 
         connectMcpServers();
 
-        PathResolver pathResolver = new PathResolver(workDir, config.getTools().isSandboxEnabled());
+        Path workspaceDir = sessionDir.resolve("workspace");
+        try {
+            Files.createDirectories(workspaceDir);
+        } catch (IOException e) {
+            throw new RuntimeException("创建工作区目录失败: " + workspaceDir, e);
+        }
+        String sessionWorkDir = workspaceDir.toAbsolutePath().toString();
+        PathResolver pathResolver = new PathResolver(sessionWorkDir, config.getTools().isSandboxEnabled());
+        this.cliInteractionCallback = new CliInteractionCallback(new java.util.Scanner(System.in, StandardCharsets.UTF_8));
         this.toolContext = new ToolContext(
                 todoStore, artifactStore, memoryStore,
-                jsonlStore, checkpointStore, pathResolver, workDir, null);
+                jsonlStore, checkpointStore, pathResolver, cliInteractionCallback);
 
         var ldc = config.getLoopDetect();
         this.loopDetector = new LoopDetector(
@@ -337,7 +348,7 @@ public class EonApplication {
      * 交互式 CLI 循环。支持 /exit、/quit 退出，/tools 列出工具，/clear 清屏。
      */
     private static void runCliLoop(EonApplication app) {
-        java.util.Scanner scanner = new java.util.Scanner(System.in, StandardCharsets.UTF_8);
+        java.util.Scanner scanner = app.cliInteractionCallback.getScanner();
 
         printWelcome();
         System.out.flush();

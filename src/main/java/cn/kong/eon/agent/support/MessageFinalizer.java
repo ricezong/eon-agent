@@ -48,6 +48,7 @@ public class MessageFinalizer {
         state.getFormatCorrections().clear();
         state.setPendingToolCalls(null);
         state.setLastToolResults(null);
+        state.setLastAssistantText(null);
     }
 
     /**

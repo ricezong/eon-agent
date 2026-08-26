@@ -22,7 +22,6 @@ import cn.kong.eon.tool.ToolRegistry;
 import cn.kong.eon.tool.ToolResultRenderer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
-import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -127,7 +126,7 @@ public class EonAgent {
     public String runStream(SessionState state, TurnCallback callback) {
         initRun(state);
         if (callback != null) {
-            safeCallback(() -> callback.onRunStart(state.getSessionId(), state.getUserOriginalInput()));
+            safeCallback(() -> callback.onRunStart(state.getSessionId(), state.getUserInput()));
         }
 
         while (true) {
@@ -200,7 +199,8 @@ public class EonAgent {
     private void initRun(SessionState state) {
         logger.agentStart(state);
         state.setStopState(SessionState.StopState.none());
-        jsonlStore.append(UserMessage.from(state.getUserOriginalInput()));
+        String tagged = "<user_query>\n" + state.getUserInput() + "\n</user_query>";
+        jsonlStore.append(UserMessage.from(tagged));
     }
 
 

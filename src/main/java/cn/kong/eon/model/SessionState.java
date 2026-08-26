@@ -15,7 +15,7 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class SessionState {
     private String sessionId;
-    private String userOriginalInput;
+    private String userInput;
     private int turnCount;
     private TokenUsage usageAccum;
     private CompressionState compressionState;
@@ -49,7 +49,7 @@ public class SessionState {
     public static SessionState create(String sessionId, String userOriginalInput) {
         SessionState s = new SessionState();
         s.sessionId = sessionId;
-        s.userOriginalInput = userOriginalInput;
+        s.userInput = userOriginalInput;
         return s;
     }
 
@@ -73,12 +73,12 @@ public class SessionState {
         this.sessionId = sessionId;
     }
 
-    public String getUserOriginalInput() {
-        return userOriginalInput;
+    public String getUserInput() {
+        return userInput;
     }
 
-    public void setUserOriginalInput(String userOriginalInput) {
-        this.userOriginalInput = userOriginalInput;
+    public void setUserInput(String userInput) {
+        this.userInput = userInput;
     }
 
     public int getTurnCount() {

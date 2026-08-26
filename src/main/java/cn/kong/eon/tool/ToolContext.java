@@ -16,7 +16,6 @@ public record ToolContext(
         JsonlStore jsonlStore,
         CheckpointStore checkpointStore,
         PathResolver pathResolver,
-        String workDir,
         InteractionCallback interactionCallback
 ) {
     /**
@@ -24,8 +23,7 @@ public record ToolContext(
      */
     public ToolContext(TodoStore todoStore, ArtifactStore artifactStore,
                        MemoryStore memoryStore, JsonlStore jsonlStore,
-                       CheckpointStore checkpointStore, PathResolver pathResolver,
-                       String workDir) {
-        this(todoStore, artifactStore, memoryStore, jsonlStore, checkpointStore, pathResolver, workDir, null);
+                       CheckpointStore checkpointStore, PathResolver pathResolver) {
+        this(todoStore, artifactStore, memoryStore, jsonlStore, checkpointStore, pathResolver, null);
     }
 }

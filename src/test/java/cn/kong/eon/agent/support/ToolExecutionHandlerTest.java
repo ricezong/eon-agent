@@ -43,7 +43,7 @@ class ToolExecutionHandlerTest {
                 new cn.kong.eon.store.TodoStore(),
                 new cn.kong.eon.store.ArtifactStore(tempDir),
                 new cn.kong.eon.store.MemoryStore(tempDir, mapper),
-                null, null, null, tempDir.toString());
+                null, null, null);
         handler = new ToolExecutionHandler(registry, renderer, toolContext, logger, loopDetector, 4, mapper);
     }
 
