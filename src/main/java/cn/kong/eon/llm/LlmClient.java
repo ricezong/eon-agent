@@ -43,7 +43,7 @@ public class LlmClient {
                 .logResponses(false)
                 .build();
 
-        // 创建精确的 Token 估算器；若模型名不被 JTokkit 识别则回退到 gpt-4o 编码
+        // 若模型名不被 JTokkit 识别则回退到 gpt-4o 编码
         TokenCountEstimator estimator;
         try {
             estimator = new OpenAiTokenCountEstimator(llmConfig.getModelName());
@@ -94,7 +94,7 @@ public class LlmClient {
 
                 String finishReason = response.finishReason() != null ? response.finishReason().name() : "STOP";
 
-                log.debug("LLM 响应: text={}, toolCalls={}, usage={}",
+                log.debug("LLM 响应: 文本长度={}, 工具调用={}, 用量={}",
                         aiMessage.text() != null ? aiMessage.text().length() : 0,
                         aiMessage.hasToolExecutionRequests() ? aiMessage.toolExecutionRequests().size() : 0,
                         usage);
@@ -123,7 +123,7 @@ public class LlmClient {
             }
         }
 
-        log.error("LLM_STALLED: 模型连续 {} 次调用失败", retryConfig.getAttempts(), lastException);
+        log.error("LLM 调用连续失败 {} 次，模型不可用", retryConfig.getAttempts(), lastException);
         throw new LlmStalledException("LLM 调用连续失败 " + retryConfig.getAttempts() + " 次，模型不可用");
     }
 

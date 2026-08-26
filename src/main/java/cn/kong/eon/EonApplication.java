@@ -42,33 +42,17 @@ import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
 /**
- * Eon Agent 启动类。
- * <p>
- * 职责：
- * <ol>
- *   <li>加载 agent.yaml 配置和系统提示词</li>
- *   <li>初始化所有组件：LlmClient、Store 集群、ToolRegistry、Hook 链</li>
- *   <li>连接 MCP 服务（如配置）</li>
- *   <li>提供交互式 CLI 循环：读取用户输入 → 运行 Agent → 输出结果</li>
- * </ol>
- * <p>
- * 使用方式：
- * <pre>
- *   java -jar eon-agent.jar
- *   java -Deon.workdir=/path/to/workspace -jar eon-agent.jar
- * </pre>
+ * Eon Agent 启动类。加载配置、初始化组件、连接 MCP 服务、提供交互式 CLI 循环。
  */
 public class EonApplication {
 
     private static final Logger log = LoggerFactory.getLogger(EonApplication.class);
 
-    // ===== 配置常量 =====
     private static final String CONFIG_PATH = "config/agent.yaml";
     private static final String SYSTEM_PROMPT_PATH = "prompts/system_prompt.md";
     private static final String DEFAULT_WORKDIR = ".";
     private static final String SESSION_ID_PREFIX = "eon_";
 
-    // ===== 核心组件 =====
     private final AgentConfig config;
     private final ObjectMapper objectMapper;
     private final LlmClient llmClient;
@@ -86,7 +70,7 @@ public class EonApplication {
     private final String workDir;
     private final String transcriptPath;
 
-    // MCP 客户端（生命周期管理）
+    /** MCP 客户端（生命周期管理） */
     private final java.util.List<McpClientManager> mcpClients = new java.util.ArrayList<>();
 
     public EonApplication() {
@@ -97,21 +81,15 @@ public class EonApplication {
         this.workDir = workDir != null ? workDir : DEFAULT_WORKDIR;
         this.objectMapper = createObjectMapper();
 
-        // 1. 加载配置
         log.info("从 classpath 加载配置: {}", CONFIG_PATH);
         this.config = AgentConfig.loadFromClasspath(CONFIG_PATH);
 
-        // 2. 加载系统提示词
         String systemPrompt = loadSystemPrompt(config.getContext().getSystemPromptPath());
         log.info("系统提示词已加载: {} 字符", systemPrompt.length());
 
-        // 3. 初始化共享 HttpClient（从配置注入超时）
         this.httpConfig = new HttpConfig(config.getTools().getHttpConnectTimeoutSeconds());
-
-        // 4. 初始化 LLM 客户端
         this.llmClient = new LlmClient(config);
 
-        // 5. 初始化存储层
         Path sessionBaseDir = resolveSessionBaseDir();
         String sessionId = generateSessionId();
         Path sessionDir = sessionBaseDir.resolve(sessionId);
@@ -125,47 +103,37 @@ public class EonApplication {
         this.checkpointStore = new CheckpointStore(sessionDir.resolve("checkpoints"), objectMapper);
         this.memoryStore = new MemoryStore(sessionBaseDir, objectMapper);
 
-        // 6. 创建 JSONL 存储和 transcript 路径
         Path jsonlPath = sessionDir.resolve("transcript.jsonl");
         this.jsonlStore = new JsonlStore(jsonlPath, objectMapper);
         this.transcriptPath = jsonlPath.toAbsolutePath().toString();
         log.info("会话 {} 已初始化, transcript: {}", sessionId, transcriptPath);
 
-        // 7. 初始化工具注册表
         this.toolRegistry = createToolRegistry();
 
-        // 8. 连接 MCP 服务
         connectMcpServers();
 
-        // 9. 创建工具上下文（含共享 PathResolver）
         PathResolver pathResolver = new PathResolver(workDir, config.getTools().isSandboxEnabled());
         this.toolContext = new ToolContext(
                 todoStore, artifactStore, memoryStore,
                 jsonlStore, checkpointStore, pathResolver, workDir, null);
 
-        // 10. 初始化循环检测器
         var ldc = config.getLoopDetect();
         this.loopDetector = new LoopDetector(
                 ldc.getRepeatWarn(), ldc.getRepeatStop(), ldc.getNoProgressSteps(),
                 ldc.getFailureWarn(), ldc.getFailureStop());
 
-        // 11. 初始化结果渲染器
         this.resultRenderer = new ToolResultRenderer(artifactStore);
 
-        // 12. 创建 Agent
         this.agent = new EonAgent(
                 config, llmClient, toolRegistry,
                 resultRenderer, jsonlStore, systemPrompt,
                 toolContext, loopDetector, objectMapper);
 
-        // 13. 注册所有 Hook
         registerHooks();
 
         log.info("EonApplication 就绪: {} 个工具, {} 个 hook",
                 toolRegistry.getAllToolNames().size(), agent.getHookCount());
     }
-
-    // ===== 核心运行方法 =====
 
     /**
      * 运行一轮对话。
@@ -220,8 +188,6 @@ public class EonApplication {
         log.info("EonApplication 已关闭。");
     }
 
-    // ===== 初始化方法 =====
-
     private ObjectMapper createObjectMapper() {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
@@ -230,7 +196,6 @@ public class EonApplication {
     }
 
     private String loadSystemPrompt(String path) {
-        // 先尝试从 classpath 加载
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(path)) {
             if (is != null) {
                 return new String(is.readAllBytes(), StandardCharsets.UTF_8);
@@ -238,7 +203,6 @@ public class EonApplication {
         } catch (IOException e) {
             log.warn("从 classpath 加载系统提示词失败: {}", path, e);
         }
-        // 回退到文件系统
         try {
             Path promptPath = Paths.get(path);
             if (Files.exists(promptPath)) {
@@ -269,7 +233,6 @@ public class EonApplication {
     private ToolRegistry createToolRegistry() {
         ToolRegistry registry = new ToolRegistry(config.getTools().getWhitelist(), objectMapper);
 
-        // 注册本地工具
         registry.register(ReadFileTool.descriptor());
         registry.register(WriteFileTool.descriptor());
         registry.register(ListDirTool.descriptor());
@@ -279,7 +242,6 @@ public class EonApplication {
         registry.register(TodoWriteTool.descriptor(objectMapper));
         registry.register(UpdateMemoryTool.descriptor());
 
-        // web_search 需要千帆 API Key
         String searchApiKey = config.getWebSearch().getApiKey();
         if (searchApiKey != null && !searchApiKey.isBlank()) {
             registry.register(WebSearchTool.descriptor(searchApiKey, objectMapper, httpConfig.getClient()));
@@ -287,7 +249,6 @@ public class EonApplication {
             log.warn("web_search 工具未注册: QIANFAN_API_KEY 未配置");
         }
 
-        // web_fetch 带配置
         var wfCfg = config.getTools().getWebFetch();
         if (wfCfg != null) {
             registry.register(WebFetchTool.descriptor(
@@ -299,7 +260,6 @@ public class EonApplication {
             registry.register(WebFetchTool.descriptor());
         }
 
-        // AskQuestion 工具（CLI 模式无交互回调，但仍注册供 LLM 知晓）
         registry.register(AskQuestionTool.descriptor());
 
         return registry;
@@ -315,7 +275,7 @@ public class EonApplication {
             String serverKey = serverCfg.getKey() != null ? serverCfg.getKey() : "default";
             String url = serverCfg.getUrl();
             if (url == null || url.isBlank()) {
-                log.warn("MCP server '{}' has no URL, skipping", serverKey);
+                log.warn("MCP 服务 '{}' 未配置 URL，跳过", serverKey);
                 continue;
             }
 
@@ -328,13 +288,13 @@ public class EonApplication {
                 mcpClients.add(mcpClient);
             } catch (Exception e) {
                 log.error("连接 MCP 服务 '{}' 失败: {}", serverKey, e.getMessage(), e);
-                // MCP 连接失败不阻止启动，继续其他服务
+                // MCP 连接失败不阻止启动
             }
         }
     }
 
     private void registerHooks() {
-        // PreModel Hooks（按 order 排序）
+        // PreModel Hooks
         agent.addHook(new BudgetHook(config));
         agent.addHook(new TodoNavigatorHook(todoStore));
         agent.addHook(new ContextCompactHook(config, llmClient, transcriptPath));
@@ -350,21 +310,17 @@ public class EonApplication {
         agent.addHook(new CheckpointHook(config, checkpointStore, todoStore));
     }
 
-    // ===== CLI 入口 =====
-
     public static void main(String[] args) {
         String workDir = System.getProperty("eon.workdir", DEFAULT_WORKDIR);
         log.info("启动 Eon Agent, 工作目录={}", workDir);
 
         EonApplication app = new EonApplication(workDir);
 
-        // 注册关闭钩子
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("关闭钩子已触发");
             app.shutdown();
         }));
 
-        // 检查是否有命令行参数（单次运行模式）
         if (args.length > 0) {
             String input = String.join(" ", args);
             log.info("单次运行模式，输入: {}", input);
@@ -374,13 +330,11 @@ public class EonApplication {
             return;
         }
 
-        // 交互式 CLI 模式
         runCliLoop(app);
     }
 
     /**
-     * 交互式 CLI 循环。
-     * 支持命令：/exit、/quit 退出；/tools 列出工具；/clear 清屏。
+     * 交互式 CLI 循环。支持 /exit、/quit 退出，/tools 列出工具，/clear 清屏。
      */
     private static void runCliLoop(EonApplication app) {
         java.util.Scanner scanner = new java.util.Scanner(System.in, StandardCharsets.UTF_8);
@@ -395,7 +349,6 @@ public class EonApplication {
 
             if (input.isEmpty()) continue;
 
-            // 命令处理
             if (input.equalsIgnoreCase("/exit") || input.equalsIgnoreCase("/quit")) {
                 System.out.println("再见！");
                 break;
@@ -414,14 +367,13 @@ public class EonApplication {
                 continue;
             }
 
-            // 正常对话
             System.out.print("Eon> ");
             System.out.flush();
             try {
                 String output = app.run(input);
                 System.out.println(output);
             } catch (Exception e) {
-                log.error("Agent execution failed", e);
+                log.error("Agent 执行失败", e);
                 System.out.println("执行出错: " + e.getMessage());
             }
         }
@@ -430,13 +382,9 @@ public class EonApplication {
         app.shutdown();
     }
 
-    // ===== CLI 格式化常量 =====
-
     private static final String LINE_THIN = "─".repeat(44);
     private static final String LINE_BOLD = "━".repeat(44);
     private static final String LINE_DOUBLE = "═".repeat(44);
-
-    // ===== CLI 输出 =====
 
     private static void printWelcome() {
         System.out.println();

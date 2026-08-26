@@ -38,12 +38,10 @@ public class WebFetchTool implements ToolExecutor {
 
     private final FlexmarkHtmlConverter htmlConverter = FlexmarkHtmlConverter.builder().build();
 
-    // LRU 缓存：URL → (内容, 时间戳)，带容量上限和 TTL 过期
+    /** LRU 缓存：URL → (内容, 时间戳)，带容量上限和 TTL 过期 */
     private final Map<String, CacheEntry> cache;
 
-    /**
-     * 仅供测试使用，生产环境通过 {@link #descriptor(int, long, int, HttpClient)} 传入配置。
-     */
+    /** 默认构造，生产环境通过 descriptor(int, long, int, HttpClient) 传入配置 */
     public WebFetchTool() {
         this(50000, 15 * 60 * 1000L, 64, HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
@@ -72,9 +70,6 @@ public class WebFetchTool implements ToolExecutor {
         return "{urls: " + count + "}";
     }
 
-    /**
-     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
-     */
     @Tool(name = "web_fetch", value = {
             "从一个或多个指定 URL 获取内容并返回。用法：以 URL 数组作为输入，抓取 URL 内容并将 HTML 转换为 markdown。",
             "返回所有 URL 的抓取内容。当你需要检索和分析网页内容时使用此工具。",
@@ -88,7 +83,6 @@ public class WebFetchTool implements ToolExecutor {
     }
 
     @SuppressWarnings("unchecked")
-    /** 仅供测试使用，生产环境通过 {@link #descriptor(int, int, int, HttpClient)} 传入配置。 */
     public static ToolDescriptor descriptor() {
         return ToolDescriptor.fromAnnotated(new WebFetchTool(), ToolPermission.READONLY);
     }

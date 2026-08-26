@@ -37,8 +37,6 @@ public class AgentConfig {
     private CompressionConfig compression;
     private MemoryConfig memory;
 
-    // ===== 加载入口 =====
-
     public static AgentConfig load(InputStream yamlStream) {
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
                 .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
@@ -124,8 +122,6 @@ public class AgentConfig {
         return "";
     }
 
-    // ===== Getter =====
-
     public LlmConfig getLlm() {
         return llm;
     }
@@ -177,8 +173,6 @@ public class AgentConfig {
     public MemoryConfig getMemory() {
         return memory;
     }
-
-    // ===== Setter（供 Jackson 注入） =====
 
     public void setLlm(LlmConfig llm) {
         this.llm = llm;
@@ -232,11 +226,7 @@ public class AgentConfig {
         this.memory = memory;
     }
 
-    // ===== 嵌套配置类 =====
-
-    /**
-     * 顶层 mode 节。
-     */
+    /** 顶层 mode 节 */
     public static class ModeConfig {
         private boolean checkpointEnabled = false;
 
@@ -249,9 +239,7 @@ public class AgentConfig {
         }
     }
 
-    /**
-     * 顶层 compression 节。
-     */
+    /** 顶层 compression 节 */
     public static class CompressionConfig {
         private int summarizeTurns = 4;
 
@@ -264,9 +252,7 @@ public class AgentConfig {
         }
     }
 
-    /**
-     * 顶层 memory 节。
-     */
+    /** 顶层 memory 节 */
     public static class MemoryConfig {
         private boolean enabled = true;
 
@@ -352,7 +338,6 @@ public class AgentConfig {
         private int summarizeMaxInputChars = 50000;
         private Compression compression;
 
-        // 压缩算法内部约束（可配置，从 agent.yaml context 节读取）
         private int snipKeepChars = 2000;
         private int summarizeMaxOutputChars = 2000;
         private int tailGuardMinTurns = 3;

@@ -24,9 +24,7 @@ public class ToolExecutionHandler {
     private static final Logger log = LoggerFactory.getLogger(ToolExecutionHandler.class);
 
     private static final String TODO_WRITE = "todo_write";
-    /**
-     * 串行豁免清单：顺序敏感或交互互斥的工具，即使与其他工具同轮也强制串行。
-     */
+    /** 串行豁免清单：顺序敏感或交互互斥的工具强制串行 */
     private static final Set<String> SERIAL_ONLY = Set.of(TODO_WRITE, "AskQuestion");
 
     private final ToolRegistry toolRegistry;
@@ -64,7 +62,7 @@ public class ToolExecutionHandler {
         List<ToolExecutionRequest> requests = state.getPendingToolCalls();
         int n = requests.size();
 
-        // 单请求：直接执行（无并行开销）
+        // 单请求直接执行
         if (n == 1) {
             List<ToolExecutionResult> results = new ArrayList<>(1);
             results.add(executeSingle(requests.get(0), rec, state));
@@ -74,7 +72,6 @@ public class ToolExecutionHandler {
 
         // 多请求：分区 — 串行豁免工具 vs 可并行工具
         List<ToolExecutionResult> results = new ArrayList<>(n);
-        // 预填充 null 占位，保证结果按原顺序
         for (int i = 0; i < n; i++) results.add(null);
 
         List<Integer> parallelIndices = new ArrayList<>();
@@ -106,9 +103,7 @@ public class ToolExecutionHandler {
                     results.set(originalIdx, syntheticError(requests.get(originalIdx),
                             "并行执行被中断: " + e.getMessage(), rec, state));
                 } catch (ExecutionException e) {
-                    // 单工具失败不影响其他工具
-                    log.error("[Tool] 并行执行失败 {}: {}",
-                            requests.get(originalIdx).name(), e.getMessage(), e);
+                    log.error("[工具] 并行执行失败 {}: {}", requests.get(originalIdx).name(), e.getMessage(), e);
                     results.set(originalIdx, syntheticError(requests.get(originalIdx),
                             "工具执行异常: " + e.getCause().getMessage(), rec, state));
                 }
@@ -135,12 +130,12 @@ public class ToolExecutionHandler {
      * 执行单个工具请求（含熔断检查、参数解析、执行、渲染、日志、todo_write 后处理）。
      */
     private ToolExecutionResult executeSingle(ToolExecutionRequest req, TurnRecord rec, SessionState state) {
-        // 被熔断的工具跳过执行，直接返回合成错误
+        // 被熔断的工具跳过执行
         if (loopDetector.isToolTripped(req.name())) {
             ToolOutcome tripped = ToolOutcome.failure(
                     "工具 " + req.name() + " 已被熔断（连续失败过多），请标记 blocked 或调整计划，不要再调用此工具");
             String rendered = resultRenderer.render(req.name(), tripped, state);
-            logger.toolExecuted(rec, req.name(), false, "(tripped)", rendered.length());
+            logger.toolExecuted(rec, req.name(), false, "(已熔断)", rendered.length());
             return ToolExecutionResult.of(req.id(), req.name(), tripped, rendered);
         }
 
@@ -156,7 +151,7 @@ public class ToolExecutionHandler {
 
         ToolExecutionResult result = ToolExecutionResult.of(req.id(), req.name(), outcome, rendered);
 
-        // todo_write 后处理：标记 todoBeenUsed + 记录快照用于无进展检测
+        // todo_write 后处理
         if (TODO_WRITE.equals(req.name()) && outcome.success()) {
             if (!state.hasTodoBeenUsed()) {
                 state.setTodoBeenUsed(true);
@@ -178,7 +173,7 @@ public class ToolExecutionHandler {
                                                TurnRecord rec, SessionState state) {
         ToolOutcome outcome = ToolOutcome.failure(errorMsg);
         String rendered = resultRenderer.render(req.name(), outcome, state);
-        logger.toolExecuted(rec, req.name(), false, "(error)", rendered.length());
+        logger.toolExecuted(rec, req.name(), false, "(错误)", rendered.length());
         return ToolExecutionResult.of(req.id(), req.name(), outcome, rendered);
     }
 
@@ -188,7 +183,7 @@ public class ToolExecutionHandler {
             return objectMapper.readValue(json, new TypeReference<>() {
             });
         } catch (Exception e) {
-            log.warn("[Tool] 参数解析失败: {}", json, e);
+            log.warn("[工具] 参数解析失败: {}", json, e);
             return Map.of();
         }
     }

@@ -2,16 +2,13 @@ package cn.kong.eon.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
-import dev.langchain4j.model.chat.request.json.JsonArraySchema;
-import dev.langchain4j.model.chat.request.json.JsonBooleanSchema;
-import dev.langchain4j.model.chat.request.json.JsonIntegerSchema;
-import dev.langchain4j.model.chat.request.json.JsonNumberSchema;
-import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
-import dev.langchain4j.model.chat.request.json.JsonSchemaElement;
+import dev.langchain4j.model.chat.request.json.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 参数类型清洗器。根据工具 Schema 声明的类型，对 LLM 返回的参数做统一类型转换。
@@ -45,7 +42,7 @@ public class ArgumentSanitizer {
 
             Object fixed = sanitizeValue(propName, schema, raw);
             if (fixed != raw) {
-                log.debug("[Sanitize] {}: {} ({}) -> {} ({})",
+                log.debug("[参数清洗] {}: {} ({}) -> {} ({})",
                         propName, raw, raw.getClass().getSimpleName(),
                         fixed, fixed != null ? fixed.getClass().getSimpleName() : "null");
                 cleaned.put(propName, fixed);

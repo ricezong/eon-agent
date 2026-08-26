@@ -48,7 +48,7 @@ public class WriteFileTool implements ToolExecutor {
             Files.writeString(resolvedPath, contents);
 
             int lineCount = contents.split("\n", -1).length;
-            log.info("write: {} ({} lines, {} chars)", filePath, lineCount, contents.length());
+            log.info("write: {} ({} 行, {} 字符)", filePath, lineCount, contents.length());
 
             return ToolOutcome.success("文件写入成功: " + filePath + "（" + lineCount + " 行）");
 
@@ -68,9 +68,6 @@ public class WriteFileTool implements ToolExecutor {
         return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
-    /**
-     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
-     */
     @Tool(name = "write", value = {
             "创建或覆盖文件。当用户需要保存笔记、文档或写入内容到文件时使用此工具。",
             "如果指定路径的文件已存在，会覆盖原文件内容。"

@@ -23,9 +23,7 @@ import java.time.Duration;
 import java.util.Map;
 
 /**
- * download_file 工具：从 URL 下载文件到本地文件系统。
- * - 流式写入，不经过模型上下文窗口（不受 50KB 限制）
- * - 支持大文件（上限 100MB）
+ * download_file 工具：从 URL 下载文件到本地文件系统。流式写入，支持大文件。
  */
 public class DownloadFileTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(DownloadFileTool.class);
@@ -113,7 +111,7 @@ public class DownloadFileTool implements ToolExecutor {
                         + "，上限 " + formatSize(maxFileSize));
             }
 
-            log.info("download_file done: {} ({} bytes)", localPath, bytesWritten);
+            log.info("download_file 完成: {} ({} 字节)", localPath, bytesWritten);
 
             return ToolOutcome.success("文件下载成功: " + fileName
                     + "（" + formatSize(bytesWritten) + "）");
@@ -147,9 +145,6 @@ public class DownloadFileTool implements ToolExecutor {
         return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
-    /**
-     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
-     */
     @Tool(name = "download_file", value = {
             "从指定 URL 下载文件并保存到本地。当用户要求下载文件、保存远程内容到本地时使用此工具。",
             "文件以流式方式直接写入本地磁盘，不经过对话上下文，支持大文件（上限 100MB）。"
@@ -161,9 +156,7 @@ public class DownloadFileTool implements ToolExecutor {
         return null;
     }
 
-    /**
-     * 仅供测试使用，生产环境通过 {@link #descriptor(long, HttpClient)} 传入配置。
-     */
+    /** 默认构造，生产环境通过 descriptor(long, HttpClient) 传入配置 */
     public static ToolDescriptor descriptor() {
         return ToolDescriptor.fromAnnotated(new DownloadFileTool(), ToolPermission.RESTRICTED_WRITE);
     }

@@ -113,11 +113,11 @@ public class ToolRegistry {
                 // 根据工具 Schema 清洗参数类型（处理 LLM 输出类型不规范的问题）
                 Map<String, Object> sanitized = sanitizer.sanitize(descriptor.getSpecification(), arguments);
                 ToolOutcome result = descriptor.getExecutor().execute(sanitized, state, context);
-                log.debug("本地工具执行: {} -> success={} {} 字符", name, result.success(), result.content().length());
+                log.debug("本地工具执行: {} -> 成功={} {} 字符", name, result.success(), result.content().length());
                 return result;
             } catch (Exception e) {
                 log.error("本地工具执行失败: {}", name, e);
-                return ToolOutcome.failure("Tool execution failed: " + e.getMessage());
+                return ToolOutcome.failure("工具执行失败: " + e.getMessage());
             }
         }
 
@@ -126,15 +126,15 @@ public class ToolRegistry {
             try {
                 String argsJson = convertArgsToJson(arguments);
                 ToolOutcome result = mcpManager.executeTool(name, argsJson);
-                log.debug("MCP 工具执行: {} -> success={} {} 字符", name, result.success(), result.content().length());
+                log.debug("MCP 工具执行: {} -> 成功={} {} 字符", name, result.success(), result.content().length());
                 return result;
             } catch (Exception e) {
                 log.error("MCP 工具执行失败: {}", name, e);
-                return ToolOutcome.failure("MCP tool execution failed: " + e.getMessage());
+                return ToolOutcome.failure("MCP 工具执行失败: " + e.getMessage());
             }
         }
 
-        return ToolOutcome.failure("Tool not found: " + name);
+        return ToolOutcome.failure("工具不存在: " + name);
     }
 
     /**

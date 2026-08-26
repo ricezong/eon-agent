@@ -57,7 +57,7 @@ public class StopStateMachine {
      * maxSteps 达到上限时的停止处理。
      */
     public TurnAction handleMaxSteps(SessionState state) {
-        log.warn("[STOP] 达到最大步数: {}", config.getLoop().getMaxSteps());
+        log.warn("[停止] 达到最大步数: {}", config.getLoop().getMaxSteps());
         StopReason reason = new StopReason(
                 StopCategory.MAX_STEPS_REACHED,
                 "达到最大步数限制 (" + config.getLoop().getMaxSteps() + ")",
@@ -91,7 +91,7 @@ public class StopStateMachine {
             if (rec != null) {
                 logger.stopRequested(rec, reason.getCategory(), reason.getMessage(), reason.getGraceSteps());
             } else {
-                log.warn("[STOP] 请求停止: {} | 原因: {} | 宽限期: {}",
+                log.warn("[停止] 请求停止: {} | 原因: {} | 宽限期: {}",
                         reason.getCategory(), reason.getMessage(), reason.getGraceSteps());
             }
             finalizer.finalizeIfPending(rec, state);
@@ -106,7 +106,7 @@ public class StopStateMachine {
         if (rec != null) {
             logger.stopEscalated(rec, reason.getCategory(), reason.getMessage());
         } else {
-            log.warn("[STOP] 升级停止: {} | 原因: {}", reason.getCategory(), reason.getMessage());
+            log.warn("[停止] 升级停止: {} | 原因: {}", reason.getCategory(), reason.getMessage());
         }
         finalizer.finalizeIfPending(rec, state);
         return new FireResult.Continue();

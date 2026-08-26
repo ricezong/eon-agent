@@ -27,7 +27,7 @@ public class PathResolver {
      */
     public Path resolve(String rawPath) {
         if (rawPath == null || rawPath.isBlank()) {
-            throw new IllegalArgumentException("Path is empty");
+            throw new IllegalArgumentException("路径为空");
         }
 
         Path resolved;
@@ -42,7 +42,7 @@ public class PathResolver {
         // 沙箱校验：解析后路径必须以 workspace 开头
         if (sandboxEnabled && !resolved.startsWith(workspace)) {
             throw new IllegalArgumentException(
-                    "Path '" + rawPath + "' escapes workspace boundary (resolved: " + resolved + ")");
+                    "路径 '" + rawPath + "' 超出工作区边界 (解析后: " + resolved + ")");
         }
 
         return resolved;

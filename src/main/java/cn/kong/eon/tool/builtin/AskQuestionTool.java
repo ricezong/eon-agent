@@ -30,18 +30,14 @@ public class AskQuestionTool implements ToolExecutor {
         return "{questions: " + count + "}";
     }
 
-    /**
-     * Schema 专用 POJO：选项输入。
-     */
+    /** 选项输入 */
     public record OptionInput(
             String id,
             String label
     ) {
     }
 
-    /**
-     * Schema 专用 POJO：问题输入。
-     */
+    /** 问题输入 */
     public record QuestionInput(
             String id,
             String prompt,
@@ -50,9 +46,6 @@ public class AskQuestionTool implements ToolExecutor {
     ) {
     }
 
-    /**
-     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
-     */
     @Tool(name = "AskQuestion", value = {
             "向用户收集结构化的多选答案。提供一个或多个带选项的问题，在适合多选时设置 allow_multiple。",
             "当你需要通过结构化的问题格式从用户处收集特定信息时使用此工具。",

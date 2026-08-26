@@ -109,7 +109,7 @@ public class ContextCompactHook implements Hook.PreModelHook {
         }
         long postCompressTokens = ctx.estimateTokens();
         String trigger = waterTriggered ? "water " + String.format("%.0f%%", waterLevel * 100) : "turn " + state.getTurnCount();
-        log.info("[PreModel] ContextCompact: {} | {} -> {} msgs | est. {} -> {} tokens",
+        log.info("[上下文压缩] {} | {} -> {} 条消息 | 估算 {} -> {} tokens",
                 trigger, transcript.size(), workingCopy.size(), usedTokens, postCompressTokens);
 
         return HookResult.ok();

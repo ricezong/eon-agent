@@ -39,12 +39,12 @@ public class FailureBreakerHook implements Hook.PostToolHook {
         LoopDetector.DetectionResult dr = loopDetector.recordToolResult(toolName, success);
         if (dr.shouldStop()) {
             // 单工具熔断：注入 nudge 提示 LLM 不要再调用此工具，但不触发会话级优雅停止
-            log.warn("[PostTool] FailureBreaker: tool '{}' tripped - {}", toolName, dr.message());
+            log.warn("[失败熔断] 工具 '{}' 已熔断 - {}", toolName, dr.message());
             state.getPendingNudges().add(dr.message());
             return HookResult.ok();
         }
         if (dr.shouldWarn()) {
-            log.info("[PostTool] FailureBreaker: WARN - {}", dr.message());
+            log.info("[失败熔断] 告警 - {}", dr.message());
             state.getPendingNudges().add(dr.message());
         }
         return HookResult.ok();

@@ -49,7 +49,7 @@ public class PairingRepairer {
                         }
                     }
                     if (filtered.isEmpty()) {
-                        log.warn("[Compress] PairingRepair: 丢弃重复 AiMessage（tool_use ID 已存在）");
+                        log.warn("[压缩] 配对修复: 丢弃重复 AiMessage（tool_use ID 已存在）");
                         continue;
                     }
                     AiMessage filteredAi = ai.text() != null
@@ -60,10 +60,10 @@ public class PairingRepairer {
                     // 为缺失结果的 tool_use 插入合成错误
                     for (ToolExecutionRequest req : filtered) {
                         if (!seenToolResultIds.contains(req.id())) {
-                            log.warn("[Compress] PairingRepair: 为孤立 tool_use 插入合成错误: {} ({})", req.id(), req.name());
+                            log.warn("[压缩] 配对修复: 为孤立 tool_use 插入合成错误: {} ({})", req.id(), req.name());
                             insertedSynthetics++;
                             result.add(ToolExecutionResultMessage.from(req.id(), req.name(),
-                                    "[SYNTHETIC] 工具结果缺失（可能被压缩），请重新调用此工具获取最新结果"));
+                                    "[合成] 工具结果缺失（可能被压缩），请重新调用此工具获取最新结果"));
                         }
                     }
                 } else {
@@ -72,7 +72,7 @@ public class PairingRepairer {
             } else if (msg instanceof ToolExecutionResultMessage trm) {
                 // 丢弃孤立的 tool_result
                 if (!seenToolUseIds.contains(trm.id())) {
-                    log.debug("[Compress] PairingRepair: 丢弃孤立 tool_result {}", trm.id());
+                    log.debug("[压缩] 配对修复: 丢弃孤立 tool_result {}", trm.id());
                     droppedResults++;
                     continue;
                 }
@@ -83,7 +83,7 @@ public class PairingRepairer {
         }
 
         if (droppedResults > 0 || insertedSynthetics > 0) {
-            log.info("[Compress] PairingRepair: 丢弃 {} 个孤立结果，插入 {} 个合成错误", droppedResults, insertedSynthetics);
+            log.info("[压缩] 配对修复: 丢弃 {} 个孤立结果，插入 {} 个合成错误", droppedResults, insertedSynthetics);
         }
         return result;
     }

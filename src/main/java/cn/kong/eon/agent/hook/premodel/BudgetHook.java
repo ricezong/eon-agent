@@ -45,7 +45,7 @@ public class BudgetHook implements Hook.PreModelHook {
         double ratio = maxBudget > 0 ? (double) used / maxBudget : 0.0;
 
         if (ratio >= budget.getHardThreshold()) {
-            log.warn("[PreModel] Budget: HARD exceeded {}% ({}/{}) → STOP",
+            log.warn("[预算] 硬超限 {}% ({}/{}) → 停止",
                     String.format("%.0f", ratio * 100), used, maxBudget);
             // 请求优雅停止
             StopReason reason = new StopReason(
@@ -58,7 +58,7 @@ public class BudgetHook implements Hook.PreModelHook {
         // 优雅停止恢复后重置 softTriggered
         if (ratio < budget.getSoftThreshold() && state.isBudgetSoftTriggered()) {
             state.setBudgetSoftTriggered(false);
-            log.warn("[PreModel] Budget: 软阈值重置（用量降至 {}% 以下）", String.format("%.0f", budget.getSoftThreshold() * 100));
+            log.warn("[预算] 软阈值重置（用量降至 {}% 以下）", String.format("%.0f", budget.getSoftThreshold() * 100));
         }
 
         if (ratio >= budget.getSoftThreshold() && !state.isBudgetSoftTriggered()) {
@@ -70,7 +70,7 @@ public class BudgetHook implements Hook.PreModelHook {
                             + "不要再发起新的工具调用。",
                     used, maxBudget, ratio * 100, remainingSteps);
             state.addNudge(nudge);
-            log.info("[PreModel] Budget: SOFT {}% ({}/{})", String.format("%.0f", ratio * 100), used, maxBudget);
+            log.info("[预算] 软告警 {}% ({}/{})", String.format("%.0f", ratio * 100), used, maxBudget);
         }
 
         return HookResult.ok();

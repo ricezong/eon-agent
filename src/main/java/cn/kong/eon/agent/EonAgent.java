@@ -31,23 +31,7 @@ import java.util.*;
 
 /**
  * Agent 统一引擎。Core Loop 组装上下文并调用 LLM，Extension Loop 执行工具后回到 Core Loop。
- * <p>
- * 架构分层：
- * <pre>
- *   runStream ──→ while loop ──→ executeTurn ──→ { PreModel → LLM → PostModel → Extension Loop }
- *                                      ↑                              ↓
- *                                      └──────── TurnAction ─────────┘
- *
- *   executeTurn 内部阶段（序号即执行顺序）：
- *     1. PreModel Hooks   — 预算检查、上下文压缩
- *     2. 构建 messages     — 从 transcript + memories + nudges 组装
- *     3. 调用 LLM          — 获取 AI 响应和工具调用请求
- *     4. 无工具调用？      — 是→ handleNoToolCalls（截断/完成）
- *     5. PostModel Hooks   — 循环检测
- *     6. Extension Loop    — PreTool → Execute → PostTool
- *     7. 回填              — AI 消息和工具结果写入 JSONL
- *     8. Grace 消耗        — stop 期间 LLM 仍在调用工具时消耗 grace step
- * </pre>
+ * 执行阶段：PreModel → LLM → PostModel → Extension Loop → 回填 → Grace 消耗。
  */
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
@@ -70,7 +54,7 @@ public class EonAgent {
     private final List<Hook.PostToolHook> postToolHooks = new ArrayList<>();
     private int totalHookCount = 0;
 
-    private TurnRecord currentRec;  // null 表示在 turn 之外
+    private TurnRecord currentRec;
 
     public EonAgent(AgentConfig config,
                     LlmClient llmClient,
@@ -119,7 +103,7 @@ public class EonAgent {
     }
 
     /**
-     * 关闭 Agent 释放资源（工具线程池、工具持有的资源等）。
+     * 关闭 Agent 释放资源。
      */
     public void shutdown() {
         if (toolHandler != null) {
@@ -138,10 +122,7 @@ public class EonAgent {
     }
 
     /**
-     * 运行 Agent 主循环（带流式回调）。
-     * <p>
-     * 在关键节点调用 {@link TurnCallback}，用于 SSE 事件推送。
-     * callback 为 null 时行为与 {@link #run} 完全一致。
+     * 运行 Agent 主循环（带流式回调）。callback 为 null 时行为与 run 一致。
      */
     public String runStream(SessionState state, TurnCallback callback) {
         initRun(state);
@@ -150,18 +131,16 @@ public class EonAgent {
         }
 
         while (true) {
-            // 步数上限检查：正常用 maxSteps，stop 期间切换到 absoluteMaxSteps
             int effectiveMax = state.isStopRequested()
                     ? config.getLoop().getAbsoluteMaxSteps()
                     : config.getLoop().getMaxSteps();
             if (state.getTurnCount() >= effectiveMax) {
-                // maxSteps 达到上限，尝试优雅停止
                 TurnAction action = stopStateMachine.handleMaxSteps(state);
                 String output = action instanceof TurnAction.Exit exit ? exit.output() : "";
                 return completeExit(state, output, callback, true);
             }
 
-            state.incrementTurn(); // 达到步数上限时切换 absoluteMaxSteps
+            state.incrementTurn();
             int turnStartTokens = state.getUsageAccum().getTotalTokens();
 
             if (callback != null) {
@@ -193,7 +172,7 @@ public class EonAgent {
     /**
      * 统一的退出处理：渲染记忆引用 → 记录完成日志 → 回调输出。
      *
-     * @param forced true 表示被强制终止（maxSteps/异常），调用 onTerminate；false 表示正常完成，调用 onOutput
+     * @param forced true 表示被强制终止，false 表示正常完成
      */
     private String completeExit(SessionState state, String rawOutput, TurnCallback callback, boolean forced) {
         String output = renderMemoryReferences(rawOutput);
@@ -211,7 +190,7 @@ public class EonAgent {
     }
 
     /**
-     * 将 [[memory:xxx]] 引用替换为标题（内容摘要）。
+     * 将 [[memory:xxx]] 引用替换为标题。
      */
     private String renderMemoryReferences(String text) {
         if (text == null || text.isEmpty()) return text;
@@ -234,17 +213,17 @@ public class EonAgent {
         try {
             logger.turnHeader(rec, state);
 
-            // 1. PreModel Hooks（预算检查、上下文压缩等）
+            // PreModel Hooks（预算检查、上下文压缩等）
             ContextBuilder ctx = buildContext(state);
             FireResult preModel = firePreModelHooks(state, ctx);
             if (preModel instanceof FireResult.Exit exit) return new TurnAction.Exit(exit.output());
 
-            // 2. 构建 messages + 获取工具 Schema
+            // 构建 messages + 获取工具 Schema
             List<ChatMessage> messages = ctx.build();
             state.setCurrentMessages(messages);
             logger.contextInfo(rec, ctx, messages, state, toolRegistry.getAllToolNames().size());
 
-            // 3. 调用 LLM
+            // 调用 LLM
             LlmResponse response = llmClient.chat(messages, toolRegistry.getSpecifications());
             state.setLastResponse(response);
             int deltaTokens = response.usage() != null ? response.usage().getTotalTokens() : 0;
@@ -259,42 +238,39 @@ public class EonAgent {
                 notifyLlmResponse(callback, thought, requests);
             }
 
-            // 4. 无工具调用 → 任务完成或截断处理
+            // 无工具调用 → 任务完成或截断处理
             if (requests == null || requests.isEmpty()) {
                 return handleNoToolCalls(rec, state, thought);
             }
 
-            // 5. PostModel Hooks（循环检测等）
+            // PostModel Hooks（循环检测等）
             validateToolExistence(state, requests);
             state.setPendingToolCalls(requests);
             FireResult postModel = firePostModelHooks(state, response);
             if (postModel instanceof FireResult.Exit exit) return new TurnAction.Exit(exit.output());
             if (postModel instanceof FireResult.Skip) return new TurnAction.Continue();
 
-            // 6. Extension Loop: PreTool → Execute → PostTool
+            // Extension Loop: PreTool → Execute → PostTool
             FireResult extension = executeExtensionLoop(rec, state, requests, callback);
             if (extension instanceof FireResult.Exit exit) return new TurnAction.Exit(exit.output());
 
-            // 7. 回填 AI 消息和工具结果到 JSONL
+            // 回填 AI 消息和工具结果到 JSONL
             finalizer.finalizeAndAppend(rec, state);
             logger.turnDone(rec, state, turnStartTokens);
 
-            // 8. stop 期间消耗 grace（LLM 仍在调用工具时消耗 grace step）
+            // stop 期间消耗 grace
             if (state.isStopRequested()) {
                 return stopStateMachine.consumeGraceStep(rec, state, "stop 期间 LLM 仍在调用工具");
             }
 
             return new TurnAction.Continue();
         } finally {
-            // 兜底：确保任何退出路径都不会丢失未回填的 AI 消息和工具结果
+            // 兜底：确保任何退出路径都不会丢失未回填的消息
             finalizer.finalizeIfPending(rec, state);
             flushTurn(rec);
         }
     }
 
-    /**
-     * flush 当前 turn 日志并清理 currentRec 引用。
-     */
     private void flushTurn(TurnRecord rec) {
         logger.flush(rec);
         this.currentRec = null;
@@ -347,7 +323,7 @@ public class EonAgent {
             ToolExecutionResult result = results.get(i);
             String summary = result.content();
             if (summary != null && summary.length() > 200) {
-                summary = summary.substring(0, 200) + "...(truncated)";
+                summary = summary.substring(0, 200) + "...(已截断)";
             }
             final String toolName = requests.get(i).name();
             final boolean success = result.success();
@@ -369,10 +345,9 @@ public class EonAgent {
 
 
     /**
-     * 处理无工具调用的情况（方案语义：无工具调用 = 任务完成，直接退出）。
+     * 处理无工具调用的情况：截断检测或正常完成。
      */
     private TurnAction handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
-        // 截断检测
         if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
             logger.outputTruncated(rec);
             state.addFormatCorrection(
@@ -381,7 +356,7 @@ public class EonAgent {
             return new TurnAction.Continue();
         }
 
-        // 正常聊天结束（stop 期间 LLM 未调用工具 = 已输出总结，直接退出）
+        // stop 期间 LLM 未调用工具 = 已输出总结，直接退出
         finalizer.finalizeAndAppend(rec, state);
         return new TurnAction.Exit(thought);
     }
@@ -419,7 +394,7 @@ public class EonAgent {
                 (hook, s) -> hook.afterToolExecution(s, toolName, success),
                 reason -> stopStateMachine.handleStop(currentRec, state, reason),
                 () -> {
-                }  // PostTool stop 不 finalize
+                }
         );
     }
 

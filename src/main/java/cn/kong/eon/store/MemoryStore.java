@@ -15,9 +15,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 跨会话记忆存储。
- * 记忆文件存储在 {storage.base_dir}/memories/ 下，跨会话共享。
- * P3 阶段将完善 update_memory 工具集成；当前为最小可用实现。
+ * 跨会话记忆存储。记忆文件存储在 {storage.base_dir}/memories/ 下，跨会话共享。
  */
 public class MemoryStore {
     private static final Logger log = LoggerFactory.getLogger(MemoryStore.class);
@@ -138,8 +136,7 @@ public class MemoryStore {
     }
 
     /**
-     * 将文本中的 [[memory:xxx]] 引用替换为 "标题（内容摘要）"。
-     * 用于最终输出渲染。
+     * 将文本中的 [[memory:xxx]] 引用替换为标题（内容摘要）。
      */
     public String renderReferences(String text) {
         if (text == null || text.isEmpty()) return text;

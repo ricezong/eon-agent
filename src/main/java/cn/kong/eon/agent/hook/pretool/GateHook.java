@@ -65,7 +65,7 @@ public class GateHook implements Hook.PreToolHook {
         for (ToolExecutionRequest req : requests) {
             if (!toolRegistry.isDestructive(req.name())) continue;
 
-            log.warn("[PreTool] Gate: 破坏性工具 '{}' 已批准 | 参数: {} | turn: {}",
+            log.warn("[工具门禁] 破坏性工具 '{}' 已批准 | 参数: {} | turn: {}",
                     req.name(), req.arguments(), state.getTurnCount());
 
             String requiredParam = DESTRUCTIVE_REQUIRED_PARAMS.get(req.name());
@@ -73,7 +73,7 @@ public class GateHook implements Hook.PreToolHook {
 
             String value = extractParam(req.arguments(), requiredParam);
             if (value == null || value.isBlank()) {
-                log.warn("[PreTool] Gate: 拒绝 '{}' 缺少必要参数 '{}' → STOP",
+                log.warn("[工具门禁] 拒绝 '{}' 缺少必要参数 '{}' → 停止",
                         req.name(), requiredParam);
                 StopReason reason = new StopReason(
                         StopCategory.GATE_REJECTED,
@@ -95,7 +95,7 @@ public class GateHook implements Hook.PreToolHook {
             if (node.has(fieldName)) return node.get(fieldName).asText();
             return null;
         } catch (Exception e) {
-            log.warn("[PreTool] Gate: 参数解析失败: {}", argumentsJson);
+            log.warn("[工具门禁] 参数解析失败: {}", argumentsJson);
             return null;
         }
     }

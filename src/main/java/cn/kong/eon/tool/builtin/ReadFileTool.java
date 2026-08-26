@@ -42,7 +42,7 @@ public class ReadFileTool implements ToolExecutor {
             if (content == null) {
                 return ToolOutcome.failure("找不到 artifact 引用: " + refId);
             }
-            log.info("read_file: artifact://{} ({} chars)", refId, content.length());
+            log.info("read_file: artifact://{} ({} 字符)", refId, content.length());
             return ToolOutcome.success(content);
         }
 
@@ -70,7 +70,7 @@ public class ReadFileTool implements ToolExecutor {
             int totalLines = lines.length;
 
             if (totalLines == 1 && lines[0].isEmpty()) {
-                log.info("read_file: {} (empty)", targetFile);
+                log.info("read_file: {} (空文件)", targetFile);
                 return ToolOutcome.success("文件为空。");
             }
 
@@ -79,7 +79,7 @@ public class ReadFileTool implements ToolExecutor {
             int endLine = Math.min(startLine - 1 + maxLines, totalLines);
 
             if (startLine > totalLines) {
-                log.info("read_file: {} (offset {} exceeds {} lines)", targetFile, startLine, totalLines);
+                log.info("read_file: {} (offset {} 超出总行数 {})", targetFile, startLine, totalLines);
                 return ToolOutcome.success("起始行 " + startLine + " 超出文件总行数（共 " + totalLines + " 行）。");
             }
 
@@ -93,7 +93,7 @@ public class ReadFileTool implements ToolExecutor {
                 result += "\n\n(文件共 " + totalLines + " 行，已显示第 " + startLine + "-" + endLine + " 行)";
             }
 
-            log.info("read_file: {} (lines {}-{} of {})", targetFile, startLine, endLine, totalLines);
+            log.info("read_file: {} (第 {}-{} 行，共 {} 行)", targetFile, startLine, endLine, totalLines);
 
             return ToolOutcome.success(result);
 
@@ -113,9 +113,6 @@ public class ReadFileTool implements ToolExecutor {
         return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
-    /**
-     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
-     */
     @Tool(name = "read_file", value = {
             "读取本地文件的内容。当用户需要查看文件、文档或笔记时使用此工具。",
             "对于较长的文件，可以通过 offset 和 limit 参数分段读取。",
@@ -127,7 +124,7 @@ public class ReadFileTool implements ToolExecutor {
             @P(name = "offset", description = "从第几行开始读取（从 1 开始计数）。不指定则从头读取。", required = false) Integer offset,
             @P(name = "limit", description = "最多读取多少行。不指定则读取整个文件。", required = false) Integer limit
     ) {
-        return null; // 仅供 Schema 定义，实际执行走 execute()
+        return null;
     }
 
     public static ToolDescriptor descriptor() {

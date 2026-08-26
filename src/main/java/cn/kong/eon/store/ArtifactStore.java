@@ -42,7 +42,7 @@ public class ArtifactStore {
         try {
             Files.writeString(filePath, content);
         } catch (IOException e) {
-            throw new RuntimeException("Failed to write artifact: " + filePath, e);
+            throw new RuntimeException("写入 artifact 失败: " + filePath, e);
         }
 
         ArtifactRef ref = ArtifactRef.of(refId, source, summary, content.length(), filePath.toString());

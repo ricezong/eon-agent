@@ -8,19 +8,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 工具结果渲染器。统一格式化工具输出，控制大小，注入元数据。
- * <p>
- * 统一输出格式（按文档第四节设计）：
- * <pre>
- * [Tool result] toolName
- * ┌─ 状态: 成功/失败           ← 状态信息
- * ├─ 格式化的内容              ← 主体内容
- * │   ...
- * ├─ 截断提示 (如果被截断)     ← 截断状态信息
- * └─ 元数据 (引用ID等)         ← 统计信息
- * </pre>
- * <p>
- * 大结果处理：> {@value #ARTIFACT_THRESHOLD} 字符时原文落盘为 artifact，
- * 消息只留头部 + 尾部摘要 + 引用。
+ * 大结果处理：超过阈值时原文落盘为 artifact，消息只留头部 + 尾部摘要 + 引用。
  */
 public class ToolResultRenderer {
     private static final Logger log = LoggerFactory.getLogger(ToolResultRenderer.class);
@@ -53,11 +41,10 @@ public class ToolResultRenderer {
             refId = ref.getRefId();
             displayContent = summary;
             truncated = true;
-            log.info("[Render] {} -> artifact {} ({} -> {} chars)",
+            log.info("[渲染] {} -> artifact {} ({} -> {} 字符)",
                     toolName, refId, rawResult.length(), summary.length());
         }
 
-        // 统一格式化输出
         StringBuilder sb = new StringBuilder();
         sb.append("[Tool result] ").append(toolName).append("\n");
         sb.append("├─ 状态: ").append(success ? "成功" : "失败").append("\n");
@@ -76,9 +63,7 @@ public class ToolResultRenderer {
     }
 
     /**
-     * 头尾保留摘要：保留前 {@value #SUMMARY_HEAD} 字符和后 {@value #SUMMARY_TAIL} 字符，
-     * 中间用省略号替代。基于内容结构特点：头部通常包含声明和概述，
-     * 尾部通常包含结论和出口。
+     * 头尾保留摘要：保留前 SUMMARY_HEAD 字符和后 SUMMARY_TAIL 字符，中间用省略号替代。
      */
     private String extractHeadTailSummary(String content) {
         if (content.length() <= SUMMARY_HEAD + SUMMARY_TAIL) return content;

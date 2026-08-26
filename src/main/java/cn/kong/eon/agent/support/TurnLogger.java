@@ -14,7 +14,6 @@ import java.util.List;
 
 /**
  * Turn 日志器。收集式设计：各步骤写入 TurnRecord，turn 结束后 flush 输出 2 行摘要日志。
- * Agent 级别日志（启动/完成/硬终止）立即打印。
  */
 public class TurnLogger {
     private static final Logger log = LoggerFactory.getLogger(TurnLogger.class);
@@ -78,7 +77,6 @@ public class TurnLogger {
 
 
     public void flush(TurnRecord rec) {
-        // Line 1: Header — Turn 号 + 上下文 + LLM 摘要
         StringBuilder header = new StringBuilder(256);
         header.append("Turn ").append(rec.turnNumber);
         if (rec.stopCategory != null) {
@@ -97,7 +95,6 @@ public class TurnLogger {
         }
         log.info(header.toString());
 
-        // Line 2: Done — 汇总
         StringBuilder done = new StringBuilder(128);
         done.append("  └ Turn ").append(rec.turnNumber).append(" done");
         done.append(" │ ").append(rec.okCount).append("ok/").append(rec.failCount).append("fail");
@@ -106,13 +103,12 @@ public class TurnLogger {
         done.append(" (").append(String.format("%.0f", rec.waterRatio * 100)).append("%)");
         log.info(done.toString());
 
-        // Stop 事件（如有）
         for (TurnRecord.StopEvent event : rec.stopEvents) {
             String detail = switch (event.type()) {
                 case REQUESTED ->
-                        "STOP requested: " + event.category() + " │ " + event.message() + " │ grace=" + event.graceRemaining();
-                case ESCALATED -> "STOP escalated: " + event.category() + " │ " + event.message();
-                case GRACE_CONSUMED -> "GRACE consumed (" + event.message() + ") │ remaining=" + event.graceRemaining();
+                        "停止请求: " + event.category() + " │ " + event.message() + " │ 宽限期=" + event.graceRemaining();
+                case ESCALATED -> "停止升级: " + event.category() + " │ " + event.message();
+                case GRACE_CONSUMED -> "宽限期消耗 (" + event.message() + ") │ 剩余=" + event.graceRemaining();
             };
             log.warn("  │ {}", detail);
         }

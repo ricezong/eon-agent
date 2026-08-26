@@ -168,7 +168,7 @@ public class JsonlStore {
                 }
                 case "tool" ->
                         ToolExecutionResultMessage.from(toolCallId, toolName != null ? toolName : "unknown", content != null ? content : "");
-                default -> throw new IllegalStateException("Unknown message type: " + type);
+                default -> throw new IllegalStateException("未知消息类型: " + type);
             };
         }
     }

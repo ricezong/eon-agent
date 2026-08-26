@@ -54,7 +54,7 @@ public class ToolDescriptor {
         List<ToolSpecification> specs = ToolSpecifications.toolSpecificationsFrom(executor);
         if (specs.isEmpty()) {
             throw new IllegalArgumentException(
-                    "No @Tool-annotated methods found on " + executor.getClass().getName());
+                    "未在 " + executor.getClass().getName() + " 上找到 @Tool 注解方法");
         }
         ToolSpecification spec = specs.get(0);
         return new ToolDescriptor(spec.name(), spec.description(), permission, spec, executor);

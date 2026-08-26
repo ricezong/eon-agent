@@ -28,11 +28,11 @@ public class SessionState {
 
     private transient StopState stopState;   // 优雅停止状态
 
-    // 运行时临时字段（不序列化）
-    private transient List<ChatMessage> currentMessages;    // 当前轮构建的 messages
-    private transient LlmResponse lastResponse;            // 最近一轮 LLM 响应
+    // 运行时临时字段
+    private transient List<ChatMessage> currentMessages;
+    private transient LlmResponse lastResponse;
     private transient List<ToolExecutionRequest> pendingToolCalls;
-    private transient List<ToolExecutionResult> lastToolResults;   // 上一轮工具执行结果
+    private transient List<ToolExecutionResult> lastToolResults;
 
     public SessionState() {
         this.turnCount = 0;

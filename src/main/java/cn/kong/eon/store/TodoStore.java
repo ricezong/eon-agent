@@ -32,7 +32,7 @@ public class TodoStore {
             t.setLastModifiedTurn(currentTurn);
             todos.put(t.getId(), t);
         }
-        log.debug("TodoStore replaced: {} items", todos.size());
+        log.debug("TodoStore 全量替换: {} 个条目", todos.size());
         return getAll();
     }
 
@@ -51,7 +51,7 @@ public class TodoStore {
             t.setLastModifiedTurn(currentTurn);
             todos.put(t.getId(), t);
         }
-        log.debug("TodoStore merged: {} items total", todos.size());
+        log.debug("TodoStore 合并: 共 {} 个条目", todos.size());
         return getAll();
     }
 

@@ -16,26 +16,21 @@ public class TurnRecord {
     StopCategory stopCategory;
     int stopGraceRemaining;
 
-    // Context
     int messageCount;
     long estimatedTokens;
     int catalogToolCount;
 
-    // LLM
     List<String> toolNames = new ArrayList<>();
     int llmDeltaTokens;
     boolean outputTruncated;
 
-    // Tools
     final List<ToolEntry> tools = new ArrayList<>();
 
-    // Turn 汇总
     int turnDeltaTokens;
     int okCount;
     int failCount;
     double waterRatio;
 
-    // Stop 事件
     final List<StopEvent> stopEvents = new ArrayList<>();
 
     record ToolEntry(String name, boolean success, String argsSummary, int renderedLen) {

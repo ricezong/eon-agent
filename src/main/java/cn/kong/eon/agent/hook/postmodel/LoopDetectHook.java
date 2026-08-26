@@ -55,7 +55,7 @@ public class LoopDetectHook implements Hook.PostModelHook {
 
         LoopDetector.DetectionResult dr = loopDetector.recordToolCalls(requests);
         if (dr.shouldStop()) {
-            log.warn("[PostModel] LoopDetect: STOP - {}", dr.message());
+            log.warn("[循环检测] 停止 - {}", dr.message());
             StopReason reason = new StopReason(
                     StopCategory.LOOP_DETECTED,
                     dr.message(),
@@ -63,7 +63,7 @@ public class LoopDetectHook implements Hook.PostModelHook {
             return HookResult.stop(reason);
         }
         if (dr.shouldWarn()) {
-            log.info("[PostModel] LoopDetect: WARN - {}", dr.message());
+            log.info("[循环检测] 告警 - {}", dr.message());
             state.getPendingNudges().add(dr.message());
         }
         return HookResult.ok();

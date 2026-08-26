@@ -68,7 +68,7 @@ public class ListDirTool implements ToolExecutor {
             }
 
             sb.append("\n").append(entries.size()).append(" 个条目");
-            log.info("list_dir: {} ({} entries)", targetDir, entries.size());
+            log.info("list_dir: {} ({} 个条目)", targetDir, entries.size());
 
             return ToolOutcome.success(sb.toString());
 
@@ -100,9 +100,6 @@ public class ListDirTool implements ToolExecutor {
         return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
-    /**
-     * @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。
-     */
     @Tool(name = "list_dir", value = {
             "浏览目录中的文件和子目录。当用户需要查看某个文件夹里有什么文件时使用此工具。",
             "返回文件名、类型和大小信息。"
