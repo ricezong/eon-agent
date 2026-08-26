@@ -81,6 +81,8 @@ public class TurnRecord {
     TurnRecord turnDone(int turnStartTokens, long totalTokens, long maxBudget,
                         int okCount, int failCount) {
         this.turnDeltaTokens = (int) (totalTokens - turnStartTokens);
+        this.usedTokens = totalTokens;
+        this.maxTokens = maxBudget;
         this.waterRatio = maxBudget > 0 ? (double) totalTokens / maxBudget : 0.0;
         this.okCount = okCount;
         this.failCount = failCount;

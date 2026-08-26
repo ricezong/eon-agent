@@ -6,7 +6,7 @@ llm:
   model_name: "mimo-v2.5"                 # 模型名称
   temperature: 0.7                        # 采样温度
   timeout: 120                            # 请求超时（秒）
-  max_tokens: 12800                       # 单次响应最大输出 token 数
+  max_tokens: 10000                       # 单次响应最大输出 token 数
 
 # 百度千帆 AI Search（web_search 工具使用）
 web_search:
@@ -19,10 +19,10 @@ mode:
   checkpoint_enabled: true                # 启用 Checkpoint 崩溃恢复
 
 context:
-  max_tokens: 120000                      # 上下文窗口大小
+  max_tokens: 50000                      # 上下文窗口大小
   budget_ratio: 0.7                       # 输入 token 占比上限
   system_prompt_path: "prompts/system_prompt.md"  # 系统提示词路径
-  summarize_max_input_chars: 50000       # 摘要输入上限（字符数）
+  summarize_max_input_chars: 30000       # 摘要输入上限（字符数）
   snip_keep_chars: 2000                   # Snip 头尾保留字符数（头1000+尾1000）
   summarize_max_output_chars: 2000       # 摘要输出上限（字符数）
   tail_guard_min_turns: 3                # 尾部保护最小轮次
@@ -33,7 +33,7 @@ context:
 
 # 会话级 Token 预算（控制整个会话累计消耗）
 budget:
-  max_tokens: 10000000                    # 会话允许消耗的累计 token 上限
+  max_tokens: 100000                      # 会话允许消耗的累计 token 上限
   soft_threshold: 0.75                    # 软阈值（75%）：注入 nudge 提示 LLM 收尾
   hard_threshold: 1.0                     # 硬阈值（100%）：触发优雅停止
   grace_steps: 3                          # 软/硬阈值触发后给的额外轮次

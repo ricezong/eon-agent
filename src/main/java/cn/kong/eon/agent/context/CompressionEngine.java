@@ -76,18 +76,10 @@ public class CompressionEngine {
                                                  CompressionState state,
                                                  double waterLevel,
                                                  int tailGuardTurns) {
-        boolean willSnip = waterLevel >= snipThreshold;
         boolean willPrune = waterLevel >= pruneThreshold;
-        if (!willSnip && !willPrune) {
-            log.debug("[压缩] 轮数触发 (水位={}) -> 无操作（低于 snip 阈值）", String.format("%.2f", waterLevel));
-            return messages;
-        }
-        log.info("[压缩] 轮数触发 (水位={}) -> {}",
-                String.format("%.2f", waterLevel),
-                willSnip ? (willPrune ? "Snip + Prune" : "Snip") : "Prune");
-        if (willSnip) {
-            applySnip(messages, state, tailGuardTurns);
-        }
+        log.info("[压缩] 轮数触发 (水位={}) -> Snip{}",
+                String.format("%.2f", waterLevel), willPrune ? " + Prune" : "");
+        applySnip(messages, state, tailGuardTurns);
         if (willPrune) {
             applyPrune(messages, state, tailGuardTurns);
         }

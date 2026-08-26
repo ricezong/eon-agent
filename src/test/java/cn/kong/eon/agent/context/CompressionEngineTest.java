@@ -116,22 +116,11 @@ class CompressionEngineTest {
     }
 
     @Test
-    void compressByTurnCount_belowSnipThreshold_doesNothing() {
-        CompressionEngine engine = createEngine();
-        List<ChatMessage> messages = new ArrayList<>(List.of(
-                createToolResult("c1", "read_file", "x".repeat(500))
-        ));
-        CompressionState state = new CompressionState();
-
-        List<ChatMessage> result = engine.compressByTurnCount(messages, state, 0.3, 2);
-        assertThat(result).hasSize(1);
-        assertThat(state.getSnippedIds()).isEmpty();
-    }
-
-    @Test
-    void compressByTurnCount_atSnipThreshold_snipsOnly() {
+    void compressByTurnCount_alwaysSnips() {
+        // 轮数触发后无条件执行 Snip，不受水位阈值限制
         CompressionEngine engine = createEngine();
         String longContent = "x".repeat(500);
+        // 10 条消息, tailGuardTurns=0 -> tailStart = max(0, 10-0-2) = 8
         List<ChatMessage> messages = new ArrayList<>(buildMessagesForSnip(10, longContent));
         CompressionState state = new CompressionState();
 

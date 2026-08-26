@@ -218,6 +218,9 @@ public class EonAgent {
             FireResult preModel = firePreModelHooks(state, ctx);
             if (preModel instanceof FireResult.Exit exit) return new TurnAction.Exit(exit.output());
 
+            // Hooks 执行后重新渲染 nudge（BudgetHook 等可能在此阶段注入 nudge）
+            renderNudges(state, ctx);
+
             // 构建 messages + 获取工具 Schema
             List<ChatMessage> messages = ctx.build();
             state.setCurrentMessages(messages);
@@ -408,7 +411,6 @@ public class EonAgent {
         }
         ctx.setMemories(toolContext.memoryStore().renderForInjection());
         ctx.setTranscript(jsonlStore.snapshot());
-        renderNudges(state, ctx);
         return ctx;
     }
 
