@@ -1,11 +1,11 @@
 package cn.kong.eon.agent.hook.premodel;
 
-import cn.kong.eon.context.ContextBuilder;
+import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.context.CompressionEngine;
-import cn.kong.eon.context.PairingRepairer;
+import cn.kong.eon.agent.context.CompressionEngine;
+import cn.kong.eon.agent.context.PairingRepairer;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.model.CompressionState;
 import cn.kong.eon.model.SessionState;
@@ -33,7 +33,7 @@ public class ContextCompactHook implements Hook.PreModelHook {
     private final PairingRepairer pairingRepairer;
     private final String transcriptPath;
 
-        public ContextCompactHook(AgentConfig config, LlmClient llmClient, String transcriptPath) {
+    public ContextCompactHook(AgentConfig config, LlmClient llmClient, String transcriptPath) {
         this.config = config;
         this.transcriptPath = transcriptPath;
         var ctxCfg = config.getContext();
@@ -42,7 +42,6 @@ public class ContextCompactHook implements Hook.PreModelHook {
                 ctxCfg.getCompression().getPruneThreshold(),
                 ctxCfg.getCompression().getSummarizeThreshold(),
                 ctxCfg.getSnipKeepChars(),
-                ctxCfg.getPruneKeepChars(),
                 ctxCfg.getSummarizeMaxInputChars(),
                 ctxCfg.getSummarizeMaxOutputChars(),
                 llmClient,

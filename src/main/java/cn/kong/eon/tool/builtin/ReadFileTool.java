@@ -49,7 +49,7 @@ public class ReadFileTool implements ToolExecutor {
         Integer offset = arguments.containsKey("offset") ? (Integer) arguments.get("offset") : null;
         Integer limit = arguments.containsKey("limit") ? (Integer) arguments.get("limit") : null;
 
-        PathResolver resolver = new PathResolver(context.workDir(), true);
+        PathResolver resolver = context.pathResolver();
         Path filePath;
         try {
             filePath = resolver.resolve(targetFile);
@@ -101,6 +101,16 @@ public class ReadFileTool implements ToolExecutor {
             log.error("read_file failed: {}", e.getMessage());
             return ToolOutcome.failure("读取文件失败: " + e.getMessage());
         }
+    }
+
+    @Override
+    public String summarizeArgs(Map<String, Object> args) {
+        Object p = args.get("target_file");
+        return p != null ? "{path: \"" + truncate(String.valueOf(p), 50) + "\"}" : args.toString();
+    }
+
+    private static String truncate(String s, int maxLen) {
+        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
     /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */

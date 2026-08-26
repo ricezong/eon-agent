@@ -1,4 +1,4 @@
-package cn.kong.eon.context;
+package cn.kong.eon.agent.context;
 
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;

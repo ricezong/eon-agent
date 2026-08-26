@@ -16,7 +16,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Checkpoint 存储。崩溃后从最新 checkpoint 恢复。 */
+/** Checkpoint 存储。每轮 todo_write 后保存快照。 */
 public class CheckpointStore {
     private static final Logger log = LoggerFactory.getLogger(CheckpointStore.class);
 
@@ -59,35 +59,5 @@ public class CheckpointStore {
             log.error("Failed to save checkpoint", e);
         }
         return cp;
-    }
-
-    /** 加载最新 checkpoint。 */
-    public Checkpoint loadLatest(String sessionId) {
-        try (var stream = Files.list(checkpointDir)) {
-            var files = stream
-                    .filter(p -> p.getFileName().toString().startsWith("cp_"))
-                    .filter(p -> p.toString().endsWith(".json"))
-                    .sorted()
-                    .toList();
-            if (files.isEmpty()) return null;
-            Path latest = files.get(files.size() - 1);
-            Checkpoint cp = mapper.readValue(latest.toFile(), Checkpoint.class);
-            log.info("Checkpoint loaded: {} (turn={})", cp.getCheckpointId(), cp.getTurnCount());
-            return cp;
-        } catch (IOException e) {
-            log.error("Failed to load checkpoint", e);
-            return null;
-        }
-    }
-
-    public void clearAll() {
-        try (var stream = Files.list(checkpointDir)) {
-            stream.filter(p -> p.getFileName().toString().startsWith("cp_"))
-                  .forEach(p -> {
-                      try { Files.deleteIfExists(p); } catch (IOException ignored) {}
-                  });
-        } catch (IOException e) {
-            log.warn("Failed to clear checkpoints: {}", e.getMessage());
-        }
     }
 }

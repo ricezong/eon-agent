@@ -26,7 +26,6 @@ public final class HookResult {
         return new HookResult(Action.STOP, stopReason);
     }
 
-    public boolean isContinue() { return action == Action.CONTINUE; }
     public boolean isStop() { return action == Action.STOP; }
 
     public StopReason getStopReason() { return stopReason; }

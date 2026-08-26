@@ -10,6 +10,7 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.exception.NonRetriableException;
 import dev.langchain4j.model.openai.OpenAiTokenCountEstimator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,10 +95,15 @@ public class LlmClient {
 
                 return LlmResponse.of(aiMessage, usage, finishReason);
 
+            } catch (NonRetriableException e) {
+                // 不可重试异常（401 认证失败 / 400 请求格式错误等），立即失败
+                log.error("LLM call failed (non-retriable): {} - {}", e.getClass().getSimpleName(), e.getMessage());
+                throw new LlmStalledException("LLM 调用失败（不可重试）: " + e.getMessage());
             } catch (Exception e) {
                 lastException = e;
                 attempt++;
-                log.warn("LLM call failed (attempt {}/{}): {}", attempt, retryConfig.getAttempts(), e.getMessage());
+                log.warn("LLM call failed (attempt {}/{}): {} - {}", attempt, retryConfig.getAttempts(),
+                        e.getClass().getSimpleName(), e.getMessage());
 
                 if (attempt < retryConfig.getAttempts()) {
                     long delay = calculateDelay(attempt);

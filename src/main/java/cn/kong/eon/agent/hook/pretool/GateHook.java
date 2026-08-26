@@ -25,10 +25,8 @@ public class GateHook implements Hook.PreToolHook {
 
     private final int stopGraceSteps;
 
-    /** 破坏性工具 → 必填参数名映射。 */
-    private static final Map<String, String> DESTRUCTIVE_REQUIRED_PARAMS = Map.of(
-            "delete_file", "target_file"
-    );
+    /** 破坏性工具 → 必填参数名映射。当前无破坏性工具，保持空映射。 */
+    private static final Map<String, String> DESTRUCTIVE_REQUIRED_PARAMS = Map.of();
 
     private final ToolRegistry toolRegistry;
     private final ObjectMapper objectMapper;

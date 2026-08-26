@@ -10,10 +10,10 @@ import cn.kong.eon.agent.support.TurnAction;
 import cn.kong.eon.agent.support.TurnLogger;
 import cn.kong.eon.agent.support.TurnRecord;
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.context.ContextBuilder;
+import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.llm.LlmResponse;
-import cn.kong.eon.loop.LoopDetector;
+import cn.kong.eon.agent.loop.LoopDetector;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolExecutionResult;
 import cn.kong.eon.store.JsonlStore;
@@ -35,7 +35,6 @@ import java.util.*;
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
 
-
     private final AgentConfig config;
     private final LlmClient llmClient;
     private final ToolRegistry toolRegistry;
@@ -56,7 +55,7 @@ public class EonAgent {
 
     private TurnRecord currentRec;  // null 表示在 turn 之外
 
-        public EonAgent(AgentConfig config,
+    public EonAgent(AgentConfig config,
                     LlmClient llmClient,
                     ToolRegistry toolRegistry,
                     ToolResultRenderer resultRenderer,
@@ -73,7 +72,7 @@ public class EonAgent {
         this.toolContext = toolContext;
         this.logger = new TurnLogger(config);
         this.toolHandler = new ToolExecutionHandler(toolRegistry, resultRenderer, toolContext, logger, loopDetector, config.getTools().getParallelism(), objectMapper);
-        this.finalizer = new MessageFinalizer(jsonlStore, logger);
+        this.finalizer = new MessageFinalizer(jsonlStore);
         this.stopStateMachine = new StopStateMachine(config, logger, finalizer);
     }
 
@@ -151,6 +150,7 @@ public class EonAgent {
                 TurnAction action = executeTurn(state, turnStartTokens, callback);
                 if (action instanceof TurnAction.Exit exit) {
                     String output = renderMemoryReferences(exit.output());
+                    logger.agentComplete(state);
                     if (callback != null) {
                         final int tc = state.getTurnCount();
                         final int tokens = state.getUsageAccum().getTotalTokens();
@@ -169,6 +169,7 @@ public class EonAgent {
                 TurnAction action = stopStateMachine.handleLoopException(state, e);
                 if (action instanceof TurnAction.Exit exit) {
                     String output = renderMemoryReferences(exit.output());
+                    logger.agentComplete(state);
                     if (callback != null) {
                         final int tc = state.getTurnCount();
                         final int tokens = state.getUsageAccum().getTotalTokens();
@@ -183,6 +184,7 @@ public class EonAgent {
         TurnAction action = stopStateMachine.handleMaxSteps(state);
         String output = action instanceof TurnAction.Exit exit ? exit.output() : "";
         output = renderMemoryReferences(output);
+        logger.agentComplete(state);
         if (callback != null) {
             String reason = output;
             safeCallback(() -> callback.onTerminate(reason, state.getTurnCount(), state.getUsageAccum().getTotalTokens()));
@@ -237,7 +239,7 @@ public class EonAgent {
             String thought = response.aiMessage().text() != null ? response.aiMessage().text() : "";
             state.setLastAssistantText(thought);
             List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
-            logger.llmResponse(rec, thought, requests, deltaTokens, state);
+            logger.llmResponse(rec, requests, deltaTokens);
 
             // SSE 回调：LLM 响应到达
             if (callback != null) {

@@ -5,7 +5,7 @@ import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.hook.StopCategory;
 import cn.kong.eon.agent.hook.StopReason;
 import cn.kong.eon.llm.LlmResponse;
-import cn.kong.eon.loop.LoopDetector;
+import cn.kong.eon.agent.loop.LoopDetector;
 import cn.kong.eon.model.SessionState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;

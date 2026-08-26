@@ -23,6 +23,13 @@ import java.util.*;
 public class AskQuestionTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(AskQuestionTool.class);
 
+    @Override
+    public String summarizeArgs(Map<String, Object> args) {
+        Object q = args.get("questions");
+        int count = (q instanceof List<?> l) ? l.size() : 0;
+        return "{questions: " + count + "}";
+    }
+
     /** Schema 专用 POJO：选项输入。 */
     public record OptionInput(
             String id,

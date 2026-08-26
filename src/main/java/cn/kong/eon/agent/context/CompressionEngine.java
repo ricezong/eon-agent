@@ -1,4 +1,4 @@
-package cn.kong.eon.context;
+package cn.kong.eon.agent.context;
 
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.llm.LlmResponse;
@@ -13,9 +13,9 @@ import java.util.regex.Pattern;
 
 /**
  * 压缩引擎。三级递进压缩：
- * Snip — 截短旧 tool result，保留骨架 + 摘要前缀。
+ * Snip — 截短旧 tool result，采用头部 + 尾部保留策略，中间省略。
  * Prune — 替换为占位符（隐含 Snip）。
- * Summarize — LLM 生成摘要，删除旧消息（会破坏配对，需 PairingRepairer 修复）。
+ * Summarize — LLM 生成个人助手版 5 段式摘要，删除旧消息（会破坏配对，需 PairingRepairer 修复）。
  */
 public class CompressionEngine {
     private static final Logger log = LoggerFactory.getLogger(CompressionEngine.class);
@@ -26,7 +26,6 @@ public class CompressionEngine {
     private final double pruneThreshold;
     private final double summarizeThreshold;
     private final int snipKeepChars;
-    private final int pruneKeepChars;
     private final int summarizeMaxInputChars;
     private final int summarizeMaxOutputChars;
     private final LlmClient llmClient;
@@ -34,7 +33,7 @@ public class CompressionEngine {
 
     public CompressionEngine(double snipThreshold, double pruneThreshold,
                              double summarizeThreshold,
-                             int snipKeepChars, int pruneKeepChars,
+                             int snipKeepChars,
                              int summarizeMaxInputChars, int summarizeMaxOutputChars,
                              LlmClient llmClient,
                              String transcriptPath) {
@@ -42,7 +41,6 @@ public class CompressionEngine {
         this.pruneThreshold = pruneThreshold;
         this.summarizeThreshold = summarizeThreshold;
         this.snipKeepChars = snipKeepChars;
-        this.pruneKeepChars = pruneKeepChars;
         this.summarizeMaxInputChars = summarizeMaxInputChars;
         this.summarizeMaxOutputChars = summarizeMaxOutputChars;
         this.llmClient = llmClient;
@@ -57,9 +55,9 @@ public class CompressionEngine {
                                       double waterLevel,
                                       int tailGuardTurns) {
         if (waterLevel >= summarizeThreshold) {
-            log.info("[Compress] water={} >= {} -> Tier 1+2+3 (Snip+Prune+Summarize)",
+            log.info("[Compress] water={} >= {} -> Tier 1+3 (Snip+Summarize)",
                     String.format("%.2f", waterLevel), summarizeThreshold);
-            applyPrune(messages, state, tailGuardTurns);
+            applySnip(messages, state, tailGuardTurns);
             applySummarize(messages, state, tailGuardTurns);
         } else if (waterLevel >= pruneThreshold) {
             log.info("[Compress] water={} >= {} -> Tier 2 (Prune)",
@@ -82,24 +80,42 @@ public class CompressionEngine {
                                                    CompressionState state,
                                                    double waterLevel,
                                                    int tailGuardTurns) {
-        log.info("[Compress] turn-triggered (water={}) -> Snip{}",
+        boolean willSnip = waterLevel >= snipThreshold;
+        boolean willPrune = waterLevel >= pruneThreshold;
+        if (!willSnip && !willPrune) {
+            log.debug("[Compress] turn-triggered (water={}) -> no action (below snip threshold)", String.format("%.2f", waterLevel));
+            return messages;
+        }
+        log.info("[Compress] turn-triggered (water={}) -> {}",
                 String.format("%.2f", waterLevel),
-                waterLevel >= pruneThreshold ? " + Prune" : "");
-        if (waterLevel >= snipThreshold) {
+                willSnip ? (willPrune ? "Snip + Prune" : "Snip") : "Prune");
+        if (willSnip) {
             applySnip(messages, state, tailGuardTurns);
         }
-        if (waterLevel >= pruneThreshold) {
+        if (willPrune) {
             applyPrune(messages, state, tailGuardTurns);
         }
         return messages;
     }
 
-    /** Snip：截短 tool result，保留骨架 + 摘要前缀。 */
+    /** 计算尾部保护区起始索引：tail guard 范围内的消息不压缩。 */
+    private int tailStartIndex(int messageCount, int tailGuardTurns) {
+        return Math.max(0, messageCount - tailGuardTurns * 2 - 2);
+    }
+
+    /**
+     * Snip：截短 tool result，采用头部 + 尾部保留策略。
+     * 保留开头（声明、配置等高密度信息）和结尾（主逻辑、出口），中间用省略号替代。
+     * 截断后附带元数据提示，告知 Agent 内容已被压缩。
+     */
     private void applySnip(List<ChatMessage> messages, CompressionState state, int tailGuardTurns) {
-        int tailStart = Math.max(0, messages.size() - tailGuardTurns * 2 - 2);
+        int tailStart = tailStartIndex(messages.size(), tailGuardTurns);
         int snipCount = 0;
         int totalBefore = 0;
         int totalAfter = 0;
+
+        int headChars = snipKeepChars / 2;
+        int tailChars = snipKeepChars / 2;
 
         for (int i = 0; i < tailStart && i < messages.size(); i++) {
             ChatMessage msg = messages.get(i);
@@ -110,12 +126,12 @@ public class CompressionEngine {
                 if (content == null || content.length() <= snipKeepChars) continue;
 
                 String refId = extractRef(content);
-                String snippet = content.substring(0, Math.min(snipKeepChars, content.length()));
-                if (refId != null) {
-                    snippet += "... [工具结果已截断：仅保留摘要。引用: " + refId + "]";
-                } else {
-                    snippet += "... [工具结果已截断：仅保留摘要]";
-                }
+                String snippet = buildHeadTailSnippet(content, headChars, tailChars);
+
+                String truncationNotice = refId != null
+                        ? "\n... [中间内容已省略。完整内容已保存，引用: " + refId + "]"
+                        : "\n... [中间内容已省略。此为截断后的摘要]";
+                snippet += truncationNotice;
 
                 messages.set(i, ToolExecutionResultMessage.from(trm.id(), trm.toolName(), snippet));
                 state.markSnipped(trm.id());
@@ -131,9 +147,19 @@ public class CompressionEngine {
         }
     }
 
+    /**
+     * 头尾保留截断：保留前 headChars 字符和后 tailChars 字符，中间用省略号替代。
+     */
+    private String buildHeadTailSnippet(String content, int headChars, int tailChars) {
+        if (content.length() <= headChars + tailChars) return content;
+        String head = content.substring(0, headChars);
+        String tail = content.substring(content.length() - tailChars);
+        return head + "\n... [中间内容已省略] ...\n" + tail;
+    }
+
     /** Prune：替换 tool result 为占位符。 */
     private void applyPrune(List<ChatMessage> messages, CompressionState state, int tailGuardTurns) {
-        int tailStart = Math.max(0, messages.size() - tailGuardTurns * 2 - 2);
+        int tailStart = tailStartIndex(messages.size(), tailGuardTurns);
         int pruneCount = 0;
 
         for (int i = 0; i < tailStart && i < messages.size(); i++) {
@@ -162,12 +188,18 @@ public class CompressionEngine {
     }
 
     /**
-     * Summarize：LLM 生成 5 段式摘要，删除被覆盖的旧消息。
+     * Summarize：LLM 生成个人助手版 5 段式摘要，删除被覆盖的旧消息。
      * 增量摘要：旧摘要 + 被裁剪对话一起送 LLM 重生成（非字符串拼接）。
-     * 删除旧消息会导致配对断裂，由 ContextCompactor 调用 PairingRepairer 修复。
+     * 删除旧消息会导致配对断裂，由 ContextCompactHook 调用 PairingRepairer 修复。
+     * 摘要结构（个人助手版）：
+     *   1. Primary Request and Intent — 用户的核心诉求
+     *   2. Key Context and Decisions — 关键上下文、已做的决策、已获取的关键信息
+     *   3. User Preferences and Updates — 用户偏好和记忆更新
+     *   4. Pending Tasks and Current Work — 未完成任务与当前进展
+     *   5. All User Messages and Transcript — 用户原始消息 + 记录文件路径
      */
     private void applySummarize(List<ChatMessage> messages, CompressionState state, int tailGuardTurns) {
-        int tailStart = Math.max(0, messages.size() - tailGuardTurns * 2 - 2);
+        int tailStart = tailStartIndex(messages.size(), tailGuardTurns);
 
         if (tailStart <= 0) {
             log.debug("[Compress] Summarize skipped: no messages outside tail guard");

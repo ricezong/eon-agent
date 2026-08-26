@@ -14,22 +14,18 @@ public class TurnRecord {
     StopCategory stopCategory;
     int stopGraceRemaining;
 
-    // Context
+        // Context
     int messageCount;
     long estimatedTokens;
-    boolean hasSummary;
     int catalogToolCount;
 
-    // LLM
-    String thoughtSummary;
+        // LLM
     List<String> toolNames = new ArrayList<>();
     int llmDeltaTokens;
-    long llmTotalTokens;
     boolean outputTruncated;
 
-    // Tools
+        // Tools
     final List<ToolEntry> tools = new ArrayList<>();
-    int toolResultCount;
 
     // Turn 汇总
     int turnDeltaTokens;
@@ -61,19 +57,16 @@ public class TurnRecord {
         return this;
     }
 
-    TurnRecord context(int messageCount, long estimatedTokens, boolean hasSummary, int catalogToolCount) {
+    TurnRecord context(int messageCount, long estimatedTokens, int catalogToolCount) {
         this.messageCount = messageCount;
         this.estimatedTokens = estimatedTokens;
-        this.hasSummary = hasSummary;
         this.catalogToolCount = catalogToolCount;
         return this;
     }
 
-    TurnRecord llm(String thoughtSummary, List<String> toolNames, int deltaTokens, long totalTokens) {
-        this.thoughtSummary = thoughtSummary;
+    TurnRecord llm(List<String> toolNames, int deltaTokens) {
         this.toolNames = toolNames != null ? toolNames : List.of();
         this.llmDeltaTokens = deltaTokens;
-        this.llmTotalTokens = totalTokens;
         return this;
     }
 
@@ -84,11 +77,6 @@ public class TurnRecord {
 
     TurnRecord addTool(String name, boolean success, String argsSummary, int renderedLen) {
         this.tools.add(new ToolEntry(name, success, argsSummary, renderedLen));
-        return this;
-    }
-
-    TurnRecord flushed(int toolResultCount) {
-        this.toolResultCount = toolResultCount;
         return this;
     }
 

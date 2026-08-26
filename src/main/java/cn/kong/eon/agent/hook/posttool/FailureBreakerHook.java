@@ -2,7 +2,7 @@ package cn.kong.eon.agent.hook.posttool;
 
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
-import cn.kong.eon.loop.LoopDetector;
+import cn.kong.eon.agent.loop.LoopDetector;
 import cn.kong.eon.model.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -7,16 +7,27 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 工具结果渲染器。
- * ≤3000 字符：完整内容直接写入消息。
- * >3000 字符：原文落盘为 artifact，消息只留摘要 + 引用。
+ * 工具结果渲染器。统一格式化工具输出，控制大小，注入元数据。
+ * <p>
+ * 统一输出格式（按文档第四节设计）：
+ * <pre>
+ * [Tool result] toolName
+ * ┌─ 状态: 成功/失败           ← 状态信息
+ * ├─ 格式化的内容              ← 主体内容
+ * │   ...
+ * ├─ 截断提示 (如果被截断)     ← 截断状态信息
+ * └─ 元数据 (引用ID等)         ← 统计信息
+ * </pre>
+ * <p>
+ * 大结果处理：> {@value #ARTIFACT_THRESHOLD} 字符时原文落盘为 artifact，
+ * 消息只留头部 + 尾部摘要 + 引用。
  */
 public class ToolResultRenderer {
     private static final Logger log = LoggerFactory.getLogger(ToolResultRenderer.class);
 
     private static final int ARTIFACT_THRESHOLD = 3000;
-    private static final int SUMMARY_PREFIX = 700;
-    private static final int SUMMARY_SUFFIX = 300;
+    private static final int SUMMARY_HEAD = 700;
+    private static final int SUMMARY_TAIL = 300;
 
     private final ArtifactStore artifactStore;
 
@@ -24,39 +35,57 @@ public class ToolResultRenderer {
         this.artifactStore = artifactStore;
     }
 
-    /** 渲染工具结果为简洁语义标注。 */
+    /**
+     * 渲染工具结果为统一格式化输出。
+     * 小结果直接写入；大结果落盘为 artifact，消息只保留头尾摘要 + 引用。
+     */
     public String render(String toolName, ToolOutcome outcome, SessionState state) {
         String rawResult = outcome.content();
         boolean success = outcome.success();
 
         String refId = null;
         String displayContent = rawResult;
+        boolean truncated = false;
 
         if (rawResult.length() > ARTIFACT_THRESHOLD) {
-            String summary = extractSummary(rawResult);
+            String summary = extractHeadTailSummary(rawResult);
             ArtifactRef ref = artifactStore.save(toolName, rawResult, summary);
             refId = ref.getRefId();
             displayContent = summary;
+            truncated = true;
             log.info("[Render] {} -> artifact {} ({} -> {} chars)",
                     toolName, refId, rawResult.length(), summary.length());
         }
 
+        // 统一格式化输出
         StringBuilder sb = new StringBuilder();
-        sb.append("[工具结果] ").append(toolName).append("\n");
-        sb.append("状态: ").append(success ? "成功" : "失败").append("\n");
-        sb.append("内容:\n").append(displayContent);
-        if (refId != null) {
-            sb.append("\n[内容过长，完整内容已保存至 artifact://").append(refId)
-              .append("，可用 read_file 读取该引用]");
+        sb.append("[Tool result] ").append(toolName).append("\n");
+        sb.append("├─ 状态: ").append(success ? "成功" : "失败").append("\n");
+        sb.append("├─ 内容:\n").append(displayContent);
+
+        if (truncated && refId != null) {
+            sb.append("\n├─ 截断提示: 内容过大（").append(rawResult.length())
+              .append(" 字符），已截断为头部 ").append(SUMMARY_HEAD)
+              .append(" + 尾部 ").append(SUMMARY_TAIL).append(" 字符摘要");
+            sb.append("\n└─ 元数据: 完整内容已保存至 artifact://").append(refId)
+              .append("，可用 read_file 工具读取该引用获取完整内容");
+        } else {
+            sb.append("\n└─ 元数据: ").append(rawResult.length()).append(" 字符");
         }
         return sb.toString();
     }
 
-    /** 提取摘要：保留前缀 + 后缀，中间省略。 */
-    private String extractSummary(String content) {
-        if (content.length() <= SUMMARY_PREFIX + SUMMARY_SUFFIX) return content;
-        return content.substring(0, SUMMARY_PREFIX)
-                + "\n... [中间内容省略，完整内容已落盘] ...\n"
-                + content.substring(content.length() - SUMMARY_SUFFIX);
+    /**
+     * 头尾保留摘要：保留前 {@value #SUMMARY_HEAD} 字符和后 {@value #SUMMARY_TAIL} 字符，
+     * 中间用省略号替代。基于内容结构特点：头部通常包含声明和概述，
+     * 尾部通常包含结论和出口。
+     */
+    private String extractHeadTailSummary(String content) {
+        if (content.length() <= SUMMARY_HEAD + SUMMARY_TAIL) return content;
+        String head = content.substring(0, SUMMARY_HEAD);
+        String tail = content.substring(content.length() - SUMMARY_TAIL);
+        return head
+                + "\n... [中间内容已省略，完整内容已落盘为 artifact] ...\n"
+                + tail;
     }
 }

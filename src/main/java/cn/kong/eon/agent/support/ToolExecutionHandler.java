@@ -1,6 +1,6 @@
 package cn.kong.eon.agent.support;
 
-import cn.kong.eon.loop.LoopDetector;
+import cn.kong.eon.agent.loop.LoopDetector;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolExecutionResult;
 import cn.kong.eon.tool.ToolContext;
@@ -148,7 +148,7 @@ public class ToolExecutionHandler {
 
         String rendered = resultRenderer.render(req.name(), outcome, state);
         String argsSummary = toolRegistry.get(req.name()) != null
-                ? toolRegistry.get(req.name()).summarizeArgs(args)
+                ? toolRegistry.get(req.name()).getExecutor().summarizeArgs(args)
                 : truncate(args.toString(), 80);
         logger.toolExecuted(rec, req.name(), outcome.success(), argsSummary, rendered.length());
 

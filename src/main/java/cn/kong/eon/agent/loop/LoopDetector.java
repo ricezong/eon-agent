@@ -1,4 +1,4 @@
-package cn.kong.eon.loop;
+package cn.kong.eon.agent.loop;
 
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;
@@ -50,12 +50,18 @@ public class LoopDetector {
             return DetectionResult.ok();
         }
 
+        // 收集所有已熔断的工具名
+        List<String> trippedNames = new ArrayList<>();
         for (ToolExecutionRequest req : requests) {
-            if (trippedTools.contains(req.name())) {
-                log.warn("[LoopDetector] circuit breaker tripped: tool '{}' is blocked", req.name());
-                return DetectionResult.warn("工具 " + req.name() + " 已被熔断（连续失败过多），" +
-                        "请标记 blocked 或调整计划，不要再调用此工具");
+            if (trippedTools.contains(req.name()) && !trippedNames.contains(req.name())) {
+                trippedNames.add(req.name());
             }
+        }
+        if (!trippedNames.isEmpty()) {
+            String names = String.join(", ", trippedNames);
+            log.warn("[LoopDetector] circuit breaker tripped: tools [{}] are blocked", names);
+            return DetectionResult.warn("工具 " + names + " 已被熔断（连续失败过多），" +
+                    "请标记 blocked 或调整计划，不要再调用这些工具");
         }
 
         for (ToolExecutionRequest req : requests) {

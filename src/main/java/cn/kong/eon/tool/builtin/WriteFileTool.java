@@ -35,7 +35,7 @@ public class WriteFileTool implements ToolExecutor {
             return ToolOutcome.failure("缺少 'contents' 参数");
         }
 
-        PathResolver resolver = new PathResolver(context.workDir(), true);
+        PathResolver resolver = context.pathResolver();
         Path resolvedPath;
         try {
             resolvedPath = resolver.resolve(filePath);
@@ -56,6 +56,16 @@ public class WriteFileTool implements ToolExecutor {
             log.error("write failed: {}", e.getMessage());
             return ToolOutcome.failure("写入文件失败: " + e.getMessage());
         }
+    }
+
+    @Override
+    public String summarizeArgs(Map<String, Object> args) {
+        Object p = args.get("file_path");
+        return p != null ? "{path: \"" + truncate(String.valueOf(p), 50) + "\"}" : args.toString();
+    }
+
+    private static String truncate(String s, int maxLen) {
+        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
     /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */

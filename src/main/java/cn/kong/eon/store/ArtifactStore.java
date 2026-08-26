@@ -1,16 +1,12 @@
 package cn.kong.eon.store;
 
 import cn.kong.eon.model.ArtifactRef;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -20,13 +16,11 @@ public class ArtifactStore {
     private static final Logger log = LoggerFactory.getLogger(ArtifactStore.class);
 
     private final Path artifactDir;
-    private final ObjectMapper mapper;
     private final Map<String, ArtifactRef> refs = new ConcurrentHashMap<>();  // 引用注册表
     private final AtomicInteger counter = new AtomicInteger(0); // 自增 ID 计数器
 
-    public ArtifactStore(Path artifactDir, ObjectMapper objectMapper) {
+    public ArtifactStore(Path artifactDir) {
         this.artifactDir = artifactDir;
-        this.mapper = objectMapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
         try {
             Files.createDirectories(artifactDir);
         } catch (IOException e) {
@@ -63,23 +57,5 @@ public class ArtifactStore {
             log.error("Failed to read artifact: {}", refId, e);
             return null;
         }
-    }
-
-    public ArtifactRef get(String refId) { return refs.get(refId); }
-    public List<ArtifactRef> listAll() { return new ArrayList<>(refs.values()); }
-
-    /** 在 artifact 内容中搜索包含关键词的行。 */
-    public String searchLines(String refId, String keyword) {
-        String content = readContent(refId);
-        if (content == null) return "Artifact not found: " + refId;
-
-        StringBuilder sb = new StringBuilder();
-        String[] lines = content.split("\n");
-        for (int i = 0; i < lines.length; i++) {
-            if (lines[i].toLowerCase().contains(keyword.toLowerCase())) {
-                sb.append(String.format("Line %d: %s%n", i + 1, lines[i].trim()));
-            }
-        }
-        return sb.length() > 0 ? sb.toString() : "No matches for keyword: " + keyword;
     }
 }

@@ -1,6 +1,5 @@
 package cn.kong.eon.tool;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -46,17 +45,5 @@ public class PathResolver {
         }
 
         return resolved;
-    }
-
-    public Path workspace() {
-        return Path.of(workDir).toAbsolutePath().normalize();
-    }
-
-    public boolean exists(String rawPath) {
-        try {
-            return Files.exists(resolve(rawPath));
-        } catch (IllegalArgumentException e) {
-            return false;
-        }
     }
 }

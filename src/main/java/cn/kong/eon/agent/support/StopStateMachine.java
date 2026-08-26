@@ -113,7 +113,7 @@ public class StopStateMachine {
     }
 
     /** 硬终止：记录日志并返回终止输出。 */
-    public String forceTerminate(SessionState state, StopReason reason) {
+    private String forceTerminate(SessionState state, StopReason reason) {
         logger.stopForced(reason.getCategory().name(), state.getTurnCount(), state.getUsageAccum().getTotalTokens());
         return formatTerminationOutput(state, reason);
     }

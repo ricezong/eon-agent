@@ -32,7 +32,7 @@ public class ListDirTool implements ToolExecutor {
             return ToolOutcome.failure("缺少 'target_directory' 参数");
         }
 
-        PathResolver resolver = new PathResolver(context.workDir(), true);
+        PathResolver resolver = context.pathResolver();
         Path dirPath;
         try {
             dirPath = resolver.resolve(targetDir);
@@ -88,6 +88,16 @@ public class ListDirTool implements ToolExecutor {
         if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
         if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
         return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
+    }
+
+    @Override
+    public String summarizeArgs(Map<String, Object> args) {
+        Object p = args.get("target_directory");
+        return p != null ? "{path: \"" + truncate(String.valueOf(p), 50) + "\"}" : args.toString();
+    }
+
+    private static String truncate(String s, int maxLen) {
+        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
     /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */

@@ -2,7 +2,6 @@ package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolPermission;
-import cn.kong.eon.tool.SharedHttpClient;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -31,14 +30,32 @@ public class WebSearchTool implements ToolExecutor {
     private static final int TIMEOUT_SECONDS = 30;
     private static final int DEFAULT_TOP_K = 10;
 
-        private final ObjectMapper mapper;
-    private final HttpClient httpClient = SharedHttpClient.getInstance();
+    private final ObjectMapper mapper;
+    private final HttpClient httpClient;
 
     private final String apiKey;
 
     public WebSearchTool(String apiKey, ObjectMapper objectMapper) {
+        this(apiKey, objectMapper, HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build());
+    }
+
+    public WebSearchTool(String apiKey, ObjectMapper objectMapper, HttpClient httpClient) {
         this.apiKey = apiKey != null ? apiKey : "";
         this.mapper = objectMapper;
+        this.httpClient = httpClient;
+    }
+
+    @Override
+    public String summarizeArgs(Map<String, Object> args) {
+        Object q = args.get("query");
+        return q != null ? "{query: \"" + truncate(String.valueOf(q), 60) + "\"}" : args.toString();
+    }
+
+    private static String truncate(String s, int maxLen) {
+        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
     /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
@@ -57,8 +74,8 @@ public class WebSearchTool implements ToolExecutor {
         return null;
     }
 
-        public static ToolDescriptor descriptor(String apiKey, ObjectMapper objectMapper) {
-        return ToolDescriptor.fromAnnotated(new WebSearchTool(apiKey, objectMapper), ToolPermission.READONLY);
+        public static ToolDescriptor descriptor(String apiKey, ObjectMapper objectMapper, HttpClient httpClient) {
+        return ToolDescriptor.fromAnnotated(new WebSearchTool(apiKey, objectMapper, httpClient), ToolPermission.READONLY);
     }
 
     @Override

@@ -1,4 +1,4 @@
-package cn.kong.eon.mcp;
+package cn.kong.eon.tool.mcp;
 
 import cn.kong.eon.tool.ToolOutcome;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -97,8 +97,5 @@ public class McpClientManager {
         }
     }
 
-    public boolean isConnected() { return mcpClient != null; }
     public String getServerKey() { return serverKey; }
-    public String getServerUrl() { return serverUrl; }
-    public McpClient getMcpClient() { return mcpClient; }
 }

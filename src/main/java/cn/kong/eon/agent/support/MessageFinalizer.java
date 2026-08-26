@@ -14,11 +14,9 @@ import java.util.List;
  */
 public class MessageFinalizer {
     private final JsonlStore jsonlStore;
-    private final TurnLogger logger;
 
-    public MessageFinalizer(JsonlStore jsonlStore, TurnLogger logger) {
+    public MessageFinalizer(JsonlStore jsonlStore) {
         this.jsonlStore = jsonlStore;
-        this.logger = logger;
     }
 
     /**
@@ -37,7 +35,6 @@ public class MessageFinalizer {
                         result.toolCallId(), result.toolName(), result.content()));
             }
         }
-        logger.flushed(rec, toolResults != null ? toolResults.size() : 0);
 
         state.getPendingNudges().clear();
         state.getFormatCorrections().clear();

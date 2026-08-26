@@ -53,17 +53,6 @@ public class JsonlStore {
         return new ArrayList<>(messages);
     }
 
-    public synchronized int size() { return messages.size(); }
-
-    public synchronized void clear() {
-        messages.clear();
-        try {
-            Files.deleteIfExists(jsonlFile);
-        } catch (IOException e) {
-            log.warn("Failed to delete JSONL file: {}", e.getMessage());
-        }
-    }
-
     private void loadAll() {
         try {
             List<String> lines = Files.readAllLines(jsonlFile);

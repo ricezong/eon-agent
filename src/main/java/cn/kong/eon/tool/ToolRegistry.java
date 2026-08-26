@@ -1,6 +1,6 @@
 package cn.kong.eon.tool;
 
-import cn.kong.eon.mcp.McpClientManager;
+import cn.kong.eon.tool.mcp.McpClientManager;
 import cn.kong.eon.model.ToolPermission;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -89,22 +89,6 @@ public class ToolRegistry {
         return all;
     }
 
-    /** 按名称过滤获取 Schema。 */
-    public List<ToolSpecification> getSpecificationsByName(Set<String> toolNames) {
-        List<ToolSpecification> result = new ArrayList<>();
-        for (String name : toolNames) {
-            ToolDescriptor desc = tools.get(name);
-            if (desc != null) {
-                result.add(desc.getSpecification());
-            }
-            ToolSpecification mcpSpec = mcpToolSpecs.get(name);
-            if (mcpSpec != null) {
-                result.add(mcpSpec);
-            }
-        }
-        return result;
-    }
-
     /** 执行工具（本地或 MCP）。 */
     public ToolOutcome execute(String name, Map<String, Object> arguments,
                           cn.kong.eon.model.SessionState state, ToolContext context) {
@@ -155,10 +139,6 @@ public class ToolRegistry {
         return perm == ToolPermission.DESTRUCTIVE;
     }
 
-    public boolean isReadonly(String name) {
-        ToolPermission perm = getPermission(name);
-        return perm == ToolPermission.READONLY;
-    }
 
     public Set<String> getWhitelist() { return Collections.unmodifiableSet(whitelist); }
 
@@ -182,22 +162,6 @@ public class ToolRegistry {
             }
         }
         log.info("All local tools closed ({})", tools.size());
-    }
-
-    /** 获取工具目录摘要（名称 + 描述），注入上下文供 LLM 选择工具。 */
-    public String getCatalogSummary() {
-        StringBuilder sb = new StringBuilder("可用工具目录：\n");
-        for (ToolDescriptor desc : tools.values()) {
-            sb.append("- ").append(desc.getName())
-              .append(": ").append(desc.getDescription()).append("\n");
-        }
-        for (Map.Entry<String, ToolSpecification> entry : mcpToolSpecs.entrySet()) {
-            String name = entry.getKey();
-            String desc = entry.getValue().description();
-            sb.append("- ").append(name)
-              .append(": ").append(desc != null ? desc : "").append("\n");
-        }
-        return sb.toString();
     }
 
     private String convertArgsToJson(Map<String, Object> arguments) {

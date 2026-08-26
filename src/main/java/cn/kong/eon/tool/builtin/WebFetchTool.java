@@ -2,7 +2,6 @@ package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolPermission;
-import cn.kong.eon.tool.SharedHttpClient;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -35,21 +34,26 @@ public class WebFetchTool implements ToolExecutor {
     private final long cacheTtlMs;
     private final int cacheMaxEntries;
 
-    private final HttpClient httpClient = SharedHttpClient.getInstance();
+    private final HttpClient httpClient;
 
     private final FlexmarkHtmlConverter htmlConverter = FlexmarkHtmlConverter.builder().build();
 
     // LRU 缓存：URL → (内容, 时间戳)，带容量上限和 TTL 过期
     private final Map<String, CacheEntry> cache;
 
+    /** 仅供测试使用，生产环境通过 {@link #descriptor(int, long, int, HttpClient)} 传入配置。 */
     public WebFetchTool() {
-        this(50000, 15 * 60 * 1000L, 64);
+        this(50000, 15 * 60 * 1000L, 64, HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build());
     }
 
-    public WebFetchTool(int maxContentLength, long cacheTtlMs, int cacheMaxEntries) {
+    public WebFetchTool(int maxContentLength, long cacheTtlMs, int cacheMaxEntries, HttpClient httpClient) {
         this.maxContentLength = maxContentLength;
         this.cacheTtlMs = cacheTtlMs;
         this.cacheMaxEntries = cacheMaxEntries;
+        this.httpClient = httpClient;
         this.cache = Collections.synchronizedMap(
                 new LinkedHashMap<String, CacheEntry>(cacheMaxEntries, 0.75f, true) {
                     @Override
@@ -57,6 +61,13 @@ public class WebFetchTool implements ToolExecutor {
                         return size() > cacheMaxEntries;
                     }
                 });
+    }
+
+    @Override
+    public String summarizeArgs(Map<String, Object> args) {
+        Object u = args.get("urls");
+        int count = (u instanceof List<?> l) ? l.size() : 0;
+        return "{urls: " + count + "}";
     }
 
     /** @Tool 注解方法：供 ToolSpecifications 扫描生成 Schema。 */
@@ -73,16 +84,16 @@ public class WebFetchTool implements ToolExecutor {
     }
 
     @SuppressWarnings("unchecked")
-    /** 仅供测试使用，生产环境通过 {@link #descriptor(int, long, int)} 传入配置。 */
+    /** 仅供测试使用，生产环境通过 {@link #descriptor(int, int, int, HttpClient)} 传入配置。 */
     public static ToolDescriptor descriptor() {
         return ToolDescriptor.fromAnnotated(new WebFetchTool(), ToolPermission.READONLY);
     }
 
     @SuppressWarnings("unchecked")
-    public static ToolDescriptor descriptor(int maxContentLength, int cacheTtlMinutes, int cacheMaxEntries) {
+    public static ToolDescriptor descriptor(int maxContentLength, int cacheTtlMinutes, int cacheMaxEntries, HttpClient httpClient) {
         long cacheTtlMs = cacheTtlMinutes * 60 * 1000L;
         return ToolDescriptor.fromAnnotated(
-                new WebFetchTool(maxContentLength, cacheTtlMs, cacheMaxEntries),
+                new WebFetchTool(maxContentLength, cacheTtlMs, cacheMaxEntries, httpClient),
                 ToolPermission.READONLY);
     }
 

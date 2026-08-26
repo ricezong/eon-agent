@@ -208,8 +208,7 @@ public class AgentConfig {
         private Compression compression;
 
         // 压缩算法内部约束（可配置，从 agent.yaml context 节读取）
-        private int snipKeepChars = 80;
-        private int pruneKeepChars = 30;
+        private int snipKeepChars = 2000;
         private int summarizeMaxOutputChars = 2000;
         private int tailGuardMinTurns = 3;
 
@@ -238,8 +237,6 @@ public class AgentConfig {
 
         public int getSnipKeepChars() { return snipKeepChars; }
         public void setSnipKeepChars(int v) { this.snipKeepChars = v; }
-        public int getPruneKeepChars() { return pruneKeepChars; }
-        public void setPruneKeepChars(int v) { this.pruneKeepChars = v; }
         public int getSummarizeMaxOutputChars() { return summarizeMaxOutputChars; }
         public void setSummarizeMaxOutputChars(int v) { this.summarizeMaxOutputChars = v; }
         public int getTailGuardMinTurns() { return tailGuardMinTurns; }
@@ -321,7 +318,6 @@ public class AgentConfig {
         private int httpConnectTimeoutSeconds = 30;
         private WebFetch webFetch;
         private Download download;
-        private Grep grep;
 
         public static class WebFetch {
             private int maxContentLength = 50000;
@@ -341,18 +337,6 @@ public class AgentConfig {
             public void setMaxFileSizeMb(long v) { this.maxFileSizeMb = v; }
         }
 
-        public static class Grep {
-            private int maxFileSizeMb = 10;
-            private int maxMatchLines = 500;
-            private int maxOutputChars = 50000;
-            public int getMaxFileSizeMb() { return maxFileSizeMb; }
-            public void setMaxFileSizeMb(int v) { this.maxFileSizeMb = v; }
-            public int getMaxMatchLines() { return maxMatchLines; }
-            public void setMaxMatchLines(int v) { this.maxMatchLines = v; }
-            public int getMaxOutputChars() { return maxOutputChars; }
-            public void setMaxOutputChars(int v) { this.maxOutputChars = v; }
-        }
-
         public Set<String> getWhitelist() { return whitelist; }
         public void setWhitelist(Set<String> v) { this.whitelist = v; }
         public Set<String> getDestructive() { return destructive; }
@@ -369,8 +353,6 @@ public class AgentConfig {
         public void setWebFetch(WebFetch v) { this.webFetch = v; }
         public Download getDownload() { return download; }
         public void setDownload(Download v) { this.download = v; }
-        public Grep getGrep() { return grep; }
-        public void setGrep(Grep v) { this.grep = v; }
     }
 
     public static class McpConfig {

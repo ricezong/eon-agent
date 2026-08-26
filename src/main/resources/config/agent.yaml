@@ -23,8 +23,7 @@ context:
   budget_ratio: 0.7                       # 输入 token 占比上限
   system_prompt_path: "prompts/system_prompt.md"  # 系统提示词路径
   summarize_max_input_chars: 50000       # 摘要输入上限（字符数）
-  snip_keep_chars: 80                    # Snip 保留字符数
-  prune_keep_chars: 30                   # Prune 保留字符数
+  snip_keep_chars: 2000                   # Snip 头尾保留字符数（头1000+尾1000）
   summarize_max_output_chars: 2000       # 摘要输出上限（字符数）
   tail_guard_min_turns: 3                # 尾部保护最小轮次
   compression:
@@ -62,24 +61,20 @@ storage:
 
 tools:
   http_connect_timeout_seconds: 30          # 共享 HttpClient 连接超时（秒）
-  whitelist:                                # 允许注册的本地工具白名单（11 个）
+  whitelist:                                # 允许注册的本地工具白名单（9 个）
     - "read_file"
     - "write"
-    - "delete_file"
     - "list_dir"
     - "download_file"
-    - "grep"
     - "todo_write"
     - "update_memory"
     - "web_fetch"
     - "AskQuestion"
     - "web_search"
-  destructive:                            # 破坏性工具
-    - "delete_file"
+  destructive:                            # 破坏性工具（当前无）
   readonly:                               # 只读工具
     - "read_file"
     - "list_dir"
-    - "grep"
     - "web_search"
     - "web_fetch"
     - "AskQuestion"
@@ -91,10 +86,6 @@ tools:
     cache_max_entries: 64                 # LRU 缓存上限
   download:
     max_file_size_mb: 100                 # 下载文件大小上限（MB）
-  grep:
-    max_file_size_mb: 10                  # grep 单文件大小上限（MB）
-    max_match_lines: 500                  # grep 最大匹配行数
-    max_output_chars: 50000               # grep 输出截断字符数
 
 compression:
   summarize_turns: 6                      # 轮数触发压缩阈值（文档建议5-8轮）

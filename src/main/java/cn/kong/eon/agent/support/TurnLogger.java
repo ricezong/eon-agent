@@ -2,7 +2,7 @@ package cn.kong.eon.agent.support;
 
 import cn.kong.eon.agent.hook.StopCategory;
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.context.ContextBuilder;
+import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolExecutionResult;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -43,17 +43,14 @@ public class TurnLogger {
 
     public void contextInfo(TurnRecord rec, ContextBuilder ctx, List<ChatMessage> messages,
                             SessionState state, int toolCount) {
-        rec.context(messages.size(), ctx.estimateTokens(),
-                state.getCompressionState().getLastSummary() != null, toolCount);
+        rec.context(messages.size(), ctx.estimateTokens(), toolCount);
     }
 
-    public void llmResponse(TurnRecord rec, String thought, List<ToolExecutionRequest> requests,
-                            int deltaTokens, SessionState state) {
-        String thoughtSummary = truncate(thought, 100);
+    public void llmResponse(TurnRecord rec, List<ToolExecutionRequest> requests, int deltaTokens) {
         List<String> toolNames = (requests != null && !requests.isEmpty())
                 ? requests.stream().map(ToolExecutionRequest::name).toList()
                 : List.of();
-        rec.llm(thoughtSummary, toolNames, deltaTokens, state.getUsageAccum().getTotalTokens());
+        rec.llm(toolNames, deltaTokens);
     }
 
     public void outputTruncated(TurnRecord rec) {
@@ -64,9 +61,6 @@ public class TurnLogger {
         rec.addTool(toolName, success, argsSummary, renderedLen);
     }
 
-    public void flushed(TurnRecord rec, int toolResultCount) {
-        rec.flushed(toolResultCount);
-    }
 
     public void stopRequested(TurnRecord rec, StopCategory category, String msg, int grace) {
         rec.addStopEvent(TurnRecord.StopEventType.REQUESTED, category, msg, grace);
@@ -152,7 +146,4 @@ public class TurnLogger {
 
     // ===== 工具方法 =====
 
-    private String truncate(String s, int maxLen) {
-        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
-    }
 }
