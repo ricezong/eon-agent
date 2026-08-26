@@ -23,10 +23,18 @@ public class MessageFinalizer {
      * 回填 AI 消息和工具结果到 JSONL，清理临时状态。
      */
     public void finalizeAndAppend(TurnRecord rec, SessionState state) {
-        AiMessage aiMsg = state.getLastAssistantText() != null && !state.getLastAssistantText().isBlank()
-                ? AiMessage.from(state.getLastAssistantText(), state.getPendingToolCalls())
-                : AiMessage.from(state.getPendingToolCalls());
-        jsonlStore.append(aiMsg);
+        String assistantText = state.getLastAssistantText();
+        var pendingCalls = state.getPendingToolCalls();
+        boolean hasText = assistantText != null && !assistantText.isBlank();
+        boolean hasCalls = pendingCalls != null && !pendingCalls.isEmpty();
+
+        // Only append AiMessage if there is text or tool calls to record
+        if (hasText || hasCalls) {
+            AiMessage aiMsg = hasText
+                    ? AiMessage.from(assistantText, pendingCalls)
+                    : AiMessage.from(pendingCalls);
+            jsonlStore.append(aiMsg);
+        }
 
         List<ToolExecutionResult> toolResults = state.getLastToolResults();
         if (toolResults != null) {
@@ -47,7 +55,10 @@ public class MessageFinalizer {
      * 用于 stop 流程中避免重复回填。
      */
     public void finalizeIfPending(TurnRecord rec, SessionState state) {
-        if (state.getPendingToolCalls() != null || state.getLastToolResults() != null) {
+        boolean hasPendingCalls = state.getPendingToolCalls() != null && !state.getPendingToolCalls().isEmpty();
+        boolean hasToolResults = state.getLastToolResults() != null && !state.getLastToolResults().isEmpty();
+        boolean hasText = state.getLastAssistantText() != null && !state.getLastAssistantText().isBlank();
+        if (hasPendingCalls || hasToolResults || hasText) {
             finalizeAndAppend(rec, state);
         }
     }
