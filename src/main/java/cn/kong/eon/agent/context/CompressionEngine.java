@@ -69,20 +69,13 @@ public class CompressionEngine {
     }
 
     /**
-     * 轮数触发压缩：仅 Snip（截短过长工具结果），不执行 Summarize。
-     * 如果水位已达 prune 阈值，额外执行 Prune。
+     * 轮数触发压缩：仅 Snip（截短过长工具结果）
      */
     public List<ChatMessage> compressByTurnCount(List<ChatMessage> messages,
                                                  CompressionState state,
-                                                 double waterLevel,
                                                  int tailGuardTurns) {
-        boolean willPrune = waterLevel >= pruneThreshold;
-        log.info("[压缩] 轮数触发 (水位={}) -> Snip{}",
-                String.format("%.2f", waterLevel), willPrune ? " + Prune" : "");
         applySnip(messages, state, tailGuardTurns);
-        if (willPrune) {
-            applyPrune(messages, state, tailGuardTurns);
-        }
+
         return messages;
     }
 

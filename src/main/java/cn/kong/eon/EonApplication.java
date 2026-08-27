@@ -90,7 +90,7 @@ public class EonApplication {
         String systemPrompt = loadSystemPrompt(config.getContext().getSystemPromptPath());
         log.info("系统提示词已加载: {} 字符", systemPrompt.length());
 
-        this.httpConfig = new HttpConfig(config.getTools().getHttpConnectTimeoutSeconds());
+        this.httpConfig = new HttpConfig();
         this.llmClient = new LlmClient(config);
 
         Path sessionBaseDir = resolveSessionBaseDir();

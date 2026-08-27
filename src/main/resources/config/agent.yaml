@@ -6,7 +6,7 @@ llm:
   model_name: "mimo-v2.5"                 # 模型名称
   temperature: 0.7                        # 采样温度
   timeout: 120                            # 请求超时（秒）
-  max_tokens: 10000                       # 单次响应最大输出 token 数
+  max_tokens: 12000                       # 单次响应最大输出 token 数
 
 # 百度千帆 AI Search（web_search 工具使用）
 web_search:
@@ -19,21 +19,20 @@ mode:
   checkpoint_enabled: true                # 启用 Checkpoint 崩溃恢复
 
 context:
-  max_tokens: 50000                      # 上下文窗口大小
-  budget_ratio: 0.7                       # 输入 token 占比上限
+  max_tokens: 200000                      # 上下文窗口大小（200K）
   system_prompt_path: "prompts/system_prompt.md"  # 系统提示词路径
-  summarize_max_input_chars: 30000       # 摘要输入上限（字符数）
-  snip_keep_chars: 2000                   # Snip 头尾保留字符数（头1000+尾1000）
-  summarize_max_output_chars: 2000       # 摘要输出上限（字符数）
-  tail_guard_min_turns: 3                # 尾部保护最小轮次
+  summarize_max_input_chars: 80000        # 摘要输入上限
+  snip_keep_chars: 4000                   # Snip 头尾保留字符数（头2000+尾2000）
+  summarize_max_output_chars: 3000        # 摘要输出上限（200K 窗口允许更长摘要）
+  tail_guard_min_turns: 3                 # 尾部保护最小轮次（200K 窗口可保护更多近期对话）
   compression:
-    snip_threshold: 0.65                  # 水位 ≥65%：截短旧工具结果
-    prune_threshold: 0.82                 # 水位 ≥82%：替换为占位符
-    summarize_threshold: 0.95             # 水位 ≥95%：LLM 摘要并删旧消息
+    snip_threshold: 0.65                  # 水位 ≥65%（~130K）：截短旧工具结果
+    prune_threshold: 0.80                 # 水位 ≥80%（~160K）：替换为占位符
+    summarize_threshold: 0.92             # 水位 ≥92%（~184K）：LLM 摘要并删旧消息
 
 # 会话级 Token 预算（控制整个会话累计消耗）
 budget:
-  max_tokens: 700000                      # 会话允许消耗的累计 token 上限
+  max_tokens: 2000000                     # 会话允许消耗的累计 token 上限（≈10 轮完整上下文）
   soft_threshold: 0.75                    # 软阈值（75%）：注入 nudge 提示 LLM 收尾
   hard_threshold: 1.0                     # 硬阈值（100%）：触发优雅停止
   grace_steps: 3                          # 软/硬阈值触发后给的额外轮次
@@ -60,8 +59,7 @@ storage:
   base_dir: "./data"                      # 会话数据根目录: base_dir/{sessionId}/
 
 tools:
-  http_connect_timeout_seconds: 30          # 共享 HttpClient 连接超时（秒）
-  whitelist:                                # 允许注册的本地工具白名单（9 个）
+  whitelist:                              # 允许注册的本地工具白名单（9 个）
     - "read_file"
     - "write"
     - "list_dir"
@@ -88,7 +86,7 @@ tools:
     max_file_size_mb: 100                 # 下载文件大小上限（MB）
 
 compression:
-  summarize_turns: 6                      # 轮数触发压缩阈值（文档建议5-8轮）
+  summarize_turns: 7                      # 轮数触发压缩阈值
 
 memory:
   enabled: true                           # 跨会话记忆开关
@@ -97,6 +95,6 @@ memory:
 mcp:
   servers:
     novel-mcp-server:
-      url: "http://124.223.110.114:8081/mcp"  # MCP 服务端点
-      enabled: true                            # 是否启用
-      permission: "READONLY"                   # MCP 工具默认权限
+      url: "http://124.223.110.114:8081/mcp"    # MCP 服务端点
+      enabled: true                             # 是否启用
+      permission: "READONLY"                    # MCP 工具默认权限

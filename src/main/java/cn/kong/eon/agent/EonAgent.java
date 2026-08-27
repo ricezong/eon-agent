@@ -396,8 +396,7 @@ public class EonAgent {
                 postToolHooks, state,
                 (hook, s) -> hook.afterToolExecution(s, toolName, success),
                 reason -> stopStateMachine.handleStop(currentRec, state, reason),
-                () -> {
-                }
+                () -> {}
         );
     }
 

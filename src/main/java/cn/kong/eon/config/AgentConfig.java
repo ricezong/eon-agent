@@ -333,7 +333,6 @@ public class AgentConfig {
 
     public static class ContextConfig {
         private int maxTokens = 120000;
-        private double budgetRatio = 0.7;
         private String systemPromptPath = "prompts/system_prompt.md";
         private int summarizeMaxInputChars = 50000;
         private Compression compression;
@@ -378,14 +377,6 @@ public class AgentConfig {
 
         public void setMaxTokens(int v) {
             this.maxTokens = v;
-        }
-
-        public double getBudgetRatio() {
-            return budgetRatio;
-        }
-
-        public void setBudgetRatio(double v) {
-            this.budgetRatio = v;
         }
 
         public String getSystemPromptPath() {

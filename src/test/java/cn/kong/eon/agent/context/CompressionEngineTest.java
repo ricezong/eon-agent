@@ -124,7 +124,7 @@ class CompressionEngineTest {
         List<ChatMessage> messages = new ArrayList<>(buildMessagesForSnip(10, longContent));
         CompressionState state = new CompressionState();
 
-        engine.compressByTurnCount(messages, state, 0.5, 0);
+        engine.compressByTurnCount(messages, state, 0);
         // Should snip but not prune
         assertThat(state.isSnipped("c0")).isTrue();
         assertThat(state.isPruned("c0")).isFalse();

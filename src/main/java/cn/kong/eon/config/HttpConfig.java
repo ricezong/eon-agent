@@ -10,12 +10,9 @@ public final class HttpConfig {
 
     private final HttpClient httpClient;
 
-    /**
-     * @param connectTimeoutSeconds 连接超时（秒）
-     */
-    public HttpConfig(int connectTimeoutSeconds) {
+    public HttpConfig() {
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(connectTimeoutSeconds))
+                .connectTimeout(Duration.ofSeconds(30))
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
     }
