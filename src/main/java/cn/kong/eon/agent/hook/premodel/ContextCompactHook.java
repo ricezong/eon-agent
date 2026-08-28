@@ -108,22 +108,20 @@ public class ContextCompactHook implements Hook.PreModelHook {
         // 6. 创建 transcript 副本，避免直接修改原始列表导致副作用
         List<ChatMessage> workingCopy = new ArrayList<>(transcript);
 
-        if (waterTriggered) {
-            // 7a. 水位触发：执行完整三级递进压缩流程 Snip → Prune → Summarize
-            //     CompressionEngine 内部根据 waterLevel 自动判断执行到哪一级
-            compressionEngine.compress(workingCopy, cs, waterLevel, tailGuardTurns);
-        } else {
-            // 7b. 轮数触发：仅执行轻量压缩 Snip
-            //     轮数触发的目的是定期清理过长的工具结果，避免上下文缓慢膨胀
-            compressionEngine.compressByTurnCount(workingCopy, cs, tailGuardTurns);
-        }
+        // 7. 统一压缩入口：无论轮数触发还是水位触发，都走同一个 compress() 方法。
+        //    轮数触发时，使用 snipThreshold 作为有效水位，仅驱动 Snip 级压缩；
+        //    水位触发时，使用真实水位，由 compress() 内部决定压缩到哪一级（累积递进）。
+        //    这消除了原来两套独立压缩路径的重复逻辑。
+        double effectiveWaterLevel = waterTriggered ? waterLevel : config.getContext().getCompression().getSnipThreshold();
 
-        // 8. 若执行了 Summarize（删除了旧消息），需要修复 tool_use/tool_result 配对断裂
-        //    判断依据：summarizedUpToIndex >= 0 表示曾执行过 Summarize，
-        //    且索引仍在 workingCopy 范围内，且是水位触发路径（轮数触发不做 Summarize）
-        boolean didSummarize = cs.getSummarizedUpToIndex() >= 0
-                && cs.getSummarizedUpToIndex() < workingCopy.size()
-                && waterTriggered;
+        // 记录压缩前的消息数，用于判断 Summarize 是否在本轮执行（删除了消息）
+        int preCompressSize = workingCopy.size();
+
+        compressionEngine.compress(workingCopy, cs, effectiveWaterLevel, tailGuardTurns);
+
+        // 8. 若本轮执行了 Summarize（删除了旧消息），需要修复 tool_use/tool_result 配对断裂
+        //    判断依据：本轮压缩后消息数减少（Summarize 会删除旧消息，Snip/Prune 只替换不删除）
+        boolean didSummarize = workingCopy.size() < preCompressSize;
         if (didSummarize) {
             // PairingRepairer 会：丢弃孤立的 tool_result，为缺失结果的 tool_use 插入合成错误消息
             workingCopy = pairingRepairer.repair(workingCopy);
@@ -132,10 +130,9 @@ public class ContextCompactHook implements Hook.PreModelHook {
         // 9. 将压缩后的 transcript 写回 ContextBuilder
         ctx.setTranscript(workingCopy);
 
-        // 10. 记录本次轮数压缩的 turnCount，作为下次轮数触发判断的基准
-        if (turnTriggered) {
-            state.getCompressionState().setLastTurnCompressed(state.getTurnCount());
-        }
+        // 10. 记录本次压缩的 turnCount，作为下次轮数触发判断的基准
+        //     无论哪种触发方式，都更新基准，因为两种路径都会执行 Snip 压缩
+        state.getCompressionState().setLastTurnCompressed(state.getTurnCount());
 
         // 11. 压缩后重新估算 token 数，用于日志对比
         long postCompressTokens = ctx.estimateTokens();

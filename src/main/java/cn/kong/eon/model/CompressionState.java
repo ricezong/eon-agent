@@ -13,14 +13,14 @@ public class CompressionState {
     private Set<String> snippedIds;
     private Set<String> prunedIds;
     private String lastSummary;
-    private int summarizedUpToIndex;
+    private int summarizedMessageCount;  // 累计已摘要删除的消息数
     private double lastWaterLevel;
     private int lastTurnCompressed;   // 上次轮数触发压缩时的 turnCount，0=从未触发
 
     public CompressionState() {
         this.snippedIds = new HashSet<>();
         this.prunedIds = new HashSet<>();
-        this.summarizedUpToIndex = -1;
+        this.summarizedMessageCount = 0;
         this.lastWaterLevel = 0.0;
         this.lastTurnCompressed = 0;
     }
@@ -66,12 +66,12 @@ public class CompressionState {
         this.lastSummary = lastSummary;
     }
 
-    public int getSummarizedUpToIndex() {
-        return summarizedUpToIndex;
+    public int getSummarizedMessageCount() {
+        return summarizedMessageCount;
     }
 
-    public void setSummarizedUpToIndex(int summarizedUpToIndex) {
-        this.summarizedUpToIndex = summarizedUpToIndex;
+    public void setSummarizedMessageCount(int summarizedMessageCount) {
+        this.summarizedMessageCount = summarizedMessageCount;
     }
 
     public double getLastWaterLevel() {

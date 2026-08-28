@@ -1,7 +1,6 @@
 package cn.kong.eon;
 
 import cn.kong.eon.agent.EonAgent;
-import cn.kong.eon.agent.TurnCallback;
 import cn.kong.eon.agent.hook.postmodel.LoopDetectHook;
 import cn.kong.eon.agent.hook.posttool.CheckpointHook;
 import cn.kong.eon.agent.hook.posttool.FailureBreakerHook;
@@ -133,7 +132,7 @@ public class EonApplication {
                 ldc.getRepeatWarn(), ldc.getRepeatStop(), ldc.getNoProgressSteps(),
                 ldc.getFailureWarn(), ldc.getFailureStop());
 
-        this.resultRenderer = new ToolResultRenderer(artifactStore);
+        this.resultRenderer = new ToolResultRenderer(artifactStore, config.getContext().getSnipKeepChars());
 
         this.agent = new EonAgent(
                 config, llmClient, toolRegistry,
@@ -164,24 +163,6 @@ public class EonApplication {
         log.info("用户输入: {}", userInput.length() > 200 ? userInput.substring(0, 200) + "..." : userInput);
 
         String output = agent.run(state);
-        log.info("=== 会话 {} 结束, {} 轮, {} tokens ===",
-                sessionId, state.getTurnCount(), state.getUsageAccum().getTotalTokens());
-        return output;
-    }
-
-    /**
-     * 运行一轮对话（带流式回调）。
-     */
-    public String runStream(String userInput, TurnCallback callback) {
-        if (userInput == null || userInput.isBlank()) {
-            return "输入不能为空。";
-        }
-
-        String sessionId = generateSessionId();
-        SessionState state = SessionState.create(sessionId, userInput);
-
-        log.info("=== 会话 {} 开始（stream） ===", sessionId);
-        String output = agent.runStream(state, callback);
         log.info("=== 会话 {} 结束, {} 轮, {} tokens ===",
                 sessionId, state.getTurnCount(), state.getUsageAccum().getTotalTokens());
         return output;

@@ -45,37 +45,41 @@ public class CompressionEngine {
     }
 
     /**
-     * 根据水位执行压缩：先 Snip → 再 Prune → 最后 Summarize。原地修改 messages 列表。
+     * 根据水位执行累积递进压缩：Snip → Prune → Summarize。
+     * <p>
+     * 三级压缩是累积递进而非互斥：达到高级别水位时，依次执行所有已达到的水位级别。
+     * 各级别内部通过 state.isSnipped() / state.isPruned() 去重，
+     * 已压缩过的消息不会重复处理，因此高级别触发时低级别操作会自动跳过已处理项。
+     * <p>
+     * 水位 ≥ snip       → Snip
+     * 水位 ≥ prune       → Snip + Prune（Snip 因去重跳过已处理项）
+     * 水位 ≥ summarize   → Snip + Prune + Summarize
+     * 
+     * @return 原地修改后的 messages 列表
      */
     public List<ChatMessage> compress(List<ChatMessage> messages,
                                       CompressionState state,
                                       double waterLevel,
                                       int tailGuardTurns) {
-        if (waterLevel >= summarizeThreshold) {
-            log.info("[压缩] 水位={} >= {} -> Snip+Summarize",
-                    String.format("%.2f", waterLevel), summarizeThreshold);
-            applySnip(messages, state, tailGuardTurns);
-            applySummarize(messages, state, tailGuardTurns);
-        } else if (waterLevel >= pruneThreshold) {
-            log.info("[压缩] 水位={} >= {} -> Prune",
-                    String.format("%.2f", waterLevel), pruneThreshold);
-            applyPrune(messages, state, tailGuardTurns);
-        } else if (waterLevel >= snipThreshold) {
-            log.info("[压缩] 水位={} >= {} -> Snip",
-                    String.format("%.2f", waterLevel), snipThreshold);
+        List<String> stages = new ArrayList<>();
+
+        if (waterLevel >= snipThreshold) {
+            stages.add("Snip");
             applySnip(messages, state, tailGuardTurns);
         }
-        return messages;
-    }
+        if (waterLevel >= pruneThreshold) {
+            stages.add("Prune");
+            applyPrune(messages, state, tailGuardTurns);
+        }
+        if (waterLevel >= summarizeThreshold) {
+            stages.add("Summarize");
+            applySummarize(messages, state, tailGuardTurns);
+        }
 
-    /**
-     * 轮数触发压缩：仅 Snip（截短过长工具结果）
-     */
-    public List<ChatMessage> compressByTurnCount(List<ChatMessage> messages,
-                                                 CompressionState state,
-                                                 int tailGuardTurns) {
-        applySnip(messages, state, tailGuardTurns);
-
+        if (!stages.isEmpty()) {
+            log.info("[压缩] 水位={} -> {}",
+                    String.format("%.2f", waterLevel), String.join("+", stages));
+        }
         return messages;
     }
 
@@ -183,8 +187,12 @@ public class CompressionEngine {
             return;
         }
 
-        if (state.getSummarizedUpToIndex() >= tailStart) {
-            log.debug("[压缩] Summarize 跳过：已摘要至索引 {}", state.getSummarizedUpToIndex());
+        // 幂等判断：尾部保护区之前的消息是否已全部被摘要过。
+        // summarizedMessageCount 是跨轮累计值，追踪的是"总共已摘要删除了多少条消息"，
+        // 不受单轮删除导致的消息索引偏移影响。
+        if (state.getSummarizedMessageCount() >= tailStart) {
+            log.debug("[压缩] Summarize 跳过：已摘要 {} 条消息，当前可摘要区间 0..{}",
+                    state.getSummarizedMessageCount(), tailStart);
             return;
         }
 
@@ -261,18 +269,19 @@ public class CompressionEngine {
             int removeCount = tailStart;
             messages.subList(0, removeCount).clear();
 
-            state.setSummarizedUpToIndex(tailStart);
+            // 累计已摘要删除的消息数，用于跨轮幂等判断
+            state.setSummarizedMessageCount(state.getSummarizedMessageCount() + removeCount);
 
             String summaryPreview = summary.length() > 200 ? summary.substring(0, 200) + "..." : summary;
-            log.info("[压缩] Summarize: 删除 {} 条消息 | 摘要: {} 字符 | 预览: \"{}\"",
-                    removeCount, summary.length(), summaryPreview);
+            log.info("[压缩] Summarize: 删除 {} 条消息 | 累计已摘要 {} 条 | 摘要: {} 字符 | 预览: \"{}\"",
+                    removeCount, state.getSummarizedMessageCount(), summary.length(), summaryPreview);
 
         } catch (Exception e) {
             log.error("[压缩] Summarize 失败: {} → 降级为删除旧消息", e.getMessage());
             // 降级策略：删除已被覆盖的旧消息，防止上下文继续膨胀
             int removeCount = tailStart;
             messages.subList(0, removeCount).clear();
-            state.setSummarizedUpToIndex(tailStart);
+            state.setSummarizedMessageCount(state.getSummarizedMessageCount() + removeCount);
             log.info("[压缩] 降级处理: 删除 {} 条消息（摘要生成失败）", removeCount);
         }
     }

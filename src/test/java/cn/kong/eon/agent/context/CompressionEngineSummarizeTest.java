@@ -58,7 +58,7 @@ class CompressionEngineSummarizeTest {
         // Summary should be stored in state
         assertThat(state.getLastSummary()).isNotNull();
         assertThat(state.getLastSummary()).contains("Summary");
-        assertThat(state.getSummarizedUpToIndex()).isEqualTo(18);
+        assertThat(state.getSummarizedMessageCount()).isEqualTo(18);
     }
 
     /**
@@ -151,8 +151,8 @@ class CompressionEngineSummarizeTest {
         // Fallback: messages are still removed, but no summary stored
         assertThat(messages).hasSize(2); // 18 removed, 2 remain
         assertThat(state.getLastSummary()).isNull();
-        // summarizedUpToIndex should still be set (prevents retry)
-        assertThat(state.getSummarizedUpToIndex()).isEqualTo(18);
+        // summarizedMessageCount should still be set (prevents retry)
+        assertThat(state.getSummarizedMessageCount()).isEqualTo(18);
     }
 
     /**
@@ -162,7 +162,7 @@ class CompressionEngineSummarizeTest {
     void compress_alreadySummarized_doesNotRetry() {
         List<ChatMessage> messages = new ArrayList<>(buildDialogForSummary(10));
         CompressionState state = new CompressionState();
-        state.setSummarizedUpToIndex(18); // already summarized up to tailStart
+        state.setSummarizedMessageCount(18); // already summarized 18 messages
 
         FakeLlmClient fakeLlm = new FakeLlmClient("should not be called");
         CompressionEngine engine = createEngineWith(fakeLlm);

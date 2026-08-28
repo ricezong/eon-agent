@@ -14,8 +14,15 @@ class ToolResultRendererTest {
     @TempDir
     Path tempDir;
 
+    // Test config: snipKeepChars=2000
+    // → artifactThreshold = 2000 * 3 = 6000
+    // → summaryKeepChars  = 2000 * 2 = 4000 (head 2000 + tail 2000)
+    private static final int SNIP_KEEP_CHARS = 2000;
+    private static final int ARTIFACT_THRESHOLD = SNIP_KEEP_CHARS * 3;   // 6000
+    private static final int SUMMARY_KEEP_CHARS = SNIP_KEEP_CHARS * 2;  // 4000
+
     private ToolResultRenderer createRenderer() {
-        return new ToolResultRenderer(new ArtifactStore(tempDir));
+        return new ToolResultRenderer(new ArtifactStore(tempDir), SNIP_KEEP_CHARS);
     }
 
     @Test
@@ -37,7 +44,7 @@ class ToolResultRendererTest {
     @Test
     void render_largeResult_truncatedAndSavedAsArtifact() {
         ToolResultRenderer renderer = createRenderer();
-        String largeContent = "x".repeat(4000);
+        String largeContent = "x".repeat(ARTIFACT_THRESHOLD + 100);
         ToolOutcome outcome = ToolOutcome.success(largeContent);
         SessionState state = SessionState.create("s1", "test");
 
@@ -46,7 +53,7 @@ class ToolResultRendererTest {
         assertThat(result).contains("[Tool result] read_file");
         assertThat(result).contains("成功");
         assertThat(result).contains("截断提示");
-        assertThat(result).contains("4000 字符");
+        assertThat(result).contains(ARTIFACT_THRESHOLD + 100 + " 字符");
         assertThat(result).contains("artifact://");
         // The display content should be shorter than the original
         assertThat(result.length()).isLessThan(largeContent.length());
@@ -55,13 +62,12 @@ class ToolResultRendererTest {
     @Test
     void render_largeResult_headTailSummary() {
         ToolResultRenderer renderer = createRenderer();
-        // Content longer than SUMMARY_HEAD(700) + SUMMARY_TAIL(300) = 1000
-        // Content must exceed ARTIFACT_THRESHOLD(3000) to trigger truncation
-        // head fills first 700 chars completely (marker + padding)
-        // tail fills last 300 chars completely (padding + marker)
-        String head = "HEAD_MARKER_" + "h".repeat(800);
+        // Content must exceed ARTIFACT_THRESHOLD to trigger truncation
+        int headChars = SUMMARY_KEEP_CHARS / 2;  // 2000
+        int tailChars = SUMMARY_KEEP_CHARS - headChars; // 2000
+        String head = "HEAD_MARKER_" + "h".repeat(headChars);
         String mid = "M".repeat(2000);
-        String tail = "t".repeat(300) + "TAIL_MARKER_";
+        String tail = "t".repeat(tailChars) + "TAIL_MARKER_";
         String largeContent = head + mid + tail;
         ToolOutcome outcome = ToolOutcome.success(largeContent);
         SessionState state = SessionState.create("s1", "test");
@@ -91,7 +97,7 @@ class ToolResultRendererTest {
     @Test
     void render_largeFailureResult_alsoTruncated() {
         ToolResultRenderer renderer = createRenderer();
-        String largeError = "E".repeat(4000);
+        String largeError = "E".repeat(ARTIFACT_THRESHOLD + 100);
         ToolOutcome outcome = ToolOutcome.failure(largeError);
         SessionState state = SessionState.create("s1", "test");
 
@@ -105,8 +111,8 @@ class ToolResultRendererTest {
     @Test
     void render_boundarySize_notTruncated() {
         ToolResultRenderer renderer = createRenderer();
-        // Exactly at threshold (3000), should NOT be truncated (strictly greater than)
-        String content = "x".repeat(3000);
+        // Exactly at threshold, should NOT be truncated (strictly greater than)
+        String content = "x".repeat(ARTIFACT_THRESHOLD);
         ToolOutcome outcome = ToolOutcome.success(content);
         SessionState state = SessionState.create("s1", "test");
 
@@ -114,14 +120,14 @@ class ToolResultRendererTest {
 
         assertThat(result).doesNotContain("截断提示");
         assertThat(result).doesNotContain("artifact://");
-        assertThat(result).contains("3000 字符");
+        assertThat(result).contains(ARTIFACT_THRESHOLD + " 字符");
     }
 
     @Test
     void render_justOverBoundary_truncated() {
         ToolResultRenderer renderer = createRenderer();
-        // Just over threshold (3001), should be truncated
-        String content = "x".repeat(3001);
+        // Just over threshold, should be truncated
+        String content = "x".repeat(ARTIFACT_THRESHOLD + 1);
         ToolOutcome outcome = ToolOutcome.success(content);
         SessionState state = SessionState.create("s1", "test");
 
@@ -129,14 +135,14 @@ class ToolResultRendererTest {
 
         assertThat(result).contains("截断提示");
         assertThat(result).contains("artifact://");
-        assertThat(result).contains("3001 字符");
+        assertThat(result).contains(ARTIFACT_THRESHOLD + 1 + " 字符");
     }
 
     @Test
     void render_artifactContentReadableFromStore() {
         ArtifactStore store = new ArtifactStore(tempDir);
-        ToolResultRenderer renderer = new ToolResultRenderer(store);
-        String largeContent = "UNIQUE_CONTENT_" + "x".repeat(4000);
+        ToolResultRenderer renderer = new ToolResultRenderer(store, SNIP_KEEP_CHARS);
+        String largeContent = "UNIQUE_CONTENT_" + "x".repeat(ARTIFACT_THRESHOLD + 100);
         ToolOutcome outcome = ToolOutcome.success(largeContent);
         SessionState state = SessionState.create("s1", "test");
 
@@ -152,5 +158,33 @@ class ToolResultRendererTest {
         // Read back the full content
         String fullContent = store.readContent(refId);
         assertThat(fullContent).isEqualTo(largeContent);
+    }
+
+    /**
+     * 管道衔接验证：落盘摘要大小 > snipKeepChars，可被 Snip 二次截断。
+     * <p>
+     * 落盘摘要 = snipKeepChars × 2 = 4000 字符
+     * Snip 阈值 = snipKeepChars = 2000 字符
+     * 4000 > 2000 → Snip 可截断
+     */
+    @Test
+    void render_summaryExceedsSnipThreshold_canBeSnippedAgain() {
+        ToolResultRenderer renderer = createRenderer();
+        // 原文远超落盘阈值
+        String largeContent = "H".repeat(SUMMARY_KEEP_CHARS) + "M".repeat(2000) + "T".repeat(SUMMARY_KEEP_CHARS);
+        ToolOutcome outcome = ToolOutcome.success(largeContent);
+        SessionState state = SessionState.create("s1", "test");
+
+        String result = renderer.render("read_file", outcome, state);
+
+        // 落盘摘要的核心内容（不含元信息）应约为 SUMMARY_KEEP_CHARS
+        // 验证摘要 > snipKeepChars，确保 Snip 能二次截断
+        assertThat(result).contains("artifact://");
+        assertThat(result).contains("截断提示");
+        // 去掉元信息后的内容部分应大于 snipKeepChars
+        int contentStart = result.indexOf("├─ 内容:\n") + "├─ 内容:\n".length();
+        int contentEnd = result.indexOf("\n├─ 截断提示");
+        String displayContent = result.substring(contentStart, contentEnd);
+        assertThat(displayContent.length()).isGreaterThan(SNIP_KEEP_CHARS);
     }
 }

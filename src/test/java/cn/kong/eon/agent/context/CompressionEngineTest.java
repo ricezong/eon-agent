@@ -116,15 +116,15 @@ class CompressionEngineTest {
     }
 
     @Test
-    void compressByTurnCount_alwaysSnips() {
-        // 轮数触发后无条件执行 Snip，不受水位阈值限制
+    void compress_atSnipThresholdOnly_snipsButNotPrunes() {
+        // 水位刚到 snip 阈值（0.5），只做 Snip 不做 Prune
         CompressionEngine engine = createEngine();
         String longContent = "x".repeat(500);
         // 10 条消息, tailGuardTurns=0 -> tailStart = max(0, 10-0-2) = 8
         List<ChatMessage> messages = new ArrayList<>(buildMessagesForSnip(10, longContent));
         CompressionState state = new CompressionState();
 
-        engine.compressByTurnCount(messages, state, 0);
+        engine.compress(messages, state, 0.5, 0);
         // Should snip but not prune
         assertThat(state.isSnipped("c0")).isTrue();
         assertThat(state.isPruned("c0")).isFalse();
@@ -158,5 +158,27 @@ class CompressionEngineTest {
         ToolExecutionResultMessage result = (ToolExecutionResultMessage) messages.get(0);
         assertThat(result.text()).contains("art_001");
         assertThat(result.text()).contains("[");
+    }
+
+    @Test
+    void compress_atPruneThreshold_executesSnipThenPrune() {
+        // 水位达到 prune 阈值（0.75），应累积执行 Snip + Prune
+        CompressionEngine engine = createEngine();
+        String content = "x".repeat(500);
+        List<ChatMessage> messages = new ArrayList<>(buildMessagesForSnip(10, content));
+        CompressionState state = new CompressionState();
+
+        engine.compress(messages, state, 0.75, 0);
+
+        // 所有可压缩的消息应被 Prune（同时隐含 Snip）
+        assertThat(state.isPruned("c0")).isTrue();
+        assertThat(state.isPruned("c7")).isTrue();
+        assertThat(state.isSnipped("c0")).isTrue();
+        // 尾部保护区不受影响
+        assertThat(state.isPruned("c8")).isFalse();
+
+        // 验证 Prune 后内容被替换为占位符
+        ToolExecutionResultMessage pruned = (ToolExecutionResultMessage) messages.get(0);
+        assertThat(pruned.text()).contains("[旧工具结果内容已清除");
     }
 }
