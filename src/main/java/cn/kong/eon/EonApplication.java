@@ -295,7 +295,7 @@ public class EonApplication {
         agent.addHook(new LoopDetectHook(loopDetector, config.getLoopDetect().getStopGraceSteps()));
 
         // PreTool Hooks
-        agent.addHook(new GateHook(toolRegistry, objectMapper, config.getLoopDetect().getStopGraceSteps()));
+        agent.addHook(new GateHook(toolRegistry));
 
         // PostTool Hooks
         agent.addHook(new FailureBreakerHook(loopDetector));
@@ -374,7 +374,6 @@ public class EonApplication {
         app.shutdown();
     }
 
-    private static final String LINE_THIN = "─".repeat(44);
     private static final String LINE_BOLD = "━".repeat(44);
     private static final String LINE_DOUBLE = "═".repeat(44);
 

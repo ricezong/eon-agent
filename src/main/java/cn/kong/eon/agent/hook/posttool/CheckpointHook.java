@@ -42,7 +42,6 @@ public class CheckpointHook implements Hook.PostToolHook {
 
     @Override
     public HookResult afterToolExecution(SessionState state, String toolName, boolean success) {
-        if (!isActive(state)) return HookResult.ok();
         if (!"todo_write".equals(toolName) || !success) return HookResult.ok();
 
         checkpointStore.save(

@@ -28,10 +28,6 @@ public class LoopDetector {
     private final Map<String, Integer> toolFailureCount = new HashMap<>();
     private final Set<String> trippedTools = new HashSet<>();
 
-    public LoopDetector(int repeatWarn, int repeatStop, int noProgressSteps) {
-        this(repeatWarn, repeatStop, noProgressSteps, 3, 5);
-    }
-
     public LoopDetector(int repeatWarn, int repeatStop, int noProgressSteps,
                         int failureWarnThreshold, int failureStopThreshold) {
         this.repeatWarn = repeatWarn;

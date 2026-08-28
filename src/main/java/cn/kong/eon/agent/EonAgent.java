@@ -243,7 +243,7 @@ public class EonAgent {
             }
 
             // ── 阶段 7：回填 AI 消息和工具结果到 JSONL ──
-            finalizer.finalizeAndAppend(rec, state);
+            finalizer.finalizeAndAppend(state);
             logger.turnDone(rec, state, turnStartTokens);
 
             // ── 阶段 8：stop 期间消耗 grace ──
@@ -254,7 +254,7 @@ public class EonAgent {
             return new TurnAction.Continue();
         } finally {
             // 兜底：确保任何退出路径都不会丢失未回填的消息
-            finalizer.finalizeIfPending(rec, state);
+            finalizer.finalizeIfPending(state);
             flushTurn(rec);
         }
     }
@@ -304,11 +304,11 @@ public class EonAgent {
             logger.outputTruncated(rec);
             state.addFormatCorrection(
                     "上一轮输出因长度限制被截断，工具调用未完成。请重新调用工具，如果内容过长请分多次写入。");
-            finalizer.finalizeAndAppend(rec, state);
+            finalizer.finalizeAndAppend(state);
             return new TurnAction.Continue();
         }
 
-        finalizer.finalizeAndAppend(rec, state);
+        finalizer.finalizeAndAppend(state);
         return new TurnAction.Exit(thought);
     }
 
@@ -400,34 +400,30 @@ public class EonAgent {
 
     private FireResult firePreModelHooks(SessionState state, ContextBuilder ctx) {
         return HookDispatcher.dispatchPreModel(
-                preModelHooks, state,
-                (hook, s) -> hook.beforeModelCall(s, ctx),
+                preModelHooks, state, ctx,
                 reason -> stopStateMachine.handleStop(currentRec, state, reason)
         );
     }
 
     private FireResult firePostModelHooks(SessionState state, LlmResponse response) {
-        return HookDispatcher.dispatch(
-                postModelHooks, state,
-                (hook, s) -> hook.afterModelCall(s, response),
+        return HookDispatcher.dispatchPostModel(
+                postModelHooks, state, response,
                 reason -> stopStateMachine.handleStop(currentRec, state, reason),
-                () -> finalizer.finalizeIfPending(currentRec, state)
+                () -> finalizer.finalizeIfPending(state)
         );
     }
 
     private FireResult firePreToolHooks(SessionState state, List<ToolExecutionRequest> requests) {
-        return HookDispatcher.dispatch(
-                preToolHooks, state,
-                (hook, s) -> hook.beforeToolExecution(s, requests),
+        return HookDispatcher.dispatchPreTool(
+                preToolHooks, state, requests,
                 reason -> stopStateMachine.handleStop(currentRec, state, reason),
-                () -> finalizer.finalizeIfPending(currentRec, state)
+                () -> finalizer.finalizeIfPending(state)
         );
     }
 
     private FireResult firePostToolHooks(SessionState state, String toolName, boolean success) {
-        return HookDispatcher.dispatch(
-                postToolHooks, state,
-                (hook, s) -> hook.afterToolExecution(s, toolName, success),
+        return HookDispatcher.dispatchPostTool(
+                postToolHooks, state, toolName, success,
                 reason -> stopStateMachine.handleStop(currentRec, state, reason),
                 () -> {}
         );

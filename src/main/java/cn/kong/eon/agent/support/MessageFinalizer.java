@@ -22,7 +22,7 @@ public class MessageFinalizer {
     /**
      * 回填 AI 消息和工具结果到 JSONL，清理临时状态。
      */
-    public void finalizeAndAppend(TurnRecord rec, SessionState state) {
+    public void finalizeAndAppend(SessionState state) {
         String assistantText = state.getLastAssistantText();
         var pendingCalls = state.getPendingToolCalls();
         boolean hasText = assistantText != null && !assistantText.isBlank();
@@ -55,12 +55,12 @@ public class MessageFinalizer {
      * 仅当存在 pending 工具调用或结果时执行回填。
      * 用于 stop 流程中避免重复回填。
      */
-    public void finalizeIfPending(TurnRecord rec, SessionState state) {
+    public void finalizeIfPending(SessionState state) {
         boolean hasPendingCalls = state.getPendingToolCalls() != null && !state.getPendingToolCalls().isEmpty();
         boolean hasToolResults = state.getLastToolResults() != null && !state.getLastToolResults().isEmpty();
         boolean hasText = state.getLastAssistantText() != null && !state.getLastAssistantText().isBlank();
         if (hasPendingCalls || hasToolResults || hasText) {
-            finalizeAndAppend(rec, state);
+            finalizeAndAppend(state);
         }
     }
 }

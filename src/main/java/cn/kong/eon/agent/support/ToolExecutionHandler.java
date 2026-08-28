@@ -146,7 +146,7 @@ public class ToolExecutionHandler {
         String rendered = resultRenderer.render(req.name(), outcome, state);
         String argsSummary = toolRegistry.get(req.name()) != null
                 ? toolRegistry.get(req.name()).getExecutor().summarizeArgs(args)
-                : truncate(args.toString(), 80);
+                : args.toString().length() > 80 ? args.toString().substring(0, 80) + "..." : args.toString();
         logger.toolExecuted(rec, req.name(), outcome.success(), argsSummary, rendered.length());
 
         ToolExecutionResult result = ToolExecutionResult.of(req.id(), req.name(), outcome, rendered);
@@ -186,10 +186,6 @@ public class ToolExecutionHandler {
             log.warn("[工具] 参数解析失败: {}", json, e);
             return Map.of();
         }
-    }
-
-    private static String truncate(String s, int maxLen) {
-        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
     /**

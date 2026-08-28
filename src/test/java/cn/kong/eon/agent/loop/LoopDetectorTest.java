@@ -129,7 +129,7 @@ class LoopDetectorTest {
 
     @Test
     void recordTodoSnapshot_warnsAfterNoProgress() {
-        LoopDetector detector = new LoopDetector(3, 5, 3);
+        LoopDetector detector = new LoopDetector(3, 5, 3, 3, 5);
         String snapshot = "[pending task1, pending task2]";
 
         // Fill the window with identical snapshots (3 steps)
@@ -151,7 +151,7 @@ class LoopDetectorTest {
 
     @Test
     void recordTodoSnapshot_progressResetsCounter() {
-        LoopDetector detector = new LoopDetector(3, 5, 3);
+        LoopDetector detector = new LoopDetector(3, 5, 3, 3, 5);
 
         // 3 identical
         for (int i = 0; i < 3; i++) {

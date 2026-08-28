@@ -57,7 +57,7 @@ class StopStateMachineTest {
         StopStateMachine sm = createStateMachine(0, 30);
         SessionState state = createStateWithStop();
 
-        FireResult result = sm.handleStop(state,
+        FireResult result = sm.handleStop(null, state,
                 new StopReason(StopCategory.BUDGET_EXCEEDED, "budget exceeded", 0));
 
         assertThat(result).isInstanceOf(FireResult.Exit.class);
@@ -70,7 +70,7 @@ class StopStateMachineTest {
         StopStateMachine sm = createStateMachine(3, 30);
         SessionState state = createStateWithStop();
 
-        FireResult result = sm.handleStop(state,
+        FireResult result = sm.handleStop(null, state,
                 new StopReason(StopCategory.BUDGET_EXCEEDED, "budget soft", 3));
 
         assertThat(result).isInstanceOf(FireResult.Continue.class);
@@ -85,11 +85,11 @@ class StopStateMachineTest {
         SessionState state = createStateWithStop();
 
         // First stop request
-        sm.handleStop(state, new StopReason(StopCategory.BUDGET_EXCEEDED, "first", 3));
+        sm.handleStop(null, state, new StopReason(StopCategory.BUDGET_EXCEEDED, "first", 3));
         int nudgesAfterFirst = state.getPendingNudges().size();
 
         // Second stop request
-        sm.handleStop(state, new StopReason(StopCategory.LOOP_DETECTED, "second", 3));
+        sm.handleStop(null, state, new StopReason(StopCategory.LOOP_DETECTED, "second", 3));
         assertThat(state.getPendingNudges().size()).isGreaterThan(nudgesAfterFirst);
     }
 
@@ -99,12 +99,12 @@ class StopStateMachineTest {
         SessionState state = createStateWithStop();
 
         // First stop
-        sm.handleStop(state, new StopReason(StopCategory.BUDGET_EXCEEDED, "first", 1));
+        sm.handleStop(null, state, new StopReason(StopCategory.BUDGET_EXCEEDED, "first", 1));
         // Consume the grace step
         state.getStopState().consumeGraceStep();
 
         // Now no grace left
-        FireResult result = sm.handleStop(state,
+        FireResult result = sm.handleStop(null, state,
                 new StopReason(StopCategory.LOOP_DETECTED, "second", 0));
 
         assertThat(result).isInstanceOf(FireResult.Exit.class);

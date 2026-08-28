@@ -49,7 +49,6 @@ public class ContextCompactHook implements Hook.PreModelHook {
     private final AgentConfig config;
     private final CompressionEngine compressionEngine;
     private final PairingRepairer pairingRepairer;
-    private final String transcriptPath;
 
     /**
      * 构造函数：从 AgentConfig 中读取压缩相关配置，初始化 CompressionEngine 和 PairingRepairer。
@@ -60,7 +59,6 @@ public class ContextCompactHook implements Hook.PreModelHook {
      */
     public ContextCompactHook(AgentConfig config, LlmClient llmClient, String transcriptPath) {
         this.config = config;
-        this.transcriptPath = transcriptPath;
         var ctxCfg = config.getContext();
         // 从配置中提取三级压缩阈值和参数，构建压缩引擎
         this.compressionEngine = new CompressionEngine(

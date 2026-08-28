@@ -43,12 +43,4 @@ public final class StopReason {
                         "不要再发起新的工具调用，用已有信息整理总结即可。",
                 graceSteps, message);
     }
-
-    /**
-     * 构建硬终止时的最终输出文本。
-     */
-    public String toFinalText() {
-        String displayName = category != null ? category.getDisplayName() : "执行中断";
-        return displayName + ": " + message;
-    }
 }

@@ -48,9 +48,12 @@ public class StopStateMachine {
                     StopCategory.UNEXPECTED_ERROR, "LLM 调用连续失败，模型不可用", 0)));
         }
         // 其他异常：尝试优雅停止
-        FireResult sr = handleStop(state, new StopReason(
+        FireResult sr = handleStop(null, state, new StopReason(
                 StopCategory.UNEXPECTED_ERROR, e.getMessage(), config.getBudget().getGraceSteps()));
-        return sr instanceof FireResult.Exit exit ? new TurnAction.Exit(exit.output()) : new TurnAction.Continue();
+        if (sr instanceof FireResult.Exit exit) {
+            return new TurnAction.Exit(exit.output());
+        }
+        return new TurnAction.Continue();
     }
 
     /**
@@ -62,16 +65,12 @@ public class StopStateMachine {
                 StopCategory.MAX_STEPS_REACHED,
                 "达到最大步数限制 (" + config.getLoop().getMaxSteps() + ")",
                 config.getBudget().getGraceSteps());
-        FireResult sr = handleStop(state, reason);
-        return sr instanceof FireResult.Exit exit ? new TurnAction.Exit(exit.output())
-                : new TurnAction.Exit(forceTerminate(state, reason));
-    }
-
-    /**
-     * 处理 stop 请求（无 TurnRecord，用于 maxSteps/异常等 turn 之外的场景）。
-     */
-    public FireResult handleStop(SessionState state, StopReason reason) {
-        return handleStop(null, state, reason);
+        FireResult sr = handleStop(null, state, reason);
+        if (sr instanceof FireResult.Exit exit) {
+            return new TurnAction.Exit(exit.output());
+        }
+        // handleStop 未硬终止，但 maxSteps 已达上限，强制终止
+        return new TurnAction.Exit(forceTerminate(state, reason));
     }
 
     /**
@@ -94,7 +93,7 @@ public class StopStateMachine {
                 log.warn("[停止] 请求停止: {} | 原因: {} | 宽限期: {}",
                         reason.getCategory(), reason.getMessage(), reason.getGraceSteps());
             }
-            finalizer.finalizeIfPending(rec, state);
+            finalizer.finalizeIfPending(state);
             return new FireResult.Continue();
         }
 
@@ -108,7 +107,7 @@ public class StopStateMachine {
         } else {
             log.warn("[停止] 升级停止: {} | 原因: {}", reason.getCategory(), reason.getMessage());
         }
-        finalizer.finalizeIfPending(rec, state);
+        finalizer.finalizeIfPending(state);
         return new FireResult.Continue();
     }
 

@@ -38,9 +38,8 @@ class MessageFinalizerTest {
         state.setLastAssistantText("hello from AI");
         state.setPendingToolCalls(null);
         state.setLastToolResults(null);
-        TurnRecord rec = new TurnRecord();
 
-        finalizer.finalizeAndAppend(rec, state);
+        finalizer.finalizeAndAppend(state);
 
         List<ChatMessage> snapshot = store.snapshot();
         assertThat(snapshot).hasSize(1);
@@ -58,9 +57,8 @@ class MessageFinalizerTest {
                 ToolExecutionRequest.builder().id("c1").name("read_file").arguments("{}").build()
         ));
         state.setLastToolResults(null);
-        TurnRecord rec = new TurnRecord();
 
-        finalizer.finalizeAndAppend(rec, state);
+        finalizer.finalizeAndAppend(state);
 
         List<ChatMessage> snapshot = store.snapshot();
         assertThat(snapshot).hasSize(1);
@@ -82,9 +80,8 @@ class MessageFinalizerTest {
         state.setLastToolResults(List.of(
                 new ToolExecutionResult("c1", "read_file", true, "[Tool result] read_file\ncontent")
         ));
-        TurnRecord rec = new TurnRecord();
 
-        finalizer.finalizeAndAppend(rec, state);
+        finalizer.finalizeAndAppend(state);
 
         List<ChatMessage> snapshot = store.snapshot();
         assertThat(snapshot).hasSize(2);
@@ -109,9 +106,8 @@ class MessageFinalizerTest {
                 new ToolExecutionResult("c1", "read_file", true, "content1"),
                 new ToolExecutionResult("c2", "list_dir", true, "content2")
         ));
-        TurnRecord rec = new TurnRecord();
 
-        finalizer.finalizeAndAppend(rec, state);
+        finalizer.finalizeAndAppend(state);
 
         List<ChatMessage> snapshot = store.snapshot();
         assertThat(snapshot).hasSize(3);
@@ -134,9 +130,8 @@ class MessageFinalizerTest {
         ));
         state.getPendingNudges().add("nudge1");
         state.getFormatCorrections().add("correction1");
-        TurnRecord rec = new TurnRecord();
 
-        finalizer.finalizeAndAppend(rec, state);
+        finalizer.finalizeAndAppend(state);
 
         assertThat(state.getPendingToolCalls()).isNull();
         assertThat(state.getLastToolResults()).isNull();
@@ -152,9 +147,8 @@ class MessageFinalizerTest {
         state.setLastAssistantText("");
         state.setPendingToolCalls(null);
         state.setLastToolResults(null);
-        TurnRecord rec = new TurnRecord();
 
-        finalizer.finalizeAndAppend(rec, state);
+        finalizer.finalizeAndAppend(state);
 
         // No AiMessage should be appended (both text and calls are empty/null)
         // But tool results should still be handled
@@ -170,9 +164,8 @@ class MessageFinalizerTest {
         state.setPendingToolCalls(List.of(
                 ToolExecutionRequest.builder().id("c1").name("read_file").arguments("{}").build()
         ));
-        TurnRecord rec = new TurnRecord();
 
-        finalizer.finalizeAndAppend(rec, state);
+        finalizer.finalizeAndAppend(state);
 
         List<ChatMessage> snapshot = store.snapshot();
         assertThat(snapshot).hasSize(1);
@@ -188,9 +181,8 @@ class MessageFinalizerTest {
         SessionState state = SessionState.create("s1", "test");
         state.setLastAssistantText("hello");
         state.setPendingToolCalls(null);
-        TurnRecord rec = new TurnRecord();
 
-        finalizer.finalizeIfPending(rec, state);
+        finalizer.finalizeIfPending(state);
 
         assertThat(store.snapshot()).hasSize(1);
     }
@@ -203,9 +195,8 @@ class MessageFinalizerTest {
         state.setLastAssistantText(null);
         state.setPendingToolCalls(null);
         state.setLastToolResults(null);
-        TurnRecord rec = new TurnRecord();
 
-        finalizer.finalizeIfPending(rec, state);
+        finalizer.finalizeIfPending(state);
 
         assertThat(store.snapshot()).isEmpty();
     }
@@ -220,9 +211,8 @@ class MessageFinalizerTest {
         state.setLastToolResults(List.of(
                 new ToolExecutionResult("c1", "read_file", true, "content")
         ));
-        TurnRecord rec = new TurnRecord();
 
-        finalizer.finalizeIfPending(rec, state);
+        finalizer.finalizeIfPending(state);
 
         // Should append the tool result message
         List<ChatMessage> snapshot = store.snapshot();
@@ -239,9 +229,8 @@ class MessageFinalizerTest {
         state.setPendingToolCalls(List.of(
                 ToolExecutionRequest.builder().id("c1").name("read_file").arguments("{}").build()
         ));
-        TurnRecord rec = new TurnRecord();
 
-        finalizer.finalizeAndAppend(rec, state);
+        finalizer.finalizeAndAppend(state);
 
         List<ChatMessage> snapshot = store.snapshot();
         // hasCalls is true, so AiMessage should be appended (without text since blank)

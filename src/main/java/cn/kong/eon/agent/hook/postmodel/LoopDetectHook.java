@@ -24,10 +24,6 @@ public class LoopDetectHook implements Hook.PostModelHook {
     private final int stopGraceSteps;
     private final LoopDetector loopDetector;
 
-    public LoopDetectHook(LoopDetector loopDetector) {
-        this(loopDetector, 2);
-    }
-
     public LoopDetectHook(LoopDetector loopDetector, int stopGraceSteps) {
         this.loopDetector = loopDetector;
         this.stopGraceSteps = stopGraceSteps;
