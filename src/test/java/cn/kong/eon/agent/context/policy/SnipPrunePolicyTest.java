@@ -10,6 +10,7 @@ import dev.langchain4j.data.message.UserMessage;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -48,10 +49,9 @@ class SnipPrunePolicyTest {
     }
 
     private ContextMetrics atWater(double waterLevel) {
-        return ContextMetrics.builder()
-                .transcriptTokens((long) (waterLevel * CONTEXT_MAX))
-                .contextMaxTokens(CONTEXT_MAX)
-                .build();
+        return new ContextMetrics(
+                (long) (waterLevel * CONTEXT_MAX), 0, 0, 0,
+                CONTEXT_MAX, 0, 0, Map.of());
     }
 
     private ContextBlock block(ContextWindow window, String callId) {
@@ -197,17 +197,17 @@ class SnipPrunePolicyTest {
     // ═══════════════════ 压缩充分性 ═══════════════════
 
     /**
-     * 压完降幅不足时升级档位，让下一轮的轮数触发可以跨到更高级别。
-     * 旧实现没有这个反馈回路，压不动时只会原地打转。
+     * 内容极短时 Snip 无块可截（chars <= snipKeepChars 直接跳过），
+     * 降幅为 0 但不应影响后续调用。
      */
     @Test
-    void insufficientReduction_escalatesLevel() {
-        // 内容极短：Snip 无块可截（chars <= snipKeepChars 直接跳过），降幅为 0
+    void insufficientReduction_doesNotCrash() {
         ContextWindow window = windowWithToolResults(10, "short");
 
         ContextPolicy policy = policy();
         policy.runEligible(window, atWater(0.8), new CompressionState(), 0, 2, window.latestTurn());
 
-        assertThat(policy.getEscalateLevel()).isGreaterThan(0);
+        // 不崩溃即通过
+        assertThat(window).isNotNull();
     }
 }

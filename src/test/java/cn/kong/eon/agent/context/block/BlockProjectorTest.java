@@ -1,5 +1,6 @@
 package cn.kong.eon.agent.context.block;
 
+import cn.kong.eon.agent.context.ToolSupport;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -20,7 +21,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class BlockProjectorTest {
 
-    private static final ToolMetaLookup PERSISTING = "write_file"::equals;
+    private static final ToolSupport PERSISTING = new ToolSupport() {
+        @Override
+        public boolean persistsArguments(String toolName) {
+            return "write_file".equals(toolName);
+        }
+
+        @Override
+        public String summarizeArgs(String toolName, String argumentsJson) {
+            return null;
+        }
+    };
 
     // ═══════════════════ 爆炸 ═══════════════════
 

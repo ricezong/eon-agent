@@ -39,7 +39,7 @@ class IngestPipelineTest {
     private ContextPipeline pipeline(ArtifactStore store) {
         return new ContextPipeline(
                 List.of(new ArtifactSpillRule(), new ToolResultFormatRule()),
-                null, store, null, mapper, SNIP_KEEP_CHARS, SNIP_KEEP_CHARS);
+                store, null, mapper, SNIP_KEEP_CHARS, SNIP_KEEP_CHARS);
     }
 
     private List<ContextBlock> ingest(ContextPipeline p, String id, String toolName,
@@ -182,15 +182,15 @@ class IngestPipelineTest {
     }
 
     /**
-     * 规则按 order 升序执行，与装配时的书写顺序无关。
-     * 落盘（10）必须先于格式化（20）——格式化后内容里混了元信息，就不能再当作原文落盘了。
+     * 规则按声明顺序执行：落盘必须先于格式化——
+     * 格式化后内容里混了元信息，就不能再当作原文落盘了。
      */
     @Test
-    void rules_executeInOrderRegardlessOfDeclarationOrder() {
+    void rules_executeInDeclarationOrder() {
         ArtifactStore store = new ArtifactStore(tempDir);
         ContextPipeline p = new ContextPipeline(
-                List.of(new ToolResultFormatRule(), new ArtifactSpillRule()), // 故意反序
-                null, store, null, mapper, SNIP_KEEP_CHARS, SNIP_KEEP_CHARS);
+                List.of(new ArtifactSpillRule(), new ToolResultFormatRule()),
+                store, null, mapper, SNIP_KEEP_CHARS, SNIP_KEEP_CHARS);
 
         String largeContent = "x".repeat(ARTIFACT_THRESHOLD + 100);
         ContextBlock block = ingest(p, "c1", "read_file", largeContent, true).get(0);

@@ -84,7 +84,7 @@ public class ContextCompactHook implements Hook.PreModelHook {
         cs.setLastTurnCompressed(state.getTurnCount());
 
         log.info("[上下文] {} | {} -> {} 块 | {} -> {} 字符 (降幅 {}) | 水位 {} | 投影剩余 {} 轮 | 构成 {}",
-                String.join(" + ", result.reasons()),
+                result.describe(),
                 blocksBefore, window.size(),
                 result.charsBefore(), result.charsAfter(), pct(result.reduction()),
                 pct(metricsAfter.waterLevel()),

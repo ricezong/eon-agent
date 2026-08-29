@@ -10,9 +10,9 @@ import java.util.Map;
 /**
  * 工具参数的无损卸载：把"参数全量"替换为"参数骨架 + 路径引用"。
  * <p>
- * 入站的 {@code ArgumentOffloadRule} 与在站的 {@code BudgetAwareOffloadRule}
- * 是同一件事的两个入口，共用本类的实现——两份实现已经一起写错过一次
- * （都在 JSON 外追加注释，导致请求被供应商拒收），合并是唯一的修法。
+ * 在站的 {@code ArgumentOffloadRule} 使用本类完成参数骨架化，
+ * 输出必须是严格合法的 JSON——历史上曾因在 JSON 外追加注释
+ * 导致请求被供应商拒收（400），合并后此约束由本类统一保证。
  * <p>
  * <b>为什么无损</b>：声明了 {@code persistsArguments()} 的工具（典型是 write）
  * 已把内容完整写进磁盘，历史里那份 arguments 与磁盘文件逐字节重复，

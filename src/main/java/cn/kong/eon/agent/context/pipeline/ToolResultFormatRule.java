@@ -20,11 +20,6 @@ public class ToolResultFormatRule implements IngestRule {
     }
 
     @Override
-    public int order() {
-        return 20;
-    }
-
-    @Override
     public boolean appliesTo(ContextBlock block, IngestContext ctx) {
         return block.kind() == BlockKind.TOOL_RESULT;
     }

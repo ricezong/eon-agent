@@ -1,5 +1,6 @@
 package cn.kong.eon.agent.context.block;
 
+import cn.kong.eon.agent.context.ToolSupport;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -41,9 +42,9 @@ public final class BlockProjector {
      * @param turn    入站轮次
      * @param lookup  工具元数据查询，决定 TOOL_ARGS 块的保留策略
      */
-    public static List<ContextBlock> explode(ChatMessage msg, String groupId, int turn, ToolMetaLookup lookup) {
+    public static List<ContextBlock> explode(ChatMessage msg, String groupId, int turn, ToolSupport lookup) {
         List<ContextBlock> blocks = new ArrayList<>();
-        ToolMetaLookup meta = lookup != null ? lookup : ToolMetaLookup.NONE;
+        ToolSupport meta = lookup != null ? lookup : ToolSupport.NONE;
 
         if (msg instanceof SystemMessage sm) {
             blocks.add(base(BlockKind.SYSTEM, Retention.VERBATIM, groupId, 0, turn)
@@ -109,7 +110,7 @@ public final class BlockProjector {
      * @param turn   所有块的入站轮次（批量投射时无法区分，统一取值）
      * @param lookup 工具元数据查询
      */
-    public static List<ContextBlock> explodeAll(List<ChatMessage> messages, int turn, ToolMetaLookup lookup) {
+    public static List<ContextBlock> explodeAll(List<ChatMessage> messages, int turn, ToolSupport lookup) {
         List<ContextBlock> all = new ArrayList<>();
         if (messages == null) return all;
         for (int i = 0; i < messages.size(); i++) {

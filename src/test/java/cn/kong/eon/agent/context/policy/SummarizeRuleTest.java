@@ -40,10 +40,9 @@ class SummarizeRuleTest {
     }
 
     private ContextMetrics atWater(double waterLevel) {
-        return ContextMetrics.builder()
-                .transcriptTokens((long) (waterLevel * CONTEXT_MAX))
-                .contextMaxTokens(CONTEXT_MAX)
-                .build();
+        return new ContextMetrics(
+                (long) (waterLevel * CONTEXT_MAX), 0, 0, 0,
+                CONTEXT_MAX, 0, 0, java.util.Map.of());
     }
 
     /** 10 组 user+ai，轮次 0..9 → latestTurn = 9 */

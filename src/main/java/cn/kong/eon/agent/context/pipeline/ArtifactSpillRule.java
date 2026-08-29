@@ -32,11 +32,6 @@ public class ArtifactSpillRule implements IngestRule {
     }
 
     @Override
-    public int order() {
-        return 10;
-    }
-
-    @Override
     public boolean appliesTo(ContextBlock block, IngestContext ctx) {
         return block.kind() == BlockKind.TOOL_RESULT
                 && block.chars() > ctx.snipKeepChars() * 3;

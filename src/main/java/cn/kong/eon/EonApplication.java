@@ -1,16 +1,14 @@
 package cn.kong.eon;
 
 import cn.kong.eon.agent.EonAgent;
-import cn.kong.eon.agent.context.pipeline.ArgumentOffloadRule;
 import cn.kong.eon.agent.context.pipeline.ArtifactSpillRule;
 import cn.kong.eon.agent.context.pipeline.ContextPipeline;
 import cn.kong.eon.agent.context.pipeline.IngestRule;
 import cn.kong.eon.agent.context.pipeline.ToolResultFormatRule;
-import cn.kong.eon.agent.context.policy.BudgetAwareOffloadRule;
+import cn.kong.eon.agent.context.policy.ArgumentOffloadRule;
 import cn.kong.eon.agent.context.policy.ContextPolicy;
 import cn.kong.eon.agent.context.policy.ContextRule;
 import cn.kong.eon.agent.context.policy.PruneRule;
-import cn.kong.eon.agent.context.policy.ReferenceCollapseRule;
 import cn.kong.eon.agent.context.policy.SnipRule;
 import cn.kong.eon.agent.context.policy.SummarizeRule;
 import cn.kong.eon.agent.hook.postmodel.LoopDetectHook;
@@ -249,12 +247,12 @@ public class EonApplication {
     /**
      * 入站管线：所有内容进入上下文的唯一关卡。
      * <p>
-     * 规则按 order 升序执行，顺序有语义含义：
+     * 规则按声明顺序执行，顺序有语义含义：
      * <ol>
-     *   <li>{@code ArtifactSpill} (10) — 大结果先落盘，落的是原文</li>
-     *   <li>{@code ToolResultFormat} (20) — 再套格式化外壳，只加元数据不改内容</li>
-     *   <li>{@code ArgumentOffload} (30) — 最后卸载参数块（需要先知道调用是否成功）</li>
+     *   <li>{@code ArtifactSpill} — 大结果先落盘，落的是原文</li>
+     *   <li>{@code ToolResultFormat} — 再套格式化外壳，只加元数据不改内容</li>
      * </ol>
+     * 参数卸载已移至在站策略（受保护区约束），避免模型在近期对话中丢失参数上下文。
      * 新增一种入站处置 = 往这个列表加一条规则，调用方与配置读取逻辑都不用动。
      */
     private ContextPipeline createContextPipeline() {
@@ -265,16 +263,11 @@ public class EonApplication {
         List<IngestRule> rules = new ArrayList<>();
         rules.add(new ArtifactSpillRule());
         rules.add(new ToolResultFormatRule());
-        if (ctxCfg.getOffload().isEnabled()) {
-            rules.add(new ArgumentOffloadRule());
-        }
 
-        log.info("入站管线已装配: {} 条规则 | 参数卸载 {} (阈值 {} 字符)",
-                rules.size(),
-                ctxCfg.getOffload().isEnabled() ? "启用" : "停用",
-                offloadMinChars);
+        log.info("入站管线已装配: {} 条规则 | 参数卸载已移至在站策略 (阈值 {} 字符)",
+                rules.size(), offloadMinChars);
 
-        return new ContextPipeline(rules, toolRegistry, artifactStore,
+        return new ContextPipeline(rules, artifactStore,
                 toolRegistry, objectMapper, snipKeepChars, offloadMinChars);
     }
 
@@ -288,16 +281,13 @@ public class EonApplication {
         var ctxCfg = config.getContext();
         var comp = ctxCfg.getCompression();
         int summarizeTurns = config.getSummarizeTurns();
-        var budgetAware = ctxCfg.getBudgetAware();
 
         List<ContextRule> rules = new ArrayList<>();
 
-        // ── 无损级：不看水位，只看预算投影 ──
-        if (budgetAware.isEnabled()) {
-            rules.add(new ReferenceCollapseRule(
-                    budgetAware.getMinRemainingTurns(), ctxCfg.getSnipKeepChars()));
-            rules.add(new BudgetAwareOffloadRule(
-                    budgetAware.getMinRemainingTurns(),
+        // ── 无损级：参数卸载（水位最低，先于有损压缩） ──
+        if (ctxCfg.getOffload().isEnabled()) {
+            rules.add(new ArgumentOffloadRule(
+                    comp.getSnipThreshold(), summarizeTurns,
                     ctxCfg.getOffload().getMinChars(),
                     toolRegistry, objectMapper));
         }
@@ -310,11 +300,12 @@ public class EonApplication {
                 llmClient, transcriptPath));
 
         ContextPolicy policy = new ContextPolicy(rules, comp.getSufficiencyPct());
-        log.info("上下文策略已装配: {} 条规则 | 有损阈值 {}/{}/{} | 轮数节奏 {} | 预算感知 {}",
+        log.info("上下文策略已装配: {} 条规则 | 参数卸载 {} (阈值 {} 字符) | 有损阈值 {}/{}/{} | 轮数节奏 {}",
                 rules.size(),
+                ctxCfg.getOffload().isEnabled() ? "启用" : "停用",
+                ctxCfg.getOffload().getMinChars(),
                 comp.getSnipThreshold(), comp.getPruneThreshold(), comp.getSummarizeThreshold(),
-                summarizeTurns,
-                budgetAware.isEnabled() ? "启用(投影<" + budgetAware.getMinRemainingTurns() + "轮)" : "停用");
+                summarizeTurns);
         return policy;
     }
 

@@ -167,16 +167,15 @@ public class ContextBuilder {
         long transcript = 0;
         for (long v : byKind.values()) transcript += v;
 
-        return ContextMetrics.builder()
-                .transcriptTokens(transcript)
-                .anchorTokens(anchorTokens())
-                .toolSchemaTokens(toolSchemaTokens)
-                .outputReserveTokens(outputReserveTokens)
-                .contextMaxTokens(contextMaxTokens)
-                .budgetUsedTokens(budgetUsedTokens)
-                .budgetMaxTokens(budgetMaxTokens)
-                .tokensByKind(byKind)
-                .build();
+        return new ContextMetrics(
+                transcript,
+                anchorTokens(),
+                toolSchemaTokens,
+                outputReserveTokens,
+                contextMaxTokens,
+                budgetUsedTokens,
+                budgetMaxTokens,
+                byKind);
     }
 
     /**

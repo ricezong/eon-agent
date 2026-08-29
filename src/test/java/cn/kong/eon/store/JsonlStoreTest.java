@@ -126,7 +126,7 @@ class JsonlStoreTest {
         ArtifactStore artifacts = new ArtifactStore(tempDir.resolve("artifacts"));
         store.setPipeline(new ContextPipeline(
                 List.of(new ArtifactSpillRule(), new ToolResultFormatRule()),
-                null, artifacts, null, mapper,
+                artifacts, null, mapper,
                 4000,     // snipKeepChars → 落盘阈值 12000、摘要 8000
                 2000));
 

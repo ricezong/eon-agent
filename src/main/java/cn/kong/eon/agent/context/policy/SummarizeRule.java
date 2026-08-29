@@ -1,5 +1,6 @@
 package cn.kong.eon.agent.context.policy;
 
+import cn.kong.eon.agent.context.ContextMetrics;
 import cn.kong.eon.agent.context.ContextWindow;
 import cn.kong.eon.agent.context.block.BlockKind;
 import cn.kong.eon.agent.context.block.BlockProjector;
@@ -25,10 +26,6 @@ import java.util.List;
  * <b>关键改进</b>：删除走 {@link ContextWindow#removeBefore(int)}，
  * 它只删 {@link Retention#COMPRESSIBLE} 的块，
  * {@link Retention#VERBATIM} 的用户消息与系统块<b>自动保留</b>。
- * <p>
- * 过去是 {@code subList(0, n).clear()}，会把早期用户消息连锅端掉，
- * 只能寄望 LLM 在摘要 prompt 里自觉执行"逐字保留用户消息"这一条——
- * 把安全约束交给模型自觉，本身就是设计缺陷。
  */
 public class SummarizeRule implements ContextRule {
     private static final Logger log = LoggerFactory.getLogger(SummarizeRule.class);
@@ -57,19 +54,13 @@ public class SummarizeRule implements ContextRule {
     }
 
     @Override
-    public int level() {
-        return LEVEL_SUMMARIZE;
+    public boolean shouldFire(ContextMetrics metrics, int turnsSinceLastCompress) {
+        return metrics.waterLevel() >= waterThreshold
+                || turnsSinceLastCompress >= summarizeTurns * 3;
     }
 
     @Override
-    public List<Trigger> triggers() {
-        return List.of(
-                new Trigger.WaterLevel(waterThreshold),
-                new Trigger.TurnInterval(summarizeTurns, 3));
-    }
-
-    @Override
-    public RuleOutcome apply(RuleContext ctx) {
+    public PolicyResult apply(RuleContext ctx) {
         ContextWindow window = ctx.window();
         int cutoffTurn = ctx.cutoffTurn();
 
@@ -81,12 +72,12 @@ public class SummarizeRule implements ContextRule {
         }
         if (removable.isEmpty()) {
             log.debug("[压缩] Summarize 跳过：尾部保护区外无可摘要内容");
-            return RuleOutcome.none();
+            return PolicyResult.none();
         }
 
         String dialogText = formatBlocks(removable);
         if (dialogText.isBlank()) {
-            return RuleOutcome.none();
+            return PolicyResult.none();
         }
 
         CompressionState state = ctx.compressionState();
@@ -112,7 +103,7 @@ public class SummarizeRule implements ContextRule {
         long after = window.totalChars();
         log.info("[压缩] Summarize: 删除 {} 个块（保留 {} 个逐字块）| {} -> {} 字符",
                 removed.size(), removable.size() - removed.size(), before, after);
-        return RuleOutcome.of(removed.size(), before, after, "Summarize×" + removed.size());
+        return PolicyResult.of(removed.size(), before, after, "Summarize×" + removed.size());
     }
 
     private String generateSummary(String dialogText, CompressionState state) {

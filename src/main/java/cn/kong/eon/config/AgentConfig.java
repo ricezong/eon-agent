@@ -72,7 +72,6 @@ public class AgentConfig {
         if (context == null) context = new ContextConfig();
         if (context.getCompression() == null) context.setCompression(new ContextConfig.Compression());
         if (context.getOffload() == null) context.setOffload(new ContextConfig.Offload());
-        if (context.getBudgetAware() == null) context.setBudgetAware(new ContextConfig.BudgetAware());
         if (loop == null) loop = new LoopConfig();
         if (loopDetect == null) loopDetect = new LoopDetectConfig();
         if (retry == null) retry = new RetryConfig();

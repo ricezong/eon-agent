@@ -1,11 +1,10 @@
 package cn.kong.eon.agent.context.policy;
 
+import cn.kong.eon.agent.context.ContextMetrics;
 import cn.kong.eon.agent.context.block.BlockKind;
 import cn.kong.eon.agent.context.block.ContextBlock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.List;
 
 /**
  * Prune：把旧的工具结果替换为占位符（有损，第二级）。
@@ -30,19 +29,13 @@ public class PruneRule implements ContextRule {
     }
 
     @Override
-    public int level() {
-        return LEVEL_PRUNE;
+    public boolean shouldFire(ContextMetrics metrics, int turnsSinceLastCompress) {
+        return metrics.waterLevel() >= waterThreshold
+                || turnsSinceLastCompress >= summarizeTurns * 2;
     }
 
     @Override
-    public List<Trigger> triggers() {
-        return List.of(
-                new Trigger.WaterLevel(waterThreshold),
-                new Trigger.TurnInterval(summarizeTurns, 2));
-    }
-
-    @Override
-    public RuleOutcome apply(RuleContext ctx) {
+    public PolicyResult apply(RuleContext ctx) {
         long before = ctx.window().totalChars();
         int count = 0;
 
@@ -61,7 +54,7 @@ public class PruneRule implements ContextRule {
         if (count > 0) {
             log.info("[压缩] Prune: 替换 {} 个工具结果为占位符", count);
         }
-        return RuleOutcome.of(count, before, after, "Prune×" + count);
+        return PolicyResult.of(count, before, after, "Prune×" + count);
     }
 
     private boolean eligible(ContextBlock block, RuleContext ctx) {
