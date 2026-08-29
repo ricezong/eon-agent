@@ -1,11 +1,13 @@
 package cn.kong.eon.agent.support;
 
+import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.hook.StopReason;
 import cn.kong.eon.model.SessionState;
 
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * Hook 调度返回值。三态 sealed interface，无 null 歧义。
@@ -40,8 +42,8 @@ public class HookDispatcher {
     public static FireResult dispatchPreModel(
             List<Hook.PreModelHook> hooks,
             SessionState state,
-            cn.kong.eon.agent.context.ContextBuilder ctx,
-            java.util.function.Function<StopReason, FireResult> stopHandler) {
+            ContextBuilder ctx,
+            Function<StopReason, FireResult> stopHandler) {
         for (Hook.PreModelHook hook : hooks) {
             if (!hook.isActive(state)) continue;
             HookResult result = hook.beforeModelCall(state, ctx);

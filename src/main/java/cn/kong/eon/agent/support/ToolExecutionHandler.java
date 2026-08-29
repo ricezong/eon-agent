@@ -144,9 +144,7 @@ public class ToolExecutionHandler {
         ToolOutcome outcome = toolRegistry.execute(req.name(), args, state, toolContext);
 
         String rendered = resultRenderer.render(req.name(), outcome, state);
-        String argsSummary = toolRegistry.get(req.name()) != null
-                ? toolRegistry.get(req.name()).getExecutor().summarizeArgs(args)
-                : args.toString().length() > 80 ? args.toString().substring(0, 80) + "..." : args.toString();
+        String argsSummary = args.toString().length() > 80 ? args.toString().substring(0, 80) + "..." : args.toString();
         logger.toolExecuted(rec, req.name(), outcome.success(), argsSummary, rendered.length());
 
         ToolExecutionResult result = ToolExecutionResult.of(req.id(), req.name(), outcome, rendered);

@@ -1,5 +1,6 @@
 package cn.kong.eon.tool;
 
+import cn.kong.eon.model.SessionState;
 import cn.kong.eon.tool.mcp.McpClientManager;
 import cn.kong.eon.model.ToolPermission;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -106,7 +107,7 @@ public class ToolRegistry {
      * 执行工具（本地或 MCP）。
      */
     public ToolOutcome execute(String name, Map<String, Object> arguments,
-                               cn.kong.eon.model.SessionState state, ToolContext context) {
+                               SessionState state, ToolContext context) {
         ToolDescriptor descriptor = tools.get(name);
         if (descriptor != null) {
             try {
