@@ -53,6 +53,27 @@ public class SessionState {
         return s;
     }
 
+    /**
+     * 同一会话内开始一次新的用户输入（复用本状态）。
+     * <p>
+     * 重置任务级状态：用户输入、轮数、运行时提醒与临时消息字段；
+     * 保留会话级状态：token 累计、压缩状态、todo 使用标记、预算软触发标记。
+     * turnCount 归零使步数上限按单次任务计；
+     * lastTurnCompressed 随之归零，保持轮数触发判断的基准一致。
+     */
+    public void beginRun(String userInput) {
+        this.userInput = userInput;
+        this.turnCount = 0;
+        this.compressionState.setLastTurnCompressed(0);
+        this.pendingNudges.clear();
+        this.formatCorrections.clear();
+        this.lastAssistantText = null;
+        this.pendingToolCalls = new ArrayList<>();
+        this.lastToolResults = new ArrayList<>();
+        this.currentMessages = null;
+        this.lastResponse = null;
+    }
+
     public void incrementTurn() {
         this.turnCount++;
     }

@@ -69,6 +69,8 @@ public class EonApplication {
     private final EonAgent agent;
     private final String workDir;
     private final String transcriptPath;
+    /** 会话级状态：整个会话共享，跨多次用户输入保留预算/压缩等累积状态 */
+    private final SessionState sessionState;
     /** CLI 交互回调（共享 Scanner） */
     private final CliInteractionCallback cliInteractionCallback;
 
@@ -108,6 +110,7 @@ public class EonApplication {
         Path jsonlPath = sessionDir.resolve("transcript.jsonl");
         this.jsonlStore = new JsonlStore(jsonlPath, objectMapper);
         this.transcriptPath = jsonlPath.toAbsolutePath().toString();
+        this.sessionState = SessionState.create(sessionId, "");
         log.info("会话 {} 已初始化, transcript: {}", sessionId, transcriptPath);
 
         this.toolRegistry = createToolRegistry();
@@ -146,7 +149,7 @@ public class EonApplication {
     }
 
     /**
-     * 运行一轮对话。
+     * 运行一轮对话（同一会话内复用会话级状态）。
      *
      * @param userInput 用户输入文本
      * @return Agent 输出结果
@@ -156,15 +159,14 @@ public class EonApplication {
             return "输入不能为空。";
         }
 
-        String sessionId = generateSessionId();
-        SessionState state = SessionState.create(sessionId, userInput);
+        sessionState.beginRun(userInput);
 
-        log.info("=== 会话 {} 开始 ===", sessionId);
+        log.info("=== 会话 {} 任务开始 ===", sessionState.getSessionId());
         log.info("用户输入: {}", userInput.length() > 200 ? userInput.substring(0, 200) + "..." : userInput);
 
-        String output = agent.run(state);
-        log.info("=== 会话 {} 结束, {} 轮, {} tokens ===",
-                sessionId, state.getTurnCount(), state.getUsageAccum().getTotalTokens());
+        String output = agent.run(sessionState);
+        log.info("=== 会话 {} 任务结束, 本次 {} 轮, 会话累计 {} tokens ===",
+                sessionState.getSessionId(), sessionState.getTurnCount(), sessionState.getUsageAccum().getTotalTokens());
         return output;
     }
 
@@ -289,7 +291,7 @@ public class EonApplication {
         // PreModel Hooks
         agent.addHook(new BudgetHook(config));
         agent.addHook(new TodoNavigatorHook(todoStore));
-        agent.addHook(new ContextCompactHook(config, llmClient, transcriptPath));
+        agent.addHook(new ContextCompactHook(config, llmClient, transcriptPath, jsonlStore));
 
         // PostModel Hooks
         agent.addHook(new LoopDetectHook(loopDetector, config.getLoopDetect().getStopGraceSteps()));

@@ -13,7 +13,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Append-Only JSONL 消息存储。原始账本，永不修改，每条消息一行 JSON。
+ * JSONL 消息存储，两层结构：
+ * <ul>
+ *   <li>磁盘文件：append-only 审计账本，永不修改，每条消息一行 JSON，供事后检索回溯</li>
+ *   <li>内存列表：当前上下文视图，可被压缩流程原地修改（截短/占位/删除），
+ *       是每轮构建 LLM 上下文的数据源</li>
+ * </ul>
  */
 public class JsonlStore {
     private static final Logger log = LoggerFactory.getLogger(JsonlStore.class);
@@ -51,10 +56,22 @@ public class JsonlStore {
     }
 
     /**
-     * 返回消息快照（浅拷贝，修改不影响原始账本）。
+     * 返回消息快照（浅拷贝，修改不影响内部视图）。
      */
     public synchronized List<ChatMessage> snapshot() {
         return new ArrayList<>(messages);
+    }
+
+    /**
+     * 用压缩后的消息列表整体替换内存视图。
+     * <p>
+     * 只影响内存视图，不回写磁盘——磁盘账本保持完整历史，
+     * 供摘要提示词中约定的检索回溯使用。
+     */
+    public synchronized void replaceAll(List<ChatMessage> compressed) {
+        messages.clear();
+        messages.addAll(compressed);
+        log.debug("上下文视图已更新: {} 条消息", messages.size());
     }
 
     private void loadAll() {

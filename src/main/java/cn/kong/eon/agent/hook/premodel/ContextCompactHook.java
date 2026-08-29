@@ -9,6 +9,7 @@ import cn.kong.eon.agent.context.PairingRepairer;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.model.CompressionState;
 import cn.kong.eon.model.SessionState;
+import cn.kong.eon.store.JsonlStore;
 import dev.langchain4j.data.message.ChatMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +21,7 @@ import java.util.List;
  * 上下文压缩（PreModel, order=100）。
  * 三级递进：≥snip 截短工具结果 → ≥prune 替换为占位符 → ≥summarize LLM 摘要并删旧消息。
  * Summarize 后执行 PairingRepairer 修复配对断裂。
+ * 压缩结果写回 JsonlStore 内存视图，跨轮持久生效（磁盘账本保持完整不受影响）。
  */
 public class ContextCompactHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(ContextCompactHook.class);
@@ -49,6 +51,7 @@ public class ContextCompactHook implements Hook.PreModelHook {
     private final AgentConfig config;
     private final CompressionEngine compressionEngine;
     private final PairingRepairer pairingRepairer;
+    private final JsonlStore jsonlStore;
 
     /**
      * 构造函数：从 AgentConfig 中读取压缩相关配置，初始化 CompressionEngine 和 PairingRepairer。
@@ -56,9 +59,11 @@ public class ContextCompactHook implements Hook.PreModelHook {
      * @param config        Agent 全局配置，包含压缩阈值、尾部保护轮数等参数
      * @param llmClient     LLM 客户端，供 CompressionEngine 在 Summarize 阶段调用 LLM 生成摘要
      * @param transcriptPath 原始对话记录文件路径，嵌入摘要提示词中供后续回溯
+     * @param jsonlStore    消息存储，压缩结果写回其内存视图实现跨轮持久化
      */
-    public ContextCompactHook(AgentConfig config, LlmClient llmClient, String transcriptPath) {
+    public ContextCompactHook(AgentConfig config, LlmClient llmClient, String transcriptPath, JsonlStore jsonlStore) {
         this.config = config;
+        this.jsonlStore = jsonlStore;
         var ctxCfg = config.getContext();
         // 从配置中提取三级压缩阈值和参数，构建压缩引擎
         this.compressionEngine = new CompressionEngine(
@@ -75,30 +80,30 @@ public class ContextCompactHook implements Hook.PreModelHook {
 
     @Override
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
-        // 1. 计算当前上下文水位：已用 token 占最大 token 的比例
+        // 1. transcript 为空或不存在，无可压缩内容，后续水位/轮数判断均无意义
+        List<ChatMessage> transcript = ctx.getTranscript();
+        if (transcript == null || transcript.isEmpty()) return HookResult.ok();
+
+        // 2. 计算当前上下文水位：已用 token 占最大 token 的比例
         long usedTokens = ctx.estimateTokens();
         long maxTokens = config.getContext().getMaxTokens();
         double waterLevel = Math.min(1.0, (double) usedTokens / maxTokens);
         state.getCompressionState().setLastWaterLevel(waterLevel);
 
-        // 2. 判断是否满足轮数触发条件：
+        // 3. 判断是否满足轮数触发条件：
         //    a) 距上次轮数压缩的对话轮数 >= 配置阈值（summarizeTurns）
         //    b) transcript 中有足够多的消息可供裁剪（超过尾部保护区所需的最小消息数）
-        List<ChatMessage> transcript = ctx.getTranscript();
         int turnsSinceLastCompress = state.getTurnCount() - state.getCompressionState().getLastTurnCompressed();
         boolean turnTriggered = turnsSinceLastCompress >= config.getSummarizeTurns()
-                && transcript != null && transcript.size() > config.getContext().getTailGuardMinTurns() * 2 + 2;
+                && transcript.size() > config.getContext().getTailGuardMinTurns() * 2 + 2;
 
-        // 3. 判断是否满足水位触发条件：水位达到 Snip 阈值
+        // 4. 判断是否满足水位触发条件：水位达到 Snip 阈值
         boolean waterTriggered = waterLevel >= config.getContext().getCompression().getSnipThreshold();
 
-        // 4. 两个触发条件都不满足，无需压缩，直接返回
+        // 5. 两个触发条件都不满足，无需压缩，直接返回
         if (!waterTriggered && !turnTriggered) {
             return HookResult.ok();
         }
-
-        // 5. transcript 为空或不存在，无可压缩内容
-        if (transcript == null || transcript.isEmpty()) return HookResult.ok();
 
         CompressionState cs = state.getCompressionState();
         int tailGuardTurns = config.getContext().getTailGuardMinTurns();
@@ -125,7 +130,10 @@ public class ContextCompactHook implements Hook.PreModelHook {
             workingCopy = pairingRepairer.repair(workingCopy);
         }
 
-        // 9. 将压缩后的 transcript 写回 ContextBuilder
+        // 9. 压缩结果持久化：写回 JsonlStore 内存视图（磁盘账本不受影响）。
+        //    下一轮 buildContext 取到的 snapshot 即为压缩后视图，
+        //    压缩不再每轮重做，水位也随之回落；同步更新本轮 ContextBuilder。
+        jsonlStore.replaceAll(workingCopy);
         ctx.setTranscript(workingCopy);
 
         // 10. 记录本次压缩的 turnCount，作为下次轮数触发判断的基准
