@@ -140,11 +140,20 @@ public class ContextCompactHook implements Hook.PreModelHook {
         //     无论哪种触发方式，都更新基准，因为两种路径都会执行 Snip 压缩
         state.getCompressionState().setLastTurnCompressed(state.getTurnCount());
 
-        // 11. 压缩后重新估算 token 数，用于日志对比
+        // 11. 压缩后重新估算 token 数，用于日志对比。
+        //     真实水位与触发原因在此统一输出（引擎收到的水位可能是轮数触发借用的阈值）
         long postCompressTokens = ctx.estimateTokens();
-        String trigger = waterTriggered ? "water " + String.format("%.0f%%", waterLevel * 100) : "turn " + state.getTurnCount();
-        log.info("[上下文压缩] {} | {} -> {} 条消息 | 估算 {} -> {} tokens",
-                trigger, transcript.size(), workingCopy.size(), usedTokens, postCompressTokens);
+        boolean changed = workingCopy.size() != preCompressSize || postCompressTokens != usedTokens;
+        String trigger = waterTriggered
+                ? String.format("水位 %.0f%% 达到 Snip 阈值", waterLevel * 100)
+                : String.format("轮数触发 (turn %d, 实际水位 %.0f%%)", state.getTurnCount(), waterLevel * 100);
+        if (changed) {
+            log.info("[上下文压缩] {} | {} -> {} 条消息 | 估算 {} -> {} tokens",
+                    trigger, transcript.size(), workingCopy.size(), usedTokens, postCompressTokens);
+        } else {
+            log.info("[上下文压缩] {} | 未发现可压缩内容，上下文保持不变 ({} 条消息, 估算 {} tokens)",
+                    trigger, transcript.size(), usedTokens);
+        }
 
         return HookResult.ok();
     }

@@ -212,13 +212,12 @@ public class EonAgent {
             // ── 阶段 3：调用 LLM ──
             LlmResponse response = llmClient.chat(messages, toolRegistry.getSpecifications());
             state.setLastResponse(response);
-            int deltaTokens = response.usage() != null ? response.usage().getTotalTokens() : 0;
             state.getUsageAccum().add(response.usage());
 
             String thought = response.aiMessage().text() != null ? response.aiMessage().text() : "";
             state.setLastAssistantText(thought);
             List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
-            logger.llmResponse(rec, requests, deltaTokens);
+            logger.llmResponse(rec, requests);
 
             // ── 阶段 4：无工具调用 → 任务完成或截断处理 ──
             if (requests == null || requests.isEmpty()) {

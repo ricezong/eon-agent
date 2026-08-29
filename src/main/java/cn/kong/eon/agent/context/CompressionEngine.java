@@ -77,8 +77,8 @@ public class CompressionEngine {
         }
 
         if (!stages.isEmpty()) {
-            log.info("[压缩] 水位={} -> {}",
-                    String.format("%.2f", waterLevel), String.join("+", stages));
+            log.debug("[压缩] 执行阶段: {} (触发判定水位={})",
+                    String.join("+", stages), String.format("%.2f", waterLevel));
         }
         return messages;
     }

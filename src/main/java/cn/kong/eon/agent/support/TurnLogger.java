@@ -4,7 +4,6 @@ import cn.kong.eon.agent.hook.StopCategory;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.model.SessionState;
-import cn.kong.eon.model.ToolExecutionResult;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.ChatMessage;
 import org.slf4j.Logger;
@@ -42,9 +41,9 @@ public class TurnLogger {
         rec.context(messages.size(), ctx.estimateTokens(), toolCount);
     }
 
-    public void llmResponse(TurnRecord rec, List<ToolExecutionRequest> requests, int deltaTokens) {
+    public void llmResponse(TurnRecord rec, List<ToolExecutionRequest> requests) {
         List<String> toolNames = (requests != null && !requests.isEmpty()) ? requests.stream().map(ToolExecutionRequest::name).toList() : List.of();
-        rec.llm(toolNames, deltaTokens);
+        rec.llm(toolNames);
     }
 
     public void outputTruncated(TurnRecord rec) {
@@ -69,39 +68,52 @@ public class TurnLogger {
     }
 
     public void turnDone(TurnRecord rec, SessionState state, int turnStartTokens) {
-        List<ToolExecutionResult> results = state.getLastToolResults();
-        int toolCount = results != null ? results.size() : 0;
-        int okCount = results != null ? (int) results.stream().filter(ToolExecutionResult::success).count() : 0;
-        rec.turnDone(turnStartTokens, state.getUsageAccum().getTotalTokens(), config.getBudget().getMaxTokens(), okCount, toolCount - okCount);
+        rec.turnDone(turnStartTokens, state.getUsageAccum().getTotalTokens(), config.getBudget().getMaxTokens());
     }
 
 
     public void flush(TurnRecord rec) {
-        StringBuilder header = new StringBuilder(256);
-        header.append("Turn ").append(rec.turnNumber);
+        StringBuilder line = new StringBuilder(192);
+        line.append("Turn ").append(rec.turnNumber).append(" 完成");
         if (rec.stopCategory != null) {
-            header.append(" ⚠").append(rec.stopCategory).append("(grace=").append(rec.stopGraceRemaining).append(")");
+            line.append(" ⚠").append(rec.stopCategory).append("(宽限剩余").append(rec.stopGraceRemaining).append(")");
         }
-        header.append(" │ ctx ").append(rec.messageCount).append("msgs/~").append(rec.estimatedTokens).append("tok");
-        header.append(" │ LLM: ").append(rec.toolNames.isEmpty() ? "—" : rec.toolNames.toString());
-        if (rec.llmDeltaTokens > 0) {
-            header.append(" +").append(rec.llmDeltaTokens).append("tok");
+        long ctxMaxTokens = config.getContext().getMaxTokens();
+        double ctxRatio = ctxMaxTokens > 0 ? (double) rec.estimatedTokens / ctxMaxTokens : 0.0;
+        line.append(" │ 上下文 ").append(rec.messageCount).append(" 条消息 (约 ")
+                .append(rec.estimatedTokens).append("/").append(ctxMaxTokens)
+                .append(" token, 占用 ").append(String.format("%.0f", ctxRatio * 100)).append("%)");
+
+        if (!rec.tools.isEmpty()) {
+            line.append(" │ 工具: ");
+            for (int i = 0; i < rec.tools.size(); i++) {
+                TurnRecord.ToolEntry tool = rec.tools.get(i);
+                if (i > 0) {
+                    line.append(", ");
+                }
+                line.append(tool.name()).append(tool.success() ? " ✓" : " ✗");
+            }
+        } else if (!rec.toolNames.isEmpty()) {
+            // LLM 请求了工具但未执行（被 PostModel Hook 跳过等）
+            line.append(" │ LLM 请求工具 ").append(rec.toolNames).append("（未执行）");
+        } else {
+            line.append(" │ LLM 输出最终回复");
         }
         if (rec.outputTruncated) {
-            header.append(" ⚠truncated");
+            line.append(" │ ⚠输出被截断");
         }
-        for (TurnRecord.ToolEntry tool : rec.tools) {
-            header.append(" │ ").append(tool.name()).append(tool.success() ? "✓" : "✗");
-        }
-        log.info(header.toString());
 
-        StringBuilder done = new StringBuilder(128);
-        done.append("  └ Turn ").append(rec.turnNumber).append(" done");
-        done.append(" │ ").append(rec.okCount).append("ok/").append(rec.failCount).append("fail");
-        done.append(" │ Δ+").append(rec.turnDeltaTokens).append("tok");
-        done.append(" │ total ").append(rec.usedTokens).append("/").append(rec.maxTokens);
-        done.append(" (").append(String.format("%.0f", rec.waterRatio * 100)).append("%)");
-        log.info(done.toString());
+        line.append(" │ 本轮 +").append(rec.turnDeltaTokens)
+                .append(" token │ 预算累计 ").append(rec.usedTokens).append("/")
+                .append(rec.maxTokens)
+                .append(" (").append(String.format("%.0f", rec.waterRatio * 100)).append("%)");
+        log.info(line.toString());
+
+        if (!rec.tools.isEmpty() && log.isDebugEnabled()) {
+            for (TurnRecord.ToolEntry tool : rec.tools) {
+                log.debug("  工具明细: {} 参数={} 输出 {} 字符", tool.name(), tool.argsSummary(), tool.renderedLen());
+            }
+        }
 
         for (TurnRecord.StopEvent event : rec.stopEvents) {
             String detail = switch (event.type()) {

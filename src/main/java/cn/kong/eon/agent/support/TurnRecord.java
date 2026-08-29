@@ -21,14 +21,11 @@ public class TurnRecord {
     int catalogToolCount;
 
     List<String> toolNames = new ArrayList<>();
-    int llmDeltaTokens;
     boolean outputTruncated;
 
     final List<ToolEntry> tools = new ArrayList<>();
 
     int turnDeltaTokens;
-    int okCount;
-    int failCount;
     double waterRatio;
 
     final List<StopEvent> stopEvents = new ArrayList<>();
@@ -62,9 +59,8 @@ public class TurnRecord {
         return this;
     }
 
-    TurnRecord llm(List<String> toolNames, int deltaTokens) {
+    TurnRecord llm(List<String> toolNames) {
         this.toolNames = toolNames != null ? toolNames : List.of();
-        this.llmDeltaTokens = deltaTokens;
         return this;
     }
 
@@ -78,14 +74,11 @@ public class TurnRecord {
         return this;
     }
 
-    TurnRecord turnDone(int turnStartTokens, long totalTokens, long maxBudget,
-                        int okCount, int failCount) {
+    TurnRecord turnDone(int turnStartTokens, long totalTokens, long maxBudget) {
         this.turnDeltaTokens = (int) (totalTokens - turnStartTokens);
         this.usedTokens = totalTokens;
         this.maxTokens = maxBudget;
         this.waterRatio = maxBudget > 0 ? (double) totalTokens / maxBudget : 0.0;
-        this.okCount = okCount;
-        this.failCount = failCount;
         return this;
     }
 
