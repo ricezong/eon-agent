@@ -39,6 +39,8 @@ public class TurnLogger {
 
     public void contextInfo(TurnRecord rec, ContextBuilder ctx, List<ChatMessage> messages, SessionState state, int toolCount) {
         rec.context(messages.size(), ctx.estimateTokens(), toolCount);
+        // 构成分解：上下文被谁占满，过去要写脚本翻 transcript 才知道，现在日志里直接可见
+        rec.setComposition(ctx.metrics(state).composition());
     }
 
     public void llmResponse(TurnRecord rec, List<ToolExecutionRequest> requests) {
@@ -83,6 +85,9 @@ public class TurnLogger {
         line.append(" │ 上下文 ").append(rec.messageCount).append(" 条消息 (约 ")
                 .append(rec.estimatedTokens).append("/").append(ctxMaxTokens)
                 .append(" token, 占用 ").append(String.format("%.0f", ctxRatio * 100)).append("%)");
+        if (rec.composition != null && !rec.composition.isBlank()) {
+            line.append(" │ ").append(rec.composition);
+        }
 
         if (!rec.tools.isEmpty()) {
             line.append(" │ 工具: ");

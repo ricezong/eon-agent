@@ -1,5 +1,6 @@
 package cn.kong.eon.store;
 
+import cn.kong.eon.agent.context.ArtifactSink;
 import cn.kong.eon.model.ArtifactRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Artifact 存储。大文本工具结果落盘，上下文只保留引用。
  */
-public class ArtifactStore {
+public class ArtifactStore implements ArtifactSink {
     private static final Logger log = LoggerFactory.getLogger(ArtifactStore.class);
 
     private final Path artifactDir;
@@ -33,6 +34,7 @@ public class ArtifactStore {
     /**
      * 保存大文本为 artifact，返回引用。
      */
+    @Override
     public ArtifactRef save(String source, String content, String summary) {
         int seq = counter.incrementAndGet();
         String refId = String.format("art_%03d", seq);

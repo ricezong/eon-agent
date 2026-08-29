@@ -6,7 +6,6 @@ import cn.kong.eon.model.ToolExecutionResult;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.tool.ToolRegistry;
-import cn.kong.eon.tool.ToolResultRenderer;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -17,8 +16,12 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /**
- * 工具执行处理器。封装工具执行全流程：参数解析 → 执行 → todo_write 后处理 → 结果渲染 → 日志。
+ * 工具执行处理器。封装工具执行全流程：参数解析 → 执行 → todo_write 后处理 → 日志。
  * 支持并行执行，串行豁免清单（todo_write/AskQuestion）强制串行。
+ * <p>
+ * 这里<b>不做任何结果渲染与大小控制</b>：工具结果以原始输出回填，
+ * 由入站管线统一决定"落不落盘、怎么格式化"。
+ * 渲染原本挂在工具层，导致上下文大小策略散落在两个地方、且只对工具结果生效。
  */
 public class ToolExecutionHandler {
     private static final Logger log = LoggerFactory.getLogger(ToolExecutionHandler.class);
@@ -28,7 +31,6 @@ public class ToolExecutionHandler {
     private static final Set<String> SERIAL_ONLY = Set.of(TODO_WRITE, "AskQuestion");
 
     private final ToolRegistry toolRegistry;
-    private final ToolResultRenderer resultRenderer;
     private final ToolContext toolContext;
     private final TurnLogger logger;
     private final LoopDetector loopDetector;
@@ -36,14 +38,12 @@ public class ToolExecutionHandler {
     private final ExecutorService parallelExecutor;
 
     public ToolExecutionHandler(ToolRegistry toolRegistry,
-                                ToolResultRenderer resultRenderer,
                                 ToolContext toolContext,
                                 TurnLogger logger,
                                 LoopDetector loopDetector,
                                 int parallelism,
                                 ObjectMapper objectMapper) {
         this.toolRegistry = toolRegistry;
-        this.resultRenderer = resultRenderer;
         this.toolContext = toolContext;
         this.logger = logger;
         this.loopDetector = loopDetector;
@@ -134,20 +134,19 @@ public class ToolExecutionHandler {
         if (loopDetector.isToolTripped(req.name())) {
             ToolOutcome tripped = ToolOutcome.failure(
                     "工具 " + req.name() + " 已被熔断（连续失败过多），请标记 blocked 或调整计划，不要再调用此工具");
-            String rendered = resultRenderer.render(req.name(), tripped, state);
-            logger.toolExecuted(rec, req.name(), false, "(已熔断)", rendered.length());
-            return ToolExecutionResult.of(req.id(), req.name(), tripped, rendered);
+            logger.toolExecuted(rec, req.name(), false, "(已熔断)", tripped.content().length());
+            return ToolExecutionResult.of(req.id(), req.name(), tripped, tripped.content());
         }
 
         Map<String, Object> args = parseArgs(req.arguments());
 
         ToolOutcome outcome = toolRegistry.execute(req.name(), args, state, toolContext);
 
-        String rendered = resultRenderer.render(req.name(), outcome, state);
         String argsSummary = args.toString().length() > 80 ? args.toString().substring(0, 80) + "..." : args.toString();
-        logger.toolExecuted(rec, req.name(), outcome.success(), argsSummary, rendered.length());
+        logger.toolExecuted(rec, req.name(), outcome.success(), argsSummary, outcome.content().length());
 
-        ToolExecutionResult result = ToolExecutionResult.of(req.id(), req.name(), outcome, rendered);
+        // 原始输出直接回填；落盘与格式化由入站管线负责
+        ToolExecutionResult result = ToolExecutionResult.of(req.id(), req.name(), outcome, outcome.content());
 
         // todo_write 后处理
         if (TODO_WRITE.equals(req.name()) && outcome.success()) {
@@ -170,9 +169,8 @@ public class ToolExecutionHandler {
     private ToolExecutionResult syntheticError(ToolExecutionRequest req, String errorMsg,
                                                TurnRecord rec, SessionState state) {
         ToolOutcome outcome = ToolOutcome.failure(errorMsg);
-        String rendered = resultRenderer.render(req.name(), outcome, state);
-        logger.toolExecuted(rec, req.name(), false, "(错误)", rendered.length());
-        return ToolExecutionResult.of(req.id(), req.name(), outcome, rendered);
+        logger.toolExecuted(rec, req.name(), false, "(错误)", outcome.content().length());
+        return ToolExecutionResult.of(req.id(), req.name(), outcome, outcome.content());
     }
 
     private Map<String, Object> parseArgs(String json) {

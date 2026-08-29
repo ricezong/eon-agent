@@ -26,7 +26,6 @@ class ToolExecutionHandlerTest {
     private ToolRegistry registry;
     private LoopDetector loopDetector;
     private TurnLogger logger;
-    private ToolResultRenderer renderer;
     private ToolContext toolContext;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -38,13 +37,12 @@ class ToolExecutionHandlerTest {
         registry = new ToolRegistry(java.util.Set.of(), mapper);
         loopDetector = new LoopDetector(3, 5, 6, 3, 5);
         logger = new TurnLogger(new cn.kong.eon.config.AgentConfig());
-        renderer = new ToolResultRenderer(new cn.kong.eon.store.ArtifactStore(tempDir), 2000);
         toolContext = new ToolContext(
                 new cn.kong.eon.store.TodoStore(),
                 new cn.kong.eon.store.ArtifactStore(tempDir),
                 new cn.kong.eon.store.MemoryStore(tempDir, mapper),
                 null, null, null);
-        handler = new ToolExecutionHandler(registry, renderer, toolContext, logger, loopDetector, 4, mapper);
+        handler = new ToolExecutionHandler(registry, toolContext, logger, loopDetector, 4, mapper);
     }
 
     @AfterEach

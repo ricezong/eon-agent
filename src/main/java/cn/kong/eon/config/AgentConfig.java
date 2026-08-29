@@ -70,6 +70,9 @@ public class AgentConfig {
     private void validate() {
         if (llm == null) llm = new LlmConfig();
         if (context == null) context = new ContextConfig();
+        if (context.getCompression() == null) context.setCompression(new ContextConfig.Compression());
+        if (context.getOffload() == null) context.setOffload(new ContextConfig.Offload());
+        if (context.getBudgetAware() == null) context.setBudgetAware(new ContextConfig.BudgetAware());
         if (loop == null) loop = new LoopConfig();
         if (loopDetect == null) loopDetect = new LoopDetectConfig();
         if (retry == null) retry = new RetryConfig();
@@ -340,11 +343,17 @@ public class AgentConfig {
         private int snipKeepChars = 2000;
         private int summarizeMaxOutputChars = 2000;
         private int tailGuardMinTurns = 3;
+        /** 无损参数卸载配置 */
+        private Offload offload = new Offload();
+        /** 预算感知配置 */
+        private BudgetAware budgetAware = new BudgetAware();
 
         public static class Compression {
             private double snipThreshold = 0.65;
             private double pruneThreshold = 0.82;
             private double summarizeThreshold = 0.95;
+            /** 压缩充分性：单次压缩降幅低于此比例则升级档位（对齐 COMPACT_SUFFICIENCY 思路） */
+            private double sufficiencyPct = 0.05;
 
             public double getSnipThreshold() {
                 return snipThreshold;
@@ -368,6 +377,70 @@ public class AgentConfig {
 
             public void setSummarizeThreshold(double v) {
                 this.summarizeThreshold = v;
+            }
+
+            public double getSufficiencyPct() {
+                return sufficiencyPct;
+            }
+
+            public void setSufficiencyPct(double v) {
+                this.sufficiencyPct = v;
+            }
+        }
+
+        /**
+         * 无损参数卸载。只处理"内容在磁盘上另有完整副本"的参数块，零信息损失。
+         * <p>
+         * 与有损压缩的本质区别决定它<b>不该等水位</b>：
+         * 无损处置越早做，中间每一轮省下的重复发送成本越多。
+         */
+        public static class Offload {
+            private boolean enabled = true;
+            /** 参数块超过此字符数才卸载；短参数的骨架化反而更长，不划算 */
+            private int minChars = 2000;
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean v) {
+                this.enabled = v;
+            }
+
+            public int getMinChars() {
+                return minChars;
+            }
+
+            public void setMinChars(int v) {
+                this.minChars = v;
+            }
+        }
+
+        /**
+         * 预算感知。判据不是水位而是预算投影：按当前单轮成本，剩余预算还够跑几轮。
+         * <p>
+         * 水位是<b>瞬时大小</b>，预算是<b>大小对时间的积分</b>。
+         * 上下文没满、但增速快时，预算会先耗尽——这个量纲差异只有投影能捕捉。
+         */
+        public static class BudgetAware {
+            private boolean enabled = true;
+            /** 剩余预算支撑不了这么多轮时，触发无损处置 */
+            private double minRemainingTurns = 8.0;
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean v) {
+                this.enabled = v;
+            }
+
+            public double getMinRemainingTurns() {
+                return minRemainingTurns;
+            }
+
+            public void setMinRemainingTurns(double v) {
+                this.minRemainingTurns = v;
             }
         }
 
@@ -425,6 +498,22 @@ public class AgentConfig {
 
         public void setTailGuardMinTurns(int v) {
             this.tailGuardMinTurns = v;
+        }
+
+        public Offload getOffload() {
+            return offload;
+        }
+
+        public void setOffload(Offload v) {
+            this.offload = v;
+        }
+
+        public BudgetAware getBudgetAware() {
+            return budgetAware;
+        }
+
+        public void setBudgetAware(BudgetAware v) {
+            this.budgetAware = v;
         }
     }
 

@@ -19,6 +19,8 @@ public class TurnRecord {
     int messageCount;
     long estimatedTokens;
     int catalogToolCount;
+    /** 上下文构成分解，如 {@code TOOL_ARGS 72% | TOOL_RESULT 26% | AI_TEXT 2%} */
+    String composition;
 
     List<String> toolNames = new ArrayList<>();
     boolean outputTruncated;
@@ -56,6 +58,11 @@ public class TurnRecord {
         this.messageCount = messageCount;
         this.estimatedTokens = estimatedTokens;
         this.catalogToolCount = catalogToolCount;
+        return this;
+    }
+
+    TurnRecord setComposition(String composition) {
+        this.composition = composition;
         return this;
     }
 

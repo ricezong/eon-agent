@@ -1,6 +1,18 @@
 package cn.kong.eon;
 
 import cn.kong.eon.agent.EonAgent;
+import cn.kong.eon.agent.context.pipeline.ArgumentOffloadRule;
+import cn.kong.eon.agent.context.pipeline.ArtifactSpillRule;
+import cn.kong.eon.agent.context.pipeline.ContextPipeline;
+import cn.kong.eon.agent.context.pipeline.IngestRule;
+import cn.kong.eon.agent.context.pipeline.ToolResultFormatRule;
+import cn.kong.eon.agent.context.policy.BudgetAwareOffloadRule;
+import cn.kong.eon.agent.context.policy.ContextPolicy;
+import cn.kong.eon.agent.context.policy.ContextRule;
+import cn.kong.eon.agent.context.policy.PruneRule;
+import cn.kong.eon.agent.context.policy.ReferenceCollapseRule;
+import cn.kong.eon.agent.context.policy.SnipRule;
+import cn.kong.eon.agent.context.policy.SummarizeRule;
 import cn.kong.eon.agent.hook.postmodel.LoopDetectHook;
 import cn.kong.eon.agent.hook.posttool.CheckpointHook;
 import cn.kong.eon.agent.hook.posttool.FailureBreakerHook;
@@ -23,7 +35,6 @@ import cn.kong.eon.tool.PathResolver;
 import cn.kong.eon.tool.CliInteractionCallback;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolRegistry;
-import cn.kong.eon.tool.ToolResultRenderer;
 import cn.kong.eon.tool.builtin.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -39,6 +50,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -62,7 +75,8 @@ public class EonApplication {
     private final CheckpointStore checkpointStore;
     private final MemoryStore memoryStore;
     private final JsonlStore jsonlStore;
-    private final ToolResultRenderer resultRenderer;
+    private final ContextPipeline contextPipeline;
+    private final ContextPolicy contextPolicy;
     private final ToolContext toolContext;
     private final HttpConfig httpConfig;
     private final LoopDetector loopDetector;
@@ -135,11 +149,15 @@ public class EonApplication {
                 ldc.getRepeatWarn(), ldc.getRepeatStop(), ldc.getNoProgressSteps(),
                 ldc.getFailureWarn(), ldc.getFailureStop());
 
-        this.resultRenderer = new ToolResultRenderer(artifactStore, config.getContext().getSnipKeepChars());
+        // ── 上下文架构装配 ──
+        // 入站管线必须在 JsonlStore 记录任何消息之前注入，否则消息会绕过关卡直接进窗口。
+        this.contextPipeline = createContextPipeline();
+        jsonlStore.setPipeline(contextPipeline);
+        this.contextPolicy = createContextPolicy();
 
         this.agent = new EonAgent(
                 config, llmClient, toolRegistry,
-                resultRenderer, jsonlStore, systemPrompt,
+                jsonlStore, systemPrompt,
                 toolContext, loopDetector, objectMapper);
 
         registerHooks();
@@ -224,6 +242,82 @@ public class EonApplication {
                 + "_" + UUID.randomUUID().toString().substring(0, 6);
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    //  上下文架构装配
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * 入站管线：所有内容进入上下文的唯一关卡。
+     * <p>
+     * 规则按 order 升序执行，顺序有语义含义：
+     * <ol>
+     *   <li>{@code ArtifactSpill} (10) — 大结果先落盘，落的是原文</li>
+     *   <li>{@code ToolResultFormat} (20) — 再套格式化外壳，只加元数据不改内容</li>
+     *   <li>{@code ArgumentOffload} (30) — 最后卸载参数块（需要先知道调用是否成功）</li>
+     * </ol>
+     * 新增一种入站处置 = 往这个列表加一条规则，调用方与配置读取逻辑都不用动。
+     */
+    private ContextPipeline createContextPipeline() {
+        var ctxCfg = config.getContext();
+        int snipKeepChars = ctxCfg.getSnipKeepChars();
+        int offloadMinChars = ctxCfg.getOffload().getMinChars();
+
+        List<IngestRule> rules = new ArrayList<>();
+        rules.add(new ArtifactSpillRule());
+        rules.add(new ToolResultFormatRule());
+        if (ctxCfg.getOffload().isEnabled()) {
+            rules.add(new ArgumentOffloadRule());
+        }
+
+        log.info("入站管线已装配: {} 条规则 | 参数卸载 {} (阈值 {} 字符)",
+                rules.size(),
+                ctxCfg.getOffload().isEnabled() ? "启用" : "停用",
+                offloadMinChars);
+
+        return new ContextPipeline(rules, toolRegistry, artifactStore,
+                toolRegistry, objectMapper, snipKeepChars, offloadMinChars);
+    }
+
+    /**
+     * 上下文策略机：在站处置规则的集合，每条规则自带触发声明。
+     * <p>
+     * 这里集中了"什么时候该处置上下文"的全部知识，
+     * 而策略机本身不知道有几种规则、阈值是多少。
+     */
+    private ContextPolicy createContextPolicy() {
+        var ctxCfg = config.getContext();
+        var comp = ctxCfg.getCompression();
+        int summarizeTurns = config.getSummarizeTurns();
+        var budgetAware = ctxCfg.getBudgetAware();
+
+        List<ContextRule> rules = new ArrayList<>();
+
+        // ── 无损级：不看水位，只看预算投影 ──
+        if (budgetAware.isEnabled()) {
+            rules.add(new ReferenceCollapseRule(
+                    budgetAware.getMinRemainingTurns(), ctxCfg.getSnipKeepChars()));
+            rules.add(new BudgetAwareOffloadRule(
+                    budgetAware.getMinRemainingTurns(),
+                    ctxCfg.getOffload().getMinChars(),
+                    toolRegistry, objectMapper));
+        }
+
+        // ── 有损三级阶梯：水位 / 轮数双入口，倍率形成阶梯 ──
+        rules.add(new SnipRule(comp.getSnipThreshold(), summarizeTurns, ctxCfg.getSnipKeepChars()));
+        rules.add(new PruneRule(comp.getPruneThreshold(), summarizeTurns));
+        rules.add(new SummarizeRule(comp.getSummarizeThreshold(), summarizeTurns,
+                ctxCfg.getSummarizeMaxInputChars(), ctxCfg.getSummarizeMaxOutputChars(),
+                llmClient, transcriptPath));
+
+        ContextPolicy policy = new ContextPolicy(rules, comp.getSufficiencyPct());
+        log.info("上下文策略已装配: {} 条规则 | 有损阈值 {}/{}/{} | 轮数节奏 {} | 预算感知 {}",
+                rules.size(),
+                comp.getSnipThreshold(), comp.getPruneThreshold(), comp.getSummarizeThreshold(),
+                summarizeTurns,
+                budgetAware.isEnabled() ? "启用(投影<" + budgetAware.getMinRemainingTurns() + "轮)" : "停用");
+        return policy;
+    }
+
     private ToolRegistry createToolRegistry() {
         ToolRegistry registry = new ToolRegistry(config.getTools().getWhitelist(), objectMapper);
 
@@ -291,7 +385,7 @@ public class EonApplication {
         // PreModel Hooks
         agent.addHook(new BudgetHook(config));
         agent.addHook(new TodoNavigatorHook(todoStore));
-        agent.addHook(new ContextCompactHook(config, llmClient, transcriptPath, jsonlStore));
+        agent.addHook(new ContextCompactHook(config, contextPolicy));
 
         // PostModel Hooks
         agent.addHook(new LoopDetectHook(loopDetector, config.getLoopDetect().getStopGraceSteps()));

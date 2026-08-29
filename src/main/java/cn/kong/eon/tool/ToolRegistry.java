@@ -1,8 +1,10 @@
 package cn.kong.eon.tool;
 
+import cn.kong.eon.agent.context.ToolSupport;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.tool.mcp.McpClientManager;
 import cn.kong.eon.model.ToolPermission;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import org.slf4j.Logger;
@@ -12,8 +14,11 @@ import java.util.*;
 
 /**
  * 工具注册表。统一管理本地工具和 MCP 工具的元数据与执行。
+ * <p>
+ * 同时实现 {@link ToolSupport}，向上下文层暴露「参数是否已落盘」「参数短摘要」两个查询能力，
+ * 使无损卸载规则无需感知工具层细节。
  */
-public class ToolRegistry {
+public class ToolRegistry implements ToolSupport {
     private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
 
     private final Map<String, ToolDescriptor> tools = new LinkedHashMap<>();
@@ -155,6 +160,34 @@ public class ToolRegistry {
     public boolean isDestructive(String name) {
         ToolPermission perm = getPermission(name);
         return perm == ToolPermission.DESTRUCTIVE;
+    }
+
+    // ═══════════════════ 上下文层查询接口 ═══════════════════
+
+    /**
+     * 本地工具是否会把调用参数完整落盘。MCP 工具一律视为否（无法证实）。
+     */
+    @Override
+    public boolean persistsArguments(String name) {
+        ToolDescriptor descriptor = tools.get(name);
+        return descriptor != null && descriptor.getExecutor().persistsArguments();
+    }
+
+    /**
+     * 参数的短摘要。工具不存在或参数无法解析时返回 null，调用方据此回退。
+     */
+    @Override
+    public String summarizeArgs(String name, String argumentsJson) {
+        ToolDescriptor descriptor = tools.get(name);
+        if (descriptor == null) return null;
+        try {
+            Map<String, Object> args = objectMapper.readValue(argumentsJson, new TypeReference<>() {
+            });
+            return descriptor.getExecutor().summarizeArgs(args);
+        } catch (Exception e) {
+            log.debug("参数摘要生成失败 {}: {}", name, e.getMessage());
+            return null;
+        }
     }
 
 

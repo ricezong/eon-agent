@@ -1,30 +1,42 @@
 package cn.kong.eon.agent.hook.premodel;
 
 import cn.kong.eon.agent.context.ContextBuilder;
+import cn.kong.eon.agent.context.ContextWindow;
+import cn.kong.eon.agent.context.policy.ContextPolicy;
+import cn.kong.eon.agent.context.policy.PolicyResult;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.agent.context.CompressionEngine;
-import cn.kong.eon.agent.context.PairingRepairer;
-import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.model.CompressionState;
 import cn.kong.eon.model.SessionState;
-import cn.kong.eon.store.JsonlStore;
-import dev.langchain4j.data.message.ChatMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
- * 上下文压缩（PreModel, order=100）。
- * 三级递进：≥snip 截短工具结果 → ≥prune 替换为占位符 → ≥summarize LLM 摘要并删旧消息。
- * Summarize 后执行 PairingRepairer 修复配对断裂。
- * 压缩结果写回 JsonlStore 内存视图，跨轮持久生效（磁盘账本保持完整不受影响）。
+ * 上下文策略执行点（PreModel, order=100）。
+ * <p>
+ * 这里<b>没有任何压缩逻辑</b>——只有一次调用：
+ * <pre>
+ *     policy.runEligible(window, metrics, state, ...)
+ * </pre>
+ * "有几种处置方式、各自的触发阈值是多少"全部由 {@link ContextRule} 自己声明，
+ * 策略机只回答"谁该跑"。因此新增一种处置 = 加一个规则实现类，本类一行不改。
+ * <p>
+ * 改造前这里是 11 步 if-else 编排，其中第 118 行的
+ * {@code effectiveWaterLevel = waterTriggered ? waterLevel : snipThreshold}
+ * 是最典型的症状：想表达"按轮数压"的意图，却只能伪造一个水位值来复用现成代码路径，
+ * 代价是轮数触发被永久钉死在 Snip 级。现在轮数、水位、预算投影都是一等触发类型。
  */
 public class ContextCompactHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(ContextCompactHook.class);
+
+    private final AgentConfig config;
+    private final ContextPolicy policy;
+
+    public ContextCompactHook(AgentConfig config, ContextPolicy policy) {
+        this.config = config;
+        this.policy = policy;
+    }
 
     @Override
     public String name() {
@@ -32,129 +44,57 @@ public class ContextCompactHook implements Hook.PreModelHook {
     }
 
     /**
-     * 始终激活。上下文压缩是每次模型调用前的必要检查。
+     * 始终激活。上下文策略是每次模型调用前的必要检查。
      */
     @Override
     public boolean isActive(SessionState state) {
         return true;
     }
 
-    /**
-     * 执行顺序 100（默认值）。若存在其他 PreModelHook 需要在压缩前/后执行，
-     * 可通过调整 order 值控制先后顺序。
-     */
     @Override
     public int order() {
         return 100;
     }
 
-    private final AgentConfig config;
-    private final CompressionEngine compressionEngine;
-    private final PairingRepairer pairingRepairer;
-    private final JsonlStore jsonlStore;
-
-    /**
-     * 构造函数：从 AgentConfig 中读取压缩相关配置，初始化 CompressionEngine 和 PairingRepairer。
-     *
-     * @param config        Agent 全局配置，包含压缩阈值、尾部保护轮数等参数
-     * @param llmClient     LLM 客户端，供 CompressionEngine 在 Summarize 阶段调用 LLM 生成摘要
-     * @param transcriptPath 原始对话记录文件路径，嵌入摘要提示词中供后续回溯
-     * @param jsonlStore    消息存储，压缩结果写回其内存视图实现跨轮持久化
-     */
-    public ContextCompactHook(AgentConfig config, LlmClient llmClient, String transcriptPath, JsonlStore jsonlStore) {
-        this.config = config;
-        this.jsonlStore = jsonlStore;
-        var ctxCfg = config.getContext();
-        // 从配置中提取三级压缩阈值和参数，构建压缩引擎
-        this.compressionEngine = new CompressionEngine(
-                ctxCfg.getCompression().getSnipThreshold(),       // Snip 触发水位
-                ctxCfg.getCompression().getPruneThreshold(),      // Prune 触发水位
-                ctxCfg.getCompression().getSummarizeThreshold(),  // Summarize 触发水位
-                ctxCfg.getSnipKeepChars(),                        // Snip 保留的字符数
-                ctxCfg.getSummarizeMaxInputChars(),               // Summarize 送入 LLM 的最大输入字符数
-                ctxCfg.getSummarizeMaxOutputChars(),              // Summarize LLM 生成的最大输出字符数
-                llmClient,
-                transcriptPath);
-        this.pairingRepairer = new PairingRepairer();
-    }
-
     @Override
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
-        // 1. transcript 为空或不存在，无可压缩内容，后续水位/轮数判断均无意义
-        List<ChatMessage> transcript = ctx.getTranscript();
-        if (transcript == null || transcript.isEmpty()) return HookResult.ok();
-
-        // 2. 计算当前上下文水位：已用 token 占最大 token 的比例
-        long usedTokens = ctx.estimateTokens();
-        long maxTokens = config.getContext().getMaxTokens();
-        double waterLevel = Math.min(1.0, (double) usedTokens / maxTokens);
-        state.getCompressionState().setLastWaterLevel(waterLevel);
-
-        // 3. 判断是否满足轮数触发条件：
-        //    a) 距上次轮数压缩的对话轮数 >= 配置阈值（summarizeTurns）
-        //    b) transcript 中有足够多的消息可供裁剪（超过尾部保护区所需的最小消息数）
-        int turnsSinceLastCompress = state.getTurnCount() - state.getCompressionState().getLastTurnCompressed();
-        boolean turnTriggered = turnsSinceLastCompress >= config.getSummarizeTurns()
-                && transcript.size() > config.getContext().getTailGuardMinTurns() * 2 + 2;
-
-        // 4. 判断是否满足水位触发条件：水位达到 Snip 阈值
-        boolean waterTriggered = waterLevel >= config.getContext().getCompression().getSnipThreshold();
-
-        // 5. 两个触发条件都不满足，无需压缩，直接返回
-        if (!waterTriggered && !turnTriggered) {
-            return HookResult.ok();
-        }
+        ContextWindow window = ctx.getWindow();
+        if (window == null || window.isEmpty()) return HookResult.ok();
 
         CompressionState cs = state.getCompressionState();
         int tailGuardTurns = config.getContext().getTailGuardMinTurns();
+        int turnsSinceLastCompress = state.getTurnCount() - cs.getLastTurnCompressed();
+        int blocksBefore = window.size();
 
-        // 6. 创建 transcript 副本，避免直接修改原始列表导致副作用
-        List<ChatMessage> workingCopy = new ArrayList<>(transcript);
+        PolicyResult result = policy.runEligible(
+                window, ctx.metrics(state), cs, turnsSinceLastCompress,
+                tailGuardTurns, state.getTurnCount());
 
-        // 7. 统一压缩入口：无论轮数触发还是水位触发，都走同一个 compress() 方法。
-        //    轮数触发时，使用 snipThreshold 作为有效水位，仅驱动 Snip 级压缩；
-        //    水位触发时，使用真实水位，由 compress() 内部决定压缩到哪一级（累积递进）。
-        //    这消除了原来两套独立压缩路径的重复逻辑。
-        double effectiveWaterLevel = waterTriggered ? waterLevel : config.getContext().getCompression().getSnipThreshold();
+        // 处置后窗口变了，度量要重算：水位下降应反映到本轮日志与下一轮的触发判定
+        var metricsAfter = ctx.metrics(state);
+        cs.setLastWaterLevel(metricsAfter.waterLevel());
 
-        // 记录压缩前的消息数，用于判断 Summarize 是否在本轮执行（删除了消息）
-        int preCompressSize = workingCopy.size();
-
-        compressionEngine.compress(workingCopy, cs, effectiveWaterLevel, tailGuardTurns);
-
-        // 8. 若本轮执行了 Summarize（删除了旧消息），需要修复 tool_use/tool_result 配对断裂
-        //    判断依据：本轮压缩后消息数减少（Summarize 会删除旧消息，Snip/Prune 只替换不删除）
-        boolean didSummarize = workingCopy.size() < preCompressSize;
-        if (didSummarize) {
-            // PairingRepairer 会：丢弃孤立的 tool_result，为缺失结果的 tool_use 插入合成错误消息
-            workingCopy = pairingRepairer.repair(workingCopy);
+        if (!result.applied()) {
+            return HookResult.ok();
         }
 
-        // 9. 压缩结果持久化：写回 JsonlStore 内存视图（磁盘账本不受影响）。
-        //    下一轮 buildContext 取到的 snapshot 即为压缩后视图，
-        //    压缩不再每轮重做，水位也随之回落；同步更新本轮 ContextBuilder。
-        jsonlStore.replaceAll(workingCopy);
-        ctx.setTranscript(workingCopy);
+        // 删除块会切断 tool_use / tool_result 配对，LLM API 对此零容忍。
+        // 这是窗口的结构不变式，由窗口自己维护，而不是调用点记得手动调一次。
+        window.repairPairing();
+        cs.setLastTurnCompressed(state.getTurnCount());
 
-        // 10. 记录本次压缩的 turnCount，作为下次轮数触发判断的基准
-        //     无论哪种触发方式，都更新基准，因为两种路径都会执行 Snip 压缩
-        state.getCompressionState().setLastTurnCompressed(state.getTurnCount());
-
-        // 11. 压缩后重新估算 token 数，用于日志对比。
-        //     真实水位与触发原因在此统一输出（引擎收到的水位可能是轮数触发借用的阈值）
-        long postCompressTokens = ctx.estimateTokens();
-        boolean changed = workingCopy.size() != preCompressSize || postCompressTokens != usedTokens;
-        String trigger = waterTriggered
-                ? String.format("水位 %.0f%% 达到 Snip 阈值", waterLevel * 100)
-                : String.format("轮数触发 (turn %d, 实际水位 %.0f%%)", state.getTurnCount(), waterLevel * 100);
-        if (changed) {
-            log.info("[上下文压缩] {} | {} -> {} 条消息 | 估算 {} -> {} tokens",
-                    trigger, transcript.size(), workingCopy.size(), usedTokens, postCompressTokens);
-        } else {
-            log.info("[上下文压缩] {} | 未发现可压缩内容，上下文保持不变 ({} 条消息, 估算 {} tokens)",
-                    trigger, transcript.size(), usedTokens);
-        }
+        log.info("[上下文] {} | {} -> {} 块 | {} -> {} 字符 (降幅 {}) | 水位 {} | 投影剩余 {} 轮 | 构成 {}",
+                String.join(" + ", result.reasons()),
+                blocksBefore, window.size(),
+                result.charsBefore(), result.charsAfter(), pct(result.reduction()),
+                pct(metricsAfter.waterLevel()),
+                String.format("%.1f", metricsAfter.projectedRemainingTurns()),
+                metricsAfter.composition());
 
         return HookResult.ok();
+    }
+
+    private static String pct(double ratio) {
+        return String.format("%.0f%%", ratio * 100);
     }
 }

@@ -87,22 +87,39 @@ class ContextBuilderTest {
         assertThat(tokens).isEqualTo(4);
     }
 
+    /**
+     * 逐块估算，而不是"总字符数 / 2"。
+     * <p>
+     * 旧口径把 9 个字符合起来算成 4 token；新口径按块算：
+     * 每块 3 字符 → 1 token，合计 3 token。
+     * 新口径更贴近真实分词器——它是按消息分别编码的，不会跨消息合并。
+     */
     @Test
     void estimateTokens_withTranscript_includesAllMessages() {
         ContextBuilder builder = new ContextBuilder()
-                .setSystemPrompt("abc")            // 3 chars
+                .setSystemPrompt("abc")            // 3 chars -> 1 token
                 .setTranscript(List.of(
-                        UserMessage.from("def"),       // 3 chars
-                        AiMessage.from("ghi")          // 3 chars
-                ));                                      // total: 9 chars -> 4 tokens (9/2=4)
+                        UserMessage.from("def"),       // 3 chars -> 1 token
+                        AiMessage.from("ghi")          // 3 chars -> 1 token
+                ));
         long tokens = builder.estimateTokens();
-        assertThat(tokens).isEqualTo(4);
+        assertThat(tokens).isEqualTo(3);
     }
 
+    /**
+     * transcript 现在是窗口的<b>投影</b>：{@code setTranscript} 把消息爆炸为块，
+     * {@code getTranscript} 再把块组装回消息。因此内容等价，但不是同一个对象。
+     * <p>
+     * 这个"不再是同一实例"的变化正是本次改造的目的：
+     * 窗口才是真相，消息只是进出 LLM 时的临时视图。
+     */
     @Test
-    void getTranscript_returnsSetTranscript() {
+    void getTranscript_returnsProjectionOfWindow() {
         List<ChatMessage> transcript = List.of(UserMessage.from("test"));
         ContextBuilder builder = new ContextBuilder().setTranscript(transcript);
-        assertThat(builder.getTranscript()).isSameAs(transcript);
+
+        assertThat(builder.getTranscript())
+                .isNotSameAs(transcript)
+                .containsExactlyElementsOf(transcript);
     }
 }

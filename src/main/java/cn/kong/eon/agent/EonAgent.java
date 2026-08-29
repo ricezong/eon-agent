@@ -19,7 +19,6 @@ import cn.kong.eon.model.ToolExecutionResult;
 import cn.kong.eon.store.JsonlStore;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolRegistry;
-import cn.kong.eon.tool.ToolResultRenderer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.ChatMessage;
@@ -71,6 +70,12 @@ public class EonAgent {
     /** 当前 Turn 的日志记录（供 Hook 调度器中 stopHandler 引用） */
     private TurnRecord currentRec;
 
+    /** 单个工具 schema 的 token 估算均值（名称 + 描述 + 参数定义） */
+    private static final long TOOL_SCHEMA_TOKENS_ESTIMATE = 220;
+
+    /** 缓存的工具 schema token 开销；-1 表示未计算 */
+    private long cachedToolSchemaTokens = -1;
+
     // ═══════════════════════════════════════════════════════════════════
     //  构造与注册
     // ═══════════════════════════════════════════════════════════════════
@@ -78,7 +83,6 @@ public class EonAgent {
     public EonAgent(AgentConfig config,
                     LlmClient llmClient,
                     ToolRegistry toolRegistry,
-                    ToolResultRenderer resultRenderer,
                     JsonlStore jsonlStore,
                     String basePrompt,
                     ToolContext toolContext,
@@ -93,7 +97,7 @@ public class EonAgent {
 
         this.logger = new TurnLogger(config);
         this.toolHandler = new ToolExecutionHandler(
-                toolRegistry, resultRenderer, toolContext, logger,
+                toolRegistry, toolContext, logger,
                 loopDetector, config.getTools().getParallelism(), objectMapper);
         this.finalizer = new MessageFinalizer(jsonlStore);
         this.stopStateMachine = new StopStateMachine(config, logger, finalizer);
@@ -340,7 +344,8 @@ public class EonAgent {
         logger.agentStart(state);
         state.setStopState(SessionState.StopState.none());
         String tagged = "<user_query>\n" + state.getUserInput() + "\n</user_query>";
-        jsonlStore.append(UserMessage.from(tagged));
+        // 轮次 0：用户输入不属于任何已执行的 turn，这样尾部保护与轮数触发都以同一基准计算
+        jsonlStore.append(UserMessage.from(tagged), 0);
     }
 
     private void flushTurn(TurnRecord rec) {
@@ -360,8 +365,34 @@ public class EonAgent {
             ctx.setSummary(state.getCompressionState().getLastSummary());
         }
         ctx.setMemories(toolContext.memoryStore().renderForInjection());
-        ctx.setTranscript(jsonlStore.snapshot());
+
+        // 直接持有 JsonlStore 的内存窗口，而不是每轮从快照重建。
+        // 这是压缩能跨轮持久生效的前提：策略就地在窗口上改写，
+        // 下一轮看到的仍是同一个窗口对象。
+        ctx.setWindow(jsonlStore.window());
+
+        // 度量口径补齐：工具 schema 与输出预留是每轮真实发送、但过去完全不计入的量。
+        // 漏算它们会让水位被系统性低估，压缩触发得比实际需要更晚。
+        ctx.setToolSchemaTokens(estimateToolSchemaTokens());
+        ctx.setOutputReserveTokens(config.getLlm().getMaxTokens());
+        ctx.setContextMaxTokens(config.getContext().getMaxTokens());
+        ctx.setBudgetTokens(state.getUsageAccum().getTotalTokens(), config.getBudget().getMaxTokens());
         return ctx;
+    }
+
+    /**
+     * 估算工具 schema 的 token 开销。规格数量 × 单规格均值，缓存后复用。
+     * <p>
+     * 精确值需要逐条序列化 JSON，而它每轮都一样——按规格数估算足够，
+     * 关键是<b>不要漏掉这一项</b>：9 个内置 + MCP 工具约数千 token，
+     * 100 轮就是预算的 15%。
+     */
+    private long estimateToolSchemaTokens() {
+        if (cachedToolSchemaTokens < 0) {
+            int specCount = toolRegistry.getSpecifications().size();
+            cachedToolSchemaTokens = specCount * TOOL_SCHEMA_TOKENS_ESTIMATE;
+        }
+        return cachedToolSchemaTokens;
     }
 
     /**
