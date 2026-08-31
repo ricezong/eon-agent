@@ -365,14 +365,8 @@ public class EonAgent {
             ctx.setSummary(state.getCompressionState().getLastSummary());
         }
         ctx.setMemories(toolContext.memoryStore().renderForInjection());
-
-        // 直接持有 JsonlStore 的内存窗口，而不是每轮从快照重建。
-        // 这是压缩能跨轮持久生效的前提：策略就地在窗口上改写，
-        // 下一轮看到的仍是同一个窗口对象。
         ctx.setWindow(jsonlStore.window());
 
-        // 度量口径补齐：工具 schema 与输出预留是每轮真实发送、但过去完全不计入的量。
-        // 漏算它们会让水位被系统性低估，压缩触发得比实际需要更晚。
         ctx.setToolSchemaTokens(estimateToolSchemaTokens());
         ctx.setOutputReserveTokens(config.getLlm().getMaxTokens());
         ctx.setContextMaxTokens(config.getContext().getMaxTokens());
