@@ -33,28 +33,32 @@ public class ContextCompactHook implements Hook.PreModelHook {
     }
 
     @Override
-    public boolean isActive(SessionState state) {
+    public boolean active(SessionState state) {
         return true;
-    }
-
-    @Override
-    public int order() {
-        return 100;
     }
 
     @Override
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
         ContextWindow window = ctx.getWindow();
-        if (window == null || window.isEmpty()) return HookResult.ok();
+        if (window == null || window.isEmpty()) {
+            return HookResult.ok();
+        }
 
         CompressionState cs = state.getCompressionState();
+        // 尾部保护区
         int tailGuardTurns = config.getContext().getTailGuardMinTurns();
+        // 距离上次压缩后又执行了几轮
         int turnsSinceLastCompress = state.getTurnCount() - cs.getLastTurnCompressed();
         int blocksBefore = window.size();
 
         PolicyResult result = policy.runEligible(
-                window, ctx.metrics(state), cs, turnsSinceLastCompress,
-                tailGuardTurns, state.getTurnCount());
+                window,
+                ctx.metrics(state),
+                cs,
+                turnsSinceLastCompress,
+                tailGuardTurns,
+                state.getTurnCount()
+        );
 
         // 处置后窗口变了，度量要重算
         var metricsAfter = ctx.metrics(state);

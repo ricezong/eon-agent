@@ -3,12 +3,11 @@ package cn.kong.eon.agent;
 import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.loop.LoopDetector;
+import cn.kong.eon.agent.support.TurnOutcome;
 import cn.kong.eon.agent.support.HookDispatcher;
-import cn.kong.eon.agent.support.HookDispatcher.FireResult;
 import cn.kong.eon.agent.support.MessageFinalizer;
 import cn.kong.eon.agent.support.StopStateMachine;
 import cn.kong.eon.agent.support.ToolExecutionHandler;
-import cn.kong.eon.agent.support.TurnAction;
 import cn.kong.eon.agent.support.TurnLogger;
 import cn.kong.eon.agent.support.TurnRecord;
 import cn.kong.eon.config.AgentConfig;
@@ -41,7 +40,7 @@ import java.util.List;
  *   5. Extension Loop  → PreTool → 执行工具 → PostTool
  *   6. 回填消息        → AI 消息 + 工具结果写入 JSONL
  * </pre>
- * 无工具调用时任务完成；stop 请求时进入 grace period 优雅收尾。
+ * 无工具调用时任务完成；Hook 触发 stop 或步数超限时硬终止退出。
  */
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
@@ -66,9 +65,6 @@ public class EonAgent {
     private final List<Hook.PreToolHook> preToolHooks = new ArrayList<>();
     private final List<Hook.PostToolHook> postToolHooks = new ArrayList<>();
     private int totalHookCount = 0;
-
-    /** 当前 Turn 的日志记录（供 Hook 调度器中 stopHandler 引用） */
-    private TurnRecord currentRec;
 
     /** 单个工具 schema 的 token 估算均值（名称 + 描述 + 参数定义） */
     private static final long TOOL_SCHEMA_TOKENS_ESTIMATE = 220;
@@ -100,7 +96,7 @@ public class EonAgent {
                 toolRegistry, toolContext, logger,
                 loopDetector, config.getTools().getParallelism(), objectMapper);
         this.finalizer = new MessageFinalizer(jsonlStore);
-        this.stopStateMachine = new StopStateMachine(config, logger, finalizer);
+        this.stopStateMachine = new StopStateMachine(config, logger);
     }
 
     /**
@@ -149,33 +145,21 @@ public class EonAgent {
         initRun(state);
 
         while (true) {
-            // 步数检查：达到上限时触发优雅停止
-            int maxSteps = state.isStopRequested()
-                    ? config.getLoop().getAbsoluteMaxSteps()
-                    : config.getLoop().getMaxSteps();
-            if (state.getTurnCount() >= maxSteps) {
-                TurnAction maxAction = stopStateMachine.handleMaxSteps(state);
-                if (maxAction instanceof TurnAction.Exit exit) {
-                    return completeExit(state, exit.output());
-                }
-                // 理论上不会走到这里，handleMaxSteps 总是返回 Exit
-                return completeExit(state, "");
+            // 步数检查：达到上限硬终止
+            if (state.getTurnCount() >= config.getLoop().getMaxSteps()) {
+                return completeExit(state, stopStateMachine.handleMaxSteps(state));
             }
 
             state.incrementTurn();
-            int turnStartTokens = state.getUsageAccum().getTotalTokens();
 
             try {
-                TurnAction action = executeTurn(state, turnStartTokens);
-                if (action instanceof TurnAction.Exit exit) {
-                    return completeExit(state, exit.output());
+                TurnOutcome action = executeTurn(state);
+                if (action.isExit()) {
+                    return completeExit(state, ((TurnOutcome.Exit) action).output());
                 }
             } catch (Exception e) {
                 log.error("Agent 循环异常: {}", e.getMessage(), e);
-                TurnAction action = stopStateMachine.handleLoopException(state, e);
-                if (action instanceof TurnAction.Exit exit) {
-                    return completeExit(state, exit.output());
-                }
+                return completeExit(state, stopStateMachine.handleLoopException(state, e));
             }
         }
     }
@@ -186,19 +170,18 @@ public class EonAgent {
 
     /**
      * 执行单个 Turn。try-finally 确保 finalize + flush 一定被执行。
-     * 返回 {@link TurnAction}：Continue 继续循环，Exit 退出并携带输出。
+     * 返回 {@link TurnOutcome}：Continue 继续循环，Exit 退出并携带输出。
      */
-    private TurnAction executeTurn(SessionState state, int turnStartTokens) {
+    private TurnOutcome executeTurn(SessionState state) {
         TurnRecord rec = logger.newRecord();
-        this.currentRec = rec;
         try {
             logger.turnHeader(rec, state);
 
             // ── 阶段 1：PreModel Hooks（预算检查、上下文压缩等） ──
             ContextBuilder ctx = buildContext(state);
-            FireResult preModel = firePreModelHooks(state, ctx);
-            if (preModel instanceof FireResult.Exit exit) {
-                return new TurnAction.Exit(exit.output());
+            TurnOutcome preModel = firePreModelHooks(state, ctx);
+            if (preModel instanceof TurnOutcome.Exit exit) {
+                return exit;
             }
 
             // Hooks 执行后重新渲染 nudge（BudgetHook 等可能在此阶段注入 nudge）
@@ -227,30 +210,22 @@ public class EonAgent {
             // ── 阶段 5：PostModel Hooks（循环检测等） ──
             validateToolExistence(state, requests);
             state.setPendingToolCalls(requests);
-            FireResult postModel = firePostModelHooks(state, response);
-            if (postModel instanceof FireResult.Exit exit) {
-                return new TurnAction.Exit(exit.output());
-            }
-            if (postModel instanceof FireResult.Skip) {
-                return new TurnAction.Continue();
+            TurnOutcome postModel = firePostModelHooks(state, response);
+            if (postModel instanceof TurnOutcome.Exit exit) {
+                return exit;
             }
 
             // ── 阶段 6：Extension Loop（PreTool → 执行 → PostTool） ──
-            FireResult extension = executeExtensionLoop(rec, state, requests);
-            if (extension instanceof FireResult.Exit exit) {
-                return new TurnAction.Exit(exit.output());
+            TurnOutcome extension = executeExtensionLoop(rec, state, requests);
+            if (extension instanceof TurnOutcome.Exit exit) {
+                return exit;
             }
 
             // ── 阶段 7：回填 AI 消息和工具结果到 JSONL ──
             finalizer.finalizeAndAppend(state);
-            logger.turnDone(rec, state, turnStartTokens);
+            logger.turnDone(rec, state);
 
-            // ── 阶段 8：stop 期间消耗 grace ──
-            if (state.isStopRequested()) {
-                return stopStateMachine.consumeGraceStep(rec, state, "stop 期间 LLM 仍在调用工具");
-            }
-
-            return new TurnAction.Continue();
+            return new TurnOutcome.Continue();
         } finally {
             // 兜底：确保任何退出路径都不会丢失未回填的消息
             finalizer.finalizeIfPending(state);
@@ -259,54 +234,47 @@ public class EonAgent {
     }
 
     /** Extension Loop：PreTool → 执行工具 → PostTool。 */
-    private FireResult executeExtensionLoop(TurnRecord rec, SessionState state,
-                                            List<ToolExecutionRequest> requests) {
+    private TurnOutcome executeExtensionLoop(TurnRecord rec, SessionState state,
+                                             List<ToolExecutionRequest> requests) {
         // PreTool Hooks
-        FireResult preTool = firePreToolHooks(state, requests);
-        if (preTool instanceof FireResult.Exit exit) {
+        TurnOutcome preTool = firePreToolHooks(state, requests);
+        if (preTool instanceof TurnOutcome.Exit exit) {
             return exit;
-        }
-        if (preTool instanceof FireResult.Skip) {
-            return new FireResult.Continue();
         }
 
         // 执行工具
         List<ToolExecutionResult> results = toolHandler.execute(rec, state);
 
-        // PostTool Hooks（逐个工具检查，遇到 Exit 或 Skip 停止）
+        // PostTool Hooks（逐个工具检查，遇到 Exit 停止）
         for (int i = 0; i < requests.size(); i++) {
             ToolExecutionResult result = results.get(i);
-            FireResult postTool = firePostToolHooks(state, requests.get(i).name(), result.success());
-            if (postTool instanceof FireResult.Exit exit) {
+            TurnOutcome postTool = firePostToolHooks(state, requests.get(i).name(), result.success());
+            if (postTool instanceof TurnOutcome.Exit exit) {
                 return exit;
-            }
-            if (postTool instanceof FireResult.Skip) {
-                break;
             }
         }
 
-        return new FireResult.Continue();
+        return new TurnOutcome.Continue();
     }
 
     /**
      * 处理无工具调用的情况：
      * <ul>
      *   <li>finishReason=length → 输出被截断，注入格式纠正提示，继续循环
-     *   <li>stop 期间 → LLM 已输出总结，直接退出
      *   <li>正常 → 任务完成，退出
      * </ul>
      */
-    private TurnAction handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
+    private TurnOutcome handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
         if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
             logger.outputTruncated(rec);
             state.addFormatCorrection(
                     "上一轮输出因长度限制被截断，工具调用未完成。请重新调用工具，如果内容过长请分多次写入。");
             finalizer.finalizeAndAppend(state);
-            return new TurnAction.Continue();
+            return new TurnOutcome.Continue();
         }
 
         finalizer.finalizeAndAppend(state);
-        return new TurnAction.Exit(thought);
+        return new TurnOutcome.Exit(thought);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -333,16 +301,14 @@ public class EonAgent {
     /** 初始化运行：记录启动日志、写入用户输入到 JSONL。 */
     private void initRun(SessionState state) {
         logger.agentStart(state);
-        state.setStopState(SessionState.StopState.none());
         String tagged = "<user_query>\n" + state.getUserInput() + "\n</user_query>";
         // 轮次 0：用户输入不属于任何已执行的 turn
         jsonlStore.append(UserMessage.from(tagged), 0);
     }
 
-    /** 输出 Turn 日志并清理引用。 */
+    /** 输出 Turn 日志。 */
     private void flushTurn(TurnRecord rec) {
         logger.flush(rec);
-        this.currentRec = null;
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -408,34 +374,19 @@ public class EonAgent {
     //  Hook 调度
     // ═══════════════════════════════════════════════════════════════════
 
-    private FireResult firePreModelHooks(SessionState state, ContextBuilder ctx) {
-        return HookDispatcher.dispatchPreModel(
-                preModelHooks, state, ctx,
-                reason -> stopStateMachine.handleStop(currentRec, state, reason)
-        );
+    private TurnOutcome firePreModelHooks(SessionState state, ContextBuilder ctx) {
+        return HookDispatcher.dispatchPreModel(preModelHooks, state, ctx, stopStateMachine);
     }
 
-    private FireResult firePostModelHooks(SessionState state, LlmResponse response) {
-        return HookDispatcher.dispatchPostModel(
-                postModelHooks, state, response,
-                reason -> stopStateMachine.handleStop(currentRec, state, reason),
-                () -> finalizer.finalizeIfPending(state)
-        );
+    private TurnOutcome firePostModelHooks(SessionState state, LlmResponse response) {
+        return HookDispatcher.dispatchPostModel(postModelHooks, state, response, stopStateMachine);
     }
 
-    private FireResult firePreToolHooks(SessionState state, List<ToolExecutionRequest> requests) {
-        return HookDispatcher.dispatchPreTool(
-                preToolHooks, state, requests,
-                reason -> stopStateMachine.handleStop(currentRec, state, reason),
-                () -> finalizer.finalizeIfPending(state)
-        );
+    private TurnOutcome firePreToolHooks(SessionState state, List<ToolExecutionRequest> requests) {
+        return HookDispatcher.dispatchPreTool(preToolHooks, state, requests, stopStateMachine);
     }
 
-    private FireResult firePostToolHooks(SessionState state, String toolName, boolean success) {
-        return HookDispatcher.dispatchPostTool(
-                postToolHooks, state, toolName, success,
-                reason -> stopStateMachine.handleStop(currentRec, state, reason),
-                () -> {}
-        );
+    private TurnOutcome firePostToolHooks(SessionState state, String toolName, boolean success) {
+        return HookDispatcher.dispatchPostTool(postToolHooks, state, toolName, success, stopStateMachine);
     }
 }

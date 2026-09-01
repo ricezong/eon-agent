@@ -1,7 +1,6 @@
 package cn.kong.eon.agent.support;
 
 import cn.kong.eon.agent.context.ContextBuilder;
-import cn.kong.eon.agent.hook.StopCategory;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -28,14 +27,11 @@ public class TurnLogger {
         return new TurnRecord();
     }
 
-    /** 记录轮次头信息：轮次号、已用/最大 token、停止状态。 */
+    /** 记录轮次头信息：轮次号、已用/最大 token。 */
     public void turnHeader(TurnRecord rec, SessionState state) {
         long used = state.getUsageAccum().getTotalTokens();
         long max = config.getBudget().getMaxTokens();
         rec.turnHeader(state.getTurnCount(), used, max);
-        if (state.isStopRequested()) {
-            rec.stopInfo(state.getStopState().getReason().getCategory(), state.getStopState().getRemainingGraceSteps());
-        }
     }
 
     /** 记录上下文信息：消息数、估算 token、工具数、构成分解。 */
@@ -60,33 +56,15 @@ public class TurnLogger {
         rec.addTool(toolName, success, argsSummary, renderedLen);
     }
 
-    /** 记录停止请求事件。 */
-    public void stopRequested(TurnRecord rec, StopCategory category, String msg, int grace) {
-        rec.addStopEvent(TurnRecord.StopEventType.REQUESTED, category, msg, grace);
-    }
-
-    /** 记录停止升级事件（宽限期耗尽，硬终止）。 */
-    public void stopEscalated(TurnRecord rec, StopCategory category, String msg) {
-        rec.addStopEvent(TurnRecord.StopEventType.ESCALATED, category, msg, -1);
-    }
-
-    /** 记录宽限期消耗事件。 */
-    public void graceConsumed(TurnRecord rec, String reason, int remaining) {
-        rec.addStopEvent(TurnRecord.StopEventType.GRACE_CONSUMED, null, reason, remaining);
-    }
-
     /** 记录轮次结束时的 token 统计。 */
-    public void turnDone(TurnRecord rec, SessionState state, int turnStartTokens) {
-        rec.turnDone(turnStartTokens, state.getUsageAccum().getTotalTokens(), config.getBudget().getMaxTokens());
+    public void turnDone(TurnRecord rec, SessionState state) {
+        rec.turnDone(state.getUsageAccum().getTotalTokens(), state.getUsageAccum().getTotalTokens(), config.getBudget().getMaxTokens());
     }
 
-    /** 输出轮次摘要日志（2 行 INFO + DEBUG 级工具明细 + WARN 级停止事件）。 */
+    /** 输出轮次摘要日志（INFO 级摘要 + DEBUG 级工具明细）。 */
     public void flush(TurnRecord rec) {
         StringBuilder line = new StringBuilder(192);
         line.append("Turn ").append(rec.turnNumber).append(" 完成");
-        if (rec.stopCategory != null) {
-            line.append(" ⚠").append(rec.stopCategory).append("(宽限剩余").append(rec.stopGraceRemaining).append(")");
-        }
         long ctxMaxTokens = config.getContext().getMaxTokens();
         double ctxRatio = ctxMaxTokens > 0 ? (double) rec.estimatedTokens / ctxMaxTokens : 0.0;
         line.append(" │ 上下文 ").append(rec.messageCount).append(" 条消息 (约 ")
@@ -124,16 +102,6 @@ public class TurnLogger {
             for (TurnRecord.ToolEntry tool : rec.tools) {
                 log.debug("  工具明细: {} 参数={} 输出 {} 字符", tool.name(), tool.argsSummary(), tool.renderedLen());
             }
-        }
-
-        for (TurnRecord.StopEvent event : rec.stopEvents) {
-            String detail = switch (event.type()) {
-                case REQUESTED ->
-                        "停止请求: " + event.category() + " │ " + event.message() + " │ 宽限期=" + event.graceRemaining();
-                case ESCALATED -> "停止升级: " + event.category() + " │ " + event.message();
-                case GRACE_CONSUMED -> "宽限期消耗 (" + event.message() + ") │ 剩余=" + event.graceRemaining();
-            };
-            log.warn("  │ {}", detail);
         }
     }
 

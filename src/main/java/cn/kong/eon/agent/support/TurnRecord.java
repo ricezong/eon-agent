@@ -1,7 +1,5 @@
 package cn.kong.eon.agent.support;
 
-import cn.kong.eon.agent.hook.StopCategory;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -13,8 +11,6 @@ public class TurnRecord {
     int turnNumber;
     long usedTokens;
     long maxTokens;
-    StopCategory stopCategory;
-    int stopGraceRemaining;
 
     int messageCount;
     long estimatedTokens;
@@ -30,29 +26,14 @@ public class TurnRecord {
     int turnDeltaTokens;
     double waterRatio;
 
-    final List<StopEvent> stopEvents = new ArrayList<>();
-
     /** 工具执行明细。 */
     record ToolEntry(String name, boolean success, String argsSummary, int renderedLen) {
-    }
-
-    /** 停止事件类型。 */
-    enum StopEventType {REQUESTED, ESCALATED, GRACE_CONSUMED}
-
-    /** 停止事件记录。 */
-    record StopEvent(StopEventType type, StopCategory category, String message, int graceRemaining) {
     }
 
     TurnRecord turnHeader(int turnNumber, long usedTokens, long maxTokens) {
         this.turnNumber = turnNumber;
         this.usedTokens = usedTokens;
         this.maxTokens = maxTokens;
-        return this;
-    }
-
-    TurnRecord stopInfo(StopCategory category, int graceRemaining) {
-        this.stopCategory = category;
-        this.stopGraceRemaining = graceRemaining;
         return this;
     }
 
@@ -88,11 +69,6 @@ public class TurnRecord {
         this.usedTokens = totalTokens;
         this.maxTokens = maxBudget;
         this.waterRatio = maxBudget > 0 ? (double) totalTokens / maxBudget : 0.0;
-        return this;
-    }
-
-    TurnRecord addStopEvent(StopEventType type, StopCategory category, String message, int graceRemaining) {
-        this.stopEvents.add(new StopEvent(type, category, message, graceRemaining));
         return this;
     }
 }

@@ -1,8 +1,8 @@
 package cn.kong.eon.agent.hook;
 
 /**
- * Hook 执行返回值。ok() 继续，stop() 请求优雅停止。
- * 所有终止场景统一走 stop，由 EonAgent 决定是给 LLM 最后一次总结机会还是直接硬终止。
+ * Hook 执行返回值。ok() 继续，stop() 请求终止。
+ * 所有终止场景统一走 stop，由 EonAgent 执行硬终止。
  */
 public final class HookResult {
 
@@ -19,7 +19,7 @@ public final class HookResult {
         return new HookResult(Action.CONTINUE, null);
     }
 
-    /** 请求优雅停止。EonAgent 注入收尾 nudge，给 LLM graceSteps 轮调用 finish 的机会。 */
+    /** 请求停止。EonAgent 直接硬终止。 */
     public static HookResult stop(StopReason stopReason) {
         return new HookResult(Action.STOP, stopReason);
     }

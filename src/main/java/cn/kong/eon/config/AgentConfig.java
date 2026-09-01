@@ -505,7 +505,6 @@ public class AgentConfig {
 
     public static class LoopConfig {
         private int maxSteps = 30;
-        private int absoluteMaxSteps = 160;
 
         public int getMaxSteps() {
             return maxSteps;
@@ -514,21 +513,12 @@ public class AgentConfig {
         public void setMaxSteps(int v) {
             this.maxSteps = v;
         }
-
-        public int getAbsoluteMaxSteps() {
-            return absoluteMaxSteps;
-        }
-
-        public void setAbsoluteMaxSteps(int v) {
-            this.absoluteMaxSteps = v;
-        }
     }
 
+    /** 预算配置。max_tokens 为会话累计 token 上限，threshold 为注入收尾提示的阈值比例。 */
     public static class BudgetConfig {
         private int maxTokens = 500000;
-        private double softThreshold = 0.75;
-        private double hardThreshold = 1.0;
-        private int graceSteps = 3;
+        private double threshold = 0.75;
 
         public int getMaxTokens() {
             return maxTokens;
@@ -538,28 +528,12 @@ public class AgentConfig {
             this.maxTokens = v;
         }
 
-        public double getSoftThreshold() {
-            return softThreshold;
+        public double getThreshold() {
+            return threshold;
         }
 
-        public void setSoftThreshold(double v) {
-            this.softThreshold = v;
-        }
-
-        public double getHardThreshold() {
-            return hardThreshold;
-        }
-
-        public void setHardThreshold(double v) {
-            this.hardThreshold = v;
-        }
-
-        public int getGraceSteps() {
-            return graceSteps;
-        }
-
-        public void setGraceSteps(int v) {
-            this.graceSteps = v;
+        public void setThreshold(double v) {
+            this.threshold = v;
         }
     }
 
@@ -569,7 +543,6 @@ public class AgentConfig {
         private int noProgressSteps = 6;
         private int failureWarn = 3;
         private int failureStop = 5;
-        private int stopGraceSteps = 2;
 
         public int getRepeatWarn() {
             return repeatWarn;
@@ -611,13 +584,6 @@ public class AgentConfig {
             this.failureStop = v;
         }
 
-        public int getStopGraceSteps() {
-            return stopGraceSteps;
-        }
-
-        public void setStopGraceSteps(int v) {
-            this.stopGraceSteps = v;
-        }
     }
 
     public static class RetryConfig {

@@ -40,7 +40,6 @@ class SessionStateTest {
         cs.setSummarizedMessageCount(7);
 
         state.setTodoBeenUsed(true);
-        state.setBudgetSoftTriggered(true);
 
         state.beginRun("second input");
 
@@ -52,6 +51,5 @@ class SessionStateTest {
         assertThat(state.getCompressionState().getLastSummary()).isEqualTo("summary so far");
         assertThat(state.getCompressionState().getSummarizedMessageCount()).isEqualTo(7);
         assertThat(state.hasTodoBeenUsed()).isTrue();
-        assertThat(state.isBudgetSoftTriggered()).isTrue();
     }
 }

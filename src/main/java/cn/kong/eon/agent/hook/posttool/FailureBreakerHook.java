@@ -25,7 +25,7 @@ public class FailureBreakerHook implements Hook.PostToolHook {
     }
 
     @Override
-    public boolean isActive(SessionState state) {
+    public boolean active(SessionState state) {
         return true;
     }
 
@@ -38,7 +38,7 @@ public class FailureBreakerHook implements Hook.PostToolHook {
     public HookResult afterToolExecution(SessionState state, String toolName, boolean success) {
         LoopDetector.DetectionResult dr = loopDetector.recordToolResult(toolName, success);
         if (dr.shouldStop()) {
-            // 单工具熔断：注入 nudge 提示 LLM 不要再调用此工具，但不触发会话级优雅停止
+            // 单工具熔断：注入 nudge 提示 LLM 不要再调用此工具，不触发会话级停止
             log.warn("[失败熔断] 工具 '{}' 已熔断 - {}", toolName, dr.message());
             state.getPendingNudges().add(dr.message());
             return HookResult.ok();

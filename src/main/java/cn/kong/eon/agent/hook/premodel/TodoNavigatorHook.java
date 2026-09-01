@@ -30,7 +30,7 @@ public class TodoNavigatorHook implements Hook.PreModelHook {
     }
 
     @Override
-    public boolean isActive(SessionState state) {
+    public boolean active(SessionState state) {
         return state.hasTodoBeenUsed();
     }
 

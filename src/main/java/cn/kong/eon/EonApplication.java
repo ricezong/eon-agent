@@ -372,7 +372,7 @@ public class EonApplication {
         agent.addHook(new ContextCompactHook(config, contextPolicy));
 
         // PostModel Hooks
-        agent.addHook(new LoopDetectHook(loopDetector, config.getLoopDetect().getStopGraceSteps()));
+        agent.addHook(new LoopDetectHook(loopDetector));
 
         // PreTool Hooks
         agent.addHook(new GateHook(toolRegistry));

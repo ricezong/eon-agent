@@ -1,6 +1,5 @@
 package cn.kong.eon.model;
 
-import cn.kong.eon.agent.hook.StopReason;
 import cn.kong.eon.llm.LlmResponse;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -24,9 +23,6 @@ public class SessionState {
     private String lastAssistantText;
 
     private boolean todoBeenUsed = false;    // 是否调用过 todo_write（激活 TodoNavigator）
-    private boolean budgetSoftTriggered = false; // 预算软阈值是否已触发（会话级状态）
-
-    private transient StopState stopState;   // 优雅停止状态
 
     // 运行时临时字段
     private transient List<ChatMessage> currentMessages;
@@ -41,7 +37,6 @@ public class SessionState {
         this.pendingNudges = new ArrayList<>();
         this.formatCorrections = new ArrayList<>();
         this.todoBeenUsed = false;
-        this.budgetSoftTriggered = false;
         this.pendingToolCalls = new ArrayList<>();
         this.lastToolResults = new ArrayList<>();
     }
@@ -57,7 +52,7 @@ public class SessionState {
     /**
      * 同一会话内开始一次新的用户输入（复用本状态）。
      * 重置任务级状态（用户输入、轮数、运行时提醒与临时消息字段），
-     * 保留会话级状态（token 累计、压缩状态、todo 使用标记、预算软触发标记）。
+     * 保留会话级状态（token 累计、压缩状态、todo 使用标记）。
      */
     public void beginRun(String userInput) {
         this.userInput = userInput;
@@ -159,14 +154,6 @@ public class SessionState {
         this.todoBeenUsed = todoBeenUsed;
     }
 
-    public boolean isBudgetSoftTriggered() {
-        return budgetSoftTriggered;
-    }
-
-    public void setBudgetSoftTriggered(boolean budgetSoftTriggered) {
-        this.budgetSoftTriggered = budgetSoftTriggered;
-    }
-
     public List<ChatMessage> getCurrentMessages() {
         return currentMessages;
     }
@@ -199,56 +186,4 @@ public class SessionState {
         this.lastToolResults = lastToolResults;
     }
 
-    public StopState getStopState() {
-        return stopState;
-    }
-
-    public void setStopState(StopState stopState) {
-        this.stopState = stopState;
-    }
-
-    /** 是否有活跃的停止请求。 */
-    public boolean isStopRequested() {
-        return stopState != null && stopState.isActive();
-    }
-
-    /**
-     * 优雅停止状态：NONE → REQUESTED → GRACE_PERIOD → FORCED。
-     */
-    public static class StopState {
-        private StopReason reason;
-        private int remainingGraceSteps;
-
-        /** 创建无停止请求的初始状态。 */
-        public static StopState none() {
-            return new StopState();
-        }
-
-        /** 发起停止请求，初始化 grace steps。 */
-        public void request(StopReason reason) {
-            this.reason = reason;
-            this.remainingGraceSteps = reason.getGraceSteps();
-        }
-
-        /** 消耗一个 grace step，返回是否还有剩余。 */
-        public boolean consumeGraceStep() {
-            if (remainingGraceSteps > 0) {
-                remainingGraceSteps--;
-            }
-            return remainingGraceSteps > 0;
-        }
-
-        /** 是否有活跃的停止请求。 */
-        public boolean isActive() {
-            return reason != null;
-        }
-
-        public StopReason getReason() {
-            return reason;
-        }
-
-        public int getRemainingGraceSteps() {
-            return remainingGraceSteps;
-        }
-    }
 }

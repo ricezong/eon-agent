@@ -74,7 +74,7 @@ class SummarizeRuleTest {
 
         assertThat(result.applied()).isTrue();
         assertThat(fakeLlm.getCallCount()).isEqualTo(1);
-        assertThat(state.getLastSummary()).contains("Summary");
+        assertThat(state.getLastSummary()).contains("Summary").contains("<summary>").contains("</summary>");
 
         // AI 正文（COMPRESSIBLE）只剩轮次 9 那一条
         assertThat(window.view()).filteredOn(b -> b.kind() == BlockKind.AI_TEXT).hasSize(1);
@@ -87,7 +87,7 @@ class SummarizeRuleTest {
     void summarize_incrementalSummary_passesExistingSummaryToLlm() {
         ContextWindow window = dialogWindow(10);
         CompressionState state = new CompressionState();
-        state.setLastSummary("## Old Summary\n1. Previous context");
+        state.setLastSummary("<summary>\n## Old Summary\n1. Previous context\n</summary>");
 
         FakeLlmClient fakeLlm = new FakeLlmClient("## New Merged Summary");
         run(policyWith(fakeLlm), window, state);
@@ -104,8 +104,9 @@ class SummarizeRuleTest {
         FakeLlmClient fakeLlm = new FakeLlmClient("S".repeat(3000));
         run(policyWith(fakeLlm), window, state);
 
-        assertThat(state.getLastSummary()).hasSize(MAX_OUTPUT_CHARS + 3);
-        assertThat(state.getLastSummary()).endsWith("...");
+        // <summary>\n + (2000截断 + "...") + \n</summary>
+        assertThat(state.getLastSummary()).hasSize("<summary>\n".length() + MAX_OUTPUT_CHARS + 3 + "\n</summary>".length());
+        assertThat(state.getLastSummary()).endsWith("</summary>");
     }
 
     // ═══════════════════ 降级路径 ═══════════════════

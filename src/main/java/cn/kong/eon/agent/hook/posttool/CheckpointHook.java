@@ -31,7 +31,7 @@ public class CheckpointHook implements Hook.PostToolHook {
     }
 
     @Override
-    public boolean isActive(SessionState state) {
+    public boolean active(SessionState state) {
         return config.isCheckpointEnabled();
     }
 

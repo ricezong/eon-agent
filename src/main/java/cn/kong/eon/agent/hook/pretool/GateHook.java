@@ -29,7 +29,7 @@ public class GateHook implements Hook.PreToolHook {
     }
 
     @Override
-    public boolean isActive(SessionState state) {
+    public boolean active(SessionState state) {
         return true;
     }
 

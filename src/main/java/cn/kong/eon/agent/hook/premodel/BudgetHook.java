@@ -11,7 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 预算检查（PreModel, order=10）。软阈值注入收尾 nudge，硬阈值请求优雅停止。
+ * 预算检查（PreModel, order=10）。达到阈值比例注入收尾提示词，预算耗尽则终止。
  */
 public class BudgetHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(BudgetHook.class);
@@ -28,7 +28,7 @@ public class BudgetHook implements Hook.PreModelHook {
     }
 
     @Override
-    public boolean isActive(SessionState state) {
+    public boolean active(SessionState state) {
         return true;
     }
 
@@ -42,34 +42,27 @@ public class BudgetHook implements Hook.PreModelHook {
         AgentConfig.BudgetConfig budget = config.getBudget();
         long used = state.getUsageAccum().getTotalTokens();
         long maxBudget = budget.getMaxTokens();
-        double ratio = maxBudget > 0 ? (double) used / maxBudget : 0.0;
+        double ratio = (double) used / maxBudget;
 
-        if (ratio >= budget.getHardThreshold()) {
-            log.warn("[预算] 硬超限 {}% ({}/{}) → 停止",
-                    String.format("%.0f", ratio * 100), used, maxBudget);
+        // 预算耗尽，终止
+        if (used >= maxBudget) {
+            log.warn("[预算] 超限 {}% ({}/{}) → 停止", String.format("%.0f", ratio * 100), used, maxBudget);
             StopReason reason = new StopReason(
                     StopCategory.BUDGET_EXCEEDED,
-                    "Token 预算硬超限: " + used + " >= " + (long) (maxBudget * budget.getHardThreshold()),
-                    budget.getGraceSteps());
+                    "Token 预算超限: " + used + " >= " + maxBudget);
             return HookResult.stop(reason);
         }
 
-        // 优雅停止恢复后重置 softTriggered
-        if (ratio < budget.getSoftThreshold() && state.isBudgetSoftTriggered()) {
-            state.setBudgetSoftTriggered(false);
-            log.warn("[预算] 软阈值重置（用量降至 {}% 以下）", String.format("%.0f", budget.getSoftThreshold() * 100));
-        }
-
-        if (ratio >= budget.getSoftThreshold() && !state.isBudgetSoftTriggered()) {
-            state.setBudgetSoftTriggered(true);
-            int remainingSteps = budget.getGraceSteps();
+        // 达到阈值比例，注入收尾提示词
+        if (ratio >= budget.getThreshold()) {
+            int remainingSteps = config.getLoop().getMaxSteps() - state.getTurnCount();
             String nudge = String.format(
                     "⚠️ 预算告警：累计已消耗 %d token（预算上限 %d，已用 %.0f%%）。"
                             + "剩余约 %d 轮，请尽快用已有信息整理总结并直接回复用户，"
                             + "不要再发起新的工具调用。",
-                    used, maxBudget, ratio * 100, remainingSteps);
+                    used, maxBudget, ratio * 100, Math.max(remainingSteps, 0));
             state.addNudge(nudge);
-            log.info("[预算] 软告警 {}% ({}/{})", String.format("%.0f", ratio * 100), used, maxBudget);
+            log.info("[预算] 告警 {}% ({}/{})", String.format("%.0f", ratio * 100), used, maxBudget);
         }
 
         return HookResult.ok();

@@ -121,7 +121,7 @@ public class ContextBuilder {
             result.add(SystemMessage.from(systemPrompt));
         }
         if (summary != null && !summary.isBlank()) {
-            result.add(SystemMessage.from("<summary>\n" + summary + "\n</summary>"));
+            result.add(SystemMessage.from(summary));
         }
         List<ChatMessage> transcript = getTranscript();
         if (!transcript.isEmpty()) {

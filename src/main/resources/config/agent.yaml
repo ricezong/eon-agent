@@ -46,13 +46,10 @@ context:
 # 会话级 Token 预算（控制整个会话累计消耗）
 budget:
   max_tokens: 2000000                     # 会话允许消耗的累计 token 上限（≈10 轮完整上下文）
-  soft_threshold: 0.75                    # 软阈值（75%）：注入 nudge 提示 LLM 收尾
-  hard_threshold: 1.0                     # 硬阈值（100%）：触发优雅停止
-  grace_steps: 3                          # 软/硬阈值触发后给的额外轮次
+  threshold: 0.75                         # 阈值（75%）：注入 nudge 提示 LLM 收尾
 
 loop:
-  max_steps: 100                          # 正常模式最大步数
-  absolute_max_steps: 160                 # stop 期间绝对上限
+  max_steps: 100                          # 最大步数
 
 loop_detect:
   repeat_warn: 3                          # 同工具同参数重复 3 次告警
@@ -60,7 +57,6 @@ loop_detect:
   no_progress_steps: 6                    # Todo 连续 6 步无变化告警
   failure_warn: 3                         # 单工具连续失败 3 次注入警告
   failure_stop: 5                         # 单工具连续失败 5 次熔断该工具
-  stop_grace_steps: 2                     # 循环检测/门禁停止后给 LLM 的 grace 步数
 
 retry:
   attempts: 3                             # LLM 调用最大重试次数

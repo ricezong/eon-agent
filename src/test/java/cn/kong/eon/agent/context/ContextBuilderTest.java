@@ -27,14 +27,13 @@ class ContextBuilderTest {
     }
 
     @Test
-    void build_withSummary_wrapsInSummaryTags() {
+    void build_withSummary_addsSystemMessage() {
         ContextBuilder builder = new ContextBuilder()
                 .setSummary("Previous conversation summary");
         List<ChatMessage> result = builder.build();
         assertThat(result).hasSize(1);
         assertThat(result.get(0)).isInstanceOf(SystemMessage.class);
-        String text = ((SystemMessage) result.get(0)).text();
-        assertThat(text).contains("<summary>").contains("Previous conversation summary").contains("</summary>");
+        assertThat(((SystemMessage) result.get(0)).text()).isEqualTo("Previous conversation summary");
     }
 
     @Test

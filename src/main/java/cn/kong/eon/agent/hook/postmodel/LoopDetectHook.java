@@ -15,18 +15,16 @@ import java.util.List;
 
 /**
  * 循环检测（PostModel, order=30）。
- * 检测重复工具调用模式：同一参数重复达到 stop 阈值时请求优雅停止。
+ * 检测重复工具调用模式：同一参数重复达到 stop 阈值时直接硬终止。
  * 熔断工具的检测在此阶段只返回 WARN（nudge 提示），不阻止其他工具执行。
  */
 public class LoopDetectHook implements Hook.PostModelHook {
     private static final Logger log = LoggerFactory.getLogger(LoopDetectHook.class);
 
-    private final int stopGraceSteps;
     private final LoopDetector loopDetector;
 
-    public LoopDetectHook(LoopDetector loopDetector, int stopGraceSteps) {
+    public LoopDetectHook(LoopDetector loopDetector) {
         this.loopDetector = loopDetector;
-        this.stopGraceSteps = stopGraceSteps;
     }
 
     @Override
@@ -35,7 +33,7 @@ public class LoopDetectHook implements Hook.PostModelHook {
     }
 
     @Override
-    public boolean isActive(SessionState state) {
+    public boolean active(SessionState state) {
         return true;
     }
 
@@ -54,8 +52,7 @@ public class LoopDetectHook implements Hook.PostModelHook {
             log.warn("[循环检测] 停止 - {}", dr.message());
             StopReason reason = new StopReason(
                     StopCategory.LOOP_DETECTED,
-                    dr.message(),
-                    stopGraceSteps);
+                    dr.message());
             return HookResult.stop(reason);
         }
         if (dr.shouldWarn()) {

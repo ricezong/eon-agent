@@ -2,7 +2,6 @@ package cn.kong.eon.agent.support;
 
 import cn.kong.eon.agent.hook.StopCategory;
 import cn.kong.eon.agent.hook.StopReason;
-import cn.kong.eon.agent.support.HookDispatcher.FireResult;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmStalledException;
 import cn.kong.eon.model.SessionState;
@@ -10,101 +9,40 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 优雅停止状态机。管理 grace step 消耗、硬终止判定、停止请求处理和终止输出格式化。
- * 依赖 {@link MessageFinalizer} 处理 stop 期间的 pending 消息回填。
+ * 停止状态机。处理 maxSteps 超限、循环异常、Hook stop 三类终止场景，统一执行硬终止。
  */
 public class StopStateMachine {
     private static final Logger log = LoggerFactory.getLogger(StopStateMachine.class);
 
     private final AgentConfig config;
     private final TurnLogger logger;
-    private final MessageFinalizer finalizer;
 
-    public StopStateMachine(AgentConfig config, TurnLogger logger, MessageFinalizer finalizer) {
+    public StopStateMachine(AgentConfig config, TurnLogger logger) {
         this.config = config;
         this.logger = logger;
-        this.finalizer = finalizer;
     }
 
-    /** 消耗一个 grace step，返回 Exit 表示硬终止，Continue 表示继续循环。 */
-    public TurnAction consumeGraceStep(TurnRecord rec, SessionState state, String reason) {
-        boolean hasMore = state.getStopState().consumeGraceStep();
-        logger.graceConsumed(rec, reason, state.getStopState().getRemainingGraceSteps());
-        if (!hasMore) {
-            return new TurnAction.Exit(forceTerminate(state, state.getStopState().getReason()));
-        }
-        return new TurnAction.Continue();
+    /** maxSteps 达到上限时的硬终止，返回终止输出文本。 */
+    public String handleMaxSteps(SessionState state) {
+        log.warn("[停止] 达到最大步数: {}", config.getLoop().getMaxSteps());
+        return forceTerminate(state, new StopReason(
+                StopCategory.MAX_STEPS_REACHED,
+                "达到最大步数限制 (" + config.getLoop().getMaxSteps() + ")"));
     }
 
-    /** 处理 Agent 主循环中的异常。LLM 不可用时直接硬终止；其他异常尝试优雅停止。 */
-    public TurnAction handleLoopException(SessionState state, Exception e) {
+    /** 处理 Agent 主循环中的异常，返回终止输出文本。 */
+    public String handleLoopException(SessionState state, Exception e) {
         log.error("Agent 循环异常: {}", e.getMessage(), e);
         if (e instanceof LlmStalledException) {
-            return new TurnAction.Exit(forceTerminate(state, new StopReason(
-                    StopCategory.UNEXPECTED_ERROR, "LLM 调用连续失败，模型不可用", 0)));
+            return forceTerminate(state, new StopReason(
+                    StopCategory.UNEXPECTED_ERROR, "LLM 调用连续失败，模型不可用"));
         }
-        FireResult sr = handleStop(null, state, new StopReason(
-                StopCategory.UNEXPECTED_ERROR, e.getMessage(), config.getBudget().getGraceSteps()));
-        if (sr instanceof FireResult.Exit exit) {
-            return new TurnAction.Exit(exit.output());
-        }
-        return new TurnAction.Continue();
-    }
-
-    /** maxSteps 达到上限时的停止处理。 */
-    public TurnAction handleMaxSteps(SessionState state) {
-        log.warn("[停止] 达到最大步数: {}", config.getLoop().getMaxSteps());
-        StopReason reason = new StopReason(
-                StopCategory.MAX_STEPS_REACHED,
-                "达到最大步数限制 (" + config.getLoop().getMaxSteps() + ")",
-                config.getBudget().getGraceSteps());
-        FireResult sr = handleStop(null, state, reason);
-        if (sr instanceof FireResult.Exit exit) {
-            return new TurnAction.Exit(exit.output());
-        }
-        return new TurnAction.Exit(forceTerminate(state, reason));
-    }
-
-    /**
-     * 处理 stop 请求：注入收尾 nudge，进入 grace period。
-     * graceSteps=0 直接硬终止；已在 stop 中则追加 nudge 提醒，不重置 grace。
-     *
-     * @param rec 当前 TurnRecord，null 表示在 turn 之外（maxSteps/异常等场景）
-     */
-    public FireResult handleStop(TurnRecord rec, SessionState state, StopReason reason) {
-        if (reason.getGraceSteps() <= 0) {
-            return new FireResult.Exit(forceTerminate(state, reason));
-        }
-
-        if (!state.isStopRequested()) {
-            state.getStopState().request(reason);
-            state.addNudge(reason.toNudgeText());
-            if (rec != null) {
-                logger.stopRequested(rec, reason.getCategory(), reason.getMessage(), reason.getGraceSteps());
-            } else {
-                log.warn("[停止] 请求停止: {} | 原因: {} | 宽限期: {}",
-                        reason.getCategory(), reason.getMessage(), reason.getGraceSteps());
-            }
-            finalizer.finalizeIfPending(state);
-            return new FireResult.Continue();
-        }
-
-        // 已在 stop 中，追加提醒
-        if (state.getStopState().getRemainingGraceSteps() <= 0) {
-            return new FireResult.Exit(forceTerminate(state, reason));
-        }
-        state.addNudge(reason.toNudgeText());
-        if (rec != null) {
-            logger.stopEscalated(rec, reason.getCategory(), reason.getMessage());
-        } else {
-            log.warn("[停止] 升级停止: {} | 原因: {}", reason.getCategory(), reason.getMessage());
-        }
-        finalizer.finalizeIfPending(state);
-        return new FireResult.Continue();
+        return forceTerminate(state, new StopReason(
+                StopCategory.UNEXPECTED_ERROR, e.getMessage()));
     }
 
     /** 硬终止：记录日志并返回终止输出。 */
-    private String forceTerminate(SessionState state, StopReason reason) {
+    public String forceTerminate(SessionState state, StopReason reason) {
         logger.stopForced(reason.getCategory().name(), state.getTurnCount(), state.getUsageAccum().getTotalTokens());
         return formatTerminationOutput(state, reason);
     }

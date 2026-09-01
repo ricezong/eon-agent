@@ -89,9 +89,9 @@ public class SummarizeRule implements ContextRule {
         }
 
         if (summary != null) {
-            state.setLastSummary(summary);
+            state.setLastSummary("<summary>\n" + summary + "\n</summary>");
         } else if (state.getLastSummary() == null) {
-            state.setLastSummary("(摘要生成失败，历史对话已裁剪。完整记录: " + transcriptPath + ")");
+            state.setLastSummary("<summary>\n(摘要生成失败，历史对话已裁剪。完整记录: " + transcriptPath + ")\n</summary>");
         }
 
         List<ContextBlock> removed = window.removeBefore(cutoffTurn);

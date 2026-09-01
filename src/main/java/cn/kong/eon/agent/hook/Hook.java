@@ -17,7 +17,7 @@ public interface Hook {
     String name();
 
     /** 是否激活。 */
-    boolean isActive(SessionState state);
+    boolean active(SessionState state);
 
     /** 阶段内执行顺序，数值小先执行。默认 100。 */
     default int order() {
