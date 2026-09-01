@@ -58,12 +58,6 @@ public class WriteFileTool implements ToolExecutor {
         }
     }
 
-    @Override
-    public String summarizeArgs(Map<String, Object> args) {
-        Object p = args.get("file_path");
-        return p != null ? "{path: \"" + truncate(String.valueOf(p), 50) + "\"}" : args.toString();
-    }
-
     /**
      * contents 已通过 {@code Files.writeString} 完整落盘，
      * 上下文里那份参数与磁盘文件逐字节重复，可无损卸载。
@@ -71,10 +65,6 @@ public class WriteFileTool implements ToolExecutor {
     @Override
     public boolean persistsArguments() {
         return true;
-    }
-
-    private static String truncate(String s, int maxLen) {
-        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
     }
 
     @Tool(name = "write", value = {

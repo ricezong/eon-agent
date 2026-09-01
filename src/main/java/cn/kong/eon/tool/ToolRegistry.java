@@ -4,7 +4,6 @@ import cn.kong.eon.agent.context.ToolSupport;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.mcp.McpClientManager;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import org.slf4j.Logger;
@@ -14,7 +13,7 @@ import java.util.*;
 
 /**
  * 工具注册表。统一管理本地工具和 MCP 工具的元数据与执行。
- * 同时实现 {@link ToolSupport}，向上下文层暴露参数落盘查询和参数摘要能力。
+ * 同时实现 {@link ToolSupport}，向上下文层暴露参数落盘查询。
  */
 public class ToolRegistry implements ToolSupport {
     private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
@@ -159,21 +158,6 @@ public class ToolRegistry implements ToolSupport {
     public boolean persistsArguments(String name) {
         ToolDescriptor descriptor = tools.get(name);
         return descriptor != null && descriptor.getExecutor().persistsArguments();
-    }
-
-    /** 参数的短摘要。工具不存在或参数无法解析时返回 null。 */
-    @Override
-    public String summarizeArgs(String name, String argumentsJson) {
-        ToolDescriptor descriptor = tools.get(name);
-        if (descriptor == null) return null;
-        try {
-            Map<String, Object> args = objectMapper.readValue(argumentsJson, new TypeReference<>() {
-            });
-            return descriptor.getExecutor().summarizeArgs(args);
-        } catch (Exception e) {
-            log.debug("参数摘要生成失败 {}: {}", name, e.getMessage());
-            return null;
-        }
     }
 
     /** 白名单（只读）。 */

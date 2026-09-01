@@ -160,15 +160,7 @@ public class ContextWindow {
         }
     }
 
-    /** 按类型统计字符数。 */
-    public long charsByKind(BlockKind kind) {
-        long total = 0;
-        for (ContextBlock block : blocks) {
-            if (block.kind() == kind) total += block.chars();
-        }
-        return total;
-    }
-
+    /** 窗口内块的总字符数。 */
     public long totalChars() {
         long total = 0;
         for (ContextBlock block : blocks) total += block.chars();

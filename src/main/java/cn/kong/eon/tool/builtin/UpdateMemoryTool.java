@@ -22,17 +22,6 @@ import java.util.Map;
 public class UpdateMemoryTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(UpdateMemoryTool.class);
 
-    @Override
-    public String summarizeArgs(Map<String, Object> args) {
-        Object a = args.get("action");
-        Object t = args.get("title");
-        return "{action: " + a + ", title: \"" + truncate(String.valueOf(t), 40) + "\"}";
-    }
-
-    private static String truncate(String s, int maxLen) {
-        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
-    }
-
     @Tool(name = "update_memory", value = {
             "在持久化知识库中创建、更新或删除记忆，供 AI 将来参考。如果用户补充了已有记忆，必须使用此工具的 'update' 操作。",
             "如果用户反驳了已有记忆，必须使用此工具的 'delete' 操作，而非 'update' 或 'create'。",

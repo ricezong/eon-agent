@@ -111,16 +111,6 @@ public class ReadFileTool implements ToolExecutor {
         return ToolOutcome.success(result);
     }
 
-    @Override
-    public String summarizeArgs(Map<String, Object> args) {
-        Object p = args.get("target_file");
-        return p != null ? "{path: \"" + truncate(String.valueOf(p), 50) + "\"}" : args.toString();
-    }
-
-    private static String truncate(String s, int maxLen) {
-        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
-    }
-
     @Tool(name = "read_file", value = {
             "读取本地文件的内容。当用户需要查看文件、文档或笔记时使用此工具。",
             "对于较长的文件，可以通过 offset 和 limit 参数分段读取。",

@@ -61,13 +61,6 @@ public class WebFetchTool implements ToolExecutor {
                 });
     }
 
-    @Override
-    public String summarizeArgs(Map<String, Object> args) {
-        Object u = args.get("urls");
-        int count = (u instanceof List<?> l) ? l.size() : 0;
-        return "{urls: " + count + "}";
-    }
-
     @Tool(name = "web_fetch", value = {
             "从一个或多个指定 URL 获取内容并返回。用法：以 URL 数组作为输入，抓取 URL 内容并将 HTML 转换为 markdown。",
             "返回所有 URL 的抓取内容。当你需要检索和分析网页内容时使用此工具。",

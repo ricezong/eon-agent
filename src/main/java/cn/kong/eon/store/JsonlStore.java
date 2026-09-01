@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -82,24 +83,11 @@ public class JsonlStore {
         return window;
     }
 
-    /**
-     * 用给定块列表整体替换内存窗口。只影响内存视图，不回写磁盘。
-     */
-    public synchronized void replaceAll(List<ChatMessage> compressed) {
-        window.clear();
-        for (int i = 0; i < compressed.size(); i++) {
-            window.addAll(BlockProjector.explode(compressed.get(i), "r" + i, 0, null));
-        }
-        log.debug("上下文视图已更新: {} 个块", window.size());
-    }
-
     /** 追加一条 JSON 到磁盘账本。 */
     private void appendToLedger(ChatMessage message) {
         String json = serialize(message);
         try {
-            Files.writeString(jsonlFile, json + "\n",
-                    java.nio.file.StandardOpenOption.CREATE,
-                    java.nio.file.StandardOpenOption.APPEND);
+            Files.writeString(jsonlFile, json + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
             log.error("JSONL 追加失败: {}", e.getMessage(), e);
         }

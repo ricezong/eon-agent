@@ -104,13 +104,6 @@ public class TodoWriteTool implements ToolExecutor {
         return sb.toString();
     }
 
-    @Override
-    public String summarizeArgs(Map<String, Object> args) {
-        Object t = args.get("todos");
-        int count = (t instanceof List<?> l) ? l.size() : 0;
-        return "{todos: " + count + " items}";
-    }
-
     @Tool(name = "todo_write", value = {
             "使用此工具为当前会话创建和管理结构化任务列表。",
             "这有助于跟踪进度、组织复杂任务并展示周密性。",

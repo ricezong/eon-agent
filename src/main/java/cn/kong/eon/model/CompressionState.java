@@ -2,64 +2,21 @@ package cn.kong.eon.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-import java.util.HashSet;
-import java.util.Set;
-
 /**
- * 压缩状态。记录哪些消息已被 Snip/Prune/Summarize，压缩决策单调推进。
+ * 压缩状态。记录最新摘要与压缩节奏，供下一轮决策使用。
+ * 块级状态（已截断/已裁剪）住在块自身上，不在这里维护。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CompressionState {
-    private Set<String> snippedIds;
-    private Set<String> prunedIds;
     private String lastSummary;
     private int summarizedMessageCount;  // 累计已摘要删除的消息数
     private double lastWaterLevel;
     private int lastTurnCompressed;   // 上次轮数触发压缩时的 turnCount，0=从未触发
 
     public CompressionState() {
-        this.snippedIds = new HashSet<>();
-        this.prunedIds = new HashSet<>();
         this.summarizedMessageCount = 0;
         this.lastWaterLevel = 0.0;
         this.lastTurnCompressed = 0;
-    }
-
-    /** 块是否已被截断。 */
-    public boolean isSnipped(String id) {
-        return snippedIds.contains(id);
-    }
-
-    /** 块是否已被裁剪。 */
-    public boolean isPruned(String id) {
-        return prunedIds.contains(id);
-    }
-
-    /** 标记块为已截断。 */
-    public void markSnipped(String id) {
-        snippedIds.add(id);
-    }
-
-    /** 标记块为已裁剪（隐含已截断）。 */
-    public void markPruned(String id) {
-        prunedIds.add(id);
-        snippedIds.add(id);
-    }
-
-    public Set<String> getSnippedIds() {
-        return snippedIds;
-    }
-
-    public void setSnippedIds(Set<String> snippedIds) {
-        this.snippedIds = snippedIds;
-    }
-
-    public Set<String> getPrunedIds() {
-        return prunedIds;
-    }
-
-    public void setPrunedIds(Set<String> prunedIds) {
-        this.prunedIds = prunedIds;
     }
 
     public String getLastSummary() {

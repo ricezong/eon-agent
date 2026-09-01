@@ -17,11 +17,9 @@ public class ContextPolicy {
     private static final Logger log = LoggerFactory.getLogger(ContextPolicy.class);
 
     private final List<ContextRule> rules;
-    private final double sufficiencyPct;
 
-    public ContextPolicy(List<ContextRule> rules, double sufficiencyPct) {
+    public ContextPolicy(List<ContextRule> rules) {
         this.rules = new ArrayList<>(rules);
-        this.sufficiencyPct = sufficiencyPct;
     }
 
     /**
@@ -46,7 +44,6 @@ public class ContextPolicy {
         RuleContext ruleCtx = new RuleContext(window, metrics, state, cutoffTurn, currentTurn);
 
         List<String> stages = new ArrayList<>();
-        long totalCharsAfter = charsBefore;
 
         for (ContextRule rule : rules) {
             if (!rule.shouldFire(metrics, turnsSinceLastCompress)) continue;
@@ -54,7 +51,6 @@ public class ContextPolicy {
             PolicyResult outcome = rule.apply(ruleCtx);
             if (outcome.applied()) {
                 stages.add(outcome.describe());
-                totalCharsAfter = window.totalChars();
             }
         }
 
@@ -68,9 +64,5 @@ public class ContextPolicy {
                 String.join("+", stages), String.format("%.1f", reduction * 100));
 
         return new PolicyResult(true, stages, charsBefore, charsAfter);
-    }
-
-    public List<ContextRule> rules() {
-        return List.copyOf(rules);
     }
 }

@@ -46,8 +46,8 @@ public class MessageFinalizer {
 
         if (toolResults != null) {
             for (ToolExecutionResult result : toolResults) {
-                jsonlStore.append(ToolExecutionResultMessage.from(
-                        result.toolCallId(), result.toolName(), result.content()), turn, succeeded);
+                ToolExecutionResultMessage toolResultMsg = ToolExecutionResultMessage.from(result.toolCallId(), result.toolName(), result.content());
+                jsonlStore.append(toolResultMsg, turn, succeeded);
             }
         }
 
@@ -75,7 +75,9 @@ public class MessageFinalizer {
         Set<String> ids = new HashSet<>();
         if (results == null) return ids;
         for (ToolExecutionResult r : results) {
-            if (r.success() && r.toolCallId() != null) ids.add(r.toolCallId());
+            if (r.success() && r.toolCallId() != null) {
+                ids.add(r.toolCallId());
+            }
         }
         return ids;
     }

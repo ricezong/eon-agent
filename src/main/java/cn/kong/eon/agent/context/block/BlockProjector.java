@@ -4,7 +4,6 @@ import cn.kong.eon.agent.context.ToolSupport;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 
@@ -15,7 +14,7 @@ import java.util.Map;
 
 /**
  * 投射层：ChatMessage ⇄ List&lt;ContextBlock&gt; 双向转换。
- * 爆炸（explode）：SystemMessage → [SYSTEM]，UserMessage → [USER_INPUT]，
+ * 爆炸（explode）：UserMessage → [USER_INPUT]，
  * AiMessage(text, reqs) → [AI_TEXT, TOOL_ARGS × N]，ToolExecutionResultMessage → [TOOL_RESULT]。
  * 组装（assemble）是逆操作：按 groupId 归并，组内按 ordinal 排序。
  */
@@ -34,13 +33,6 @@ public final class BlockProjector {
     public static List<ContextBlock> explode(ChatMessage msg, String groupId, int turn, ToolSupport lookup) {
         List<ContextBlock> blocks = new ArrayList<>();
         ToolSupport meta = lookup != null ? lookup : ToolSupport.NONE;
-
-        if (msg instanceof SystemMessage sm) {
-            blocks.add(base(BlockKind.SYSTEM, Retention.VERBATIM, groupId, 0, turn)
-                    .text(sm.text() != null ? sm.text() : "")
-                    .build());
-            return blocks;
-        }
 
         if (msg instanceof UserMessage um) {
             blocks.add(base(BlockKind.USER_INPUT, Retention.VERBATIM, groupId, 0, turn)
@@ -130,9 +122,6 @@ public final class BlockProjector {
     private static ChatMessage assembleGroup(List<ContextBlock> group) {
         ContextBlock first = group.get(0);
         switch (first.kind()) {
-            case SYSTEM -> {
-                return SystemMessage.from(joinText(group));
-            }
             case USER_INPUT -> {
                 return UserMessage.from(joinText(group));
             }
@@ -179,8 +168,11 @@ public final class BlockProjector {
         return sb.toString();
     }
 
-    private static ContextBlock.Builder base(BlockKind kind, Retention retention,
-                                             String groupId, int ordinal, int turn) {
+    private static ContextBlock.Builder base(BlockKind kind,
+                                             Retention retention,
+                                             String groupId,
+                                             int ordinal,
+                                             int turn) {
         return ContextBlock.builder()
                 .id(groupId + "#" + ordinal)
                 .kind(kind)

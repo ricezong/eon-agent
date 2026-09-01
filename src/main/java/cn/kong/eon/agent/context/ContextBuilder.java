@@ -1,7 +1,6 @@
 package cn.kong.eon.agent.context;
 
 import cn.kong.eon.agent.context.block.BlockKind;
-import cn.kong.eon.agent.context.block.BlockProjector;
 import cn.kong.eon.agent.context.block.ContextBlock;
 import cn.kong.eon.model.SessionState;
 import dev.langchain4j.data.message.ChatMessage;
@@ -69,17 +68,6 @@ public class ContextBuilder {
 
     public ContextWindow getWindow() {
         return window;
-    }
-
-    /** 兼容入口：把消息列表整体投射为窗口。 */
-    public ContextBuilder setTranscript(List<ChatMessage> transcript) {
-        if (transcript == null) {
-            this.window = new ContextWindow();
-            return this;
-        }
-        this.window = new ContextWindow();
-        this.window.addAll(BlockProjector.explodeAll(transcript, 0, null));
-        return this;
     }
 
     /** transcript 的消息视图（由块组装而来）。 */

@@ -4,7 +4,6 @@ import cn.kong.eon.agent.context.ArtifactSink;
 import cn.kong.eon.agent.context.ToolSupport;
 import cn.kong.eon.agent.context.block.BlockProjector;
 import cn.kong.eon.agent.context.block.ContextBlock;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.data.message.ChatMessage;
 
 import java.util.ArrayList;
@@ -20,25 +19,19 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ContextPipeline {
 
     private final List<IngestRule> rules;
-    private final ToolSupport toolSupport;
     private final ArtifactSink artifactSink;
-    private final ObjectMapper objectMapper;
+    private final ToolSupport toolSupport;
     private final int snipKeepChars;
-    private final int offloadMinChars;
     private final AtomicInteger groupSeq = new AtomicInteger(0);
 
     public ContextPipeline(List<IngestRule> rules,
                            ArtifactSink artifactSink,
                            ToolSupport toolSupport,
-                           ObjectMapper objectMapper,
-                           int snipKeepChars,
-                           int offloadMinChars) {
+                           int snipKeepChars) {
         this.rules = new ArrayList<>(rules);
         this.artifactSink = artifactSink != null ? artifactSink : ArtifactSink.NONE;
         this.toolSupport = toolSupport != null ? toolSupport : ToolSupport.NONE;
-        this.objectMapper = objectMapper;
         this.snipKeepChars = snipKeepChars;
-        this.offloadMinChars = offloadMinChars;
     }
 
     /**
@@ -49,8 +42,7 @@ public class ContextPipeline {
      */
     public List<ContextBlock> ingest(ChatMessage msg, int turn, Set<String> succeededToolCalls) {
         IngestContext ctx = new IngestContext(
-                artifactSink, toolSupport, objectMapper,
-                snipKeepChars, offloadMinChars,
+                artifactSink, snipKeepChars,
                 succeededToolCalls != null ? succeededToolCalls : Collections.emptySet(),
                 turn);
 
@@ -64,9 +56,5 @@ public class ContextPipeline {
             }
         }
         return blocks;
-    }
-
-    public List<IngestRule> rules() {
-        return List.copyOf(rules);
     }
 }

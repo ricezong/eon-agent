@@ -342,8 +342,6 @@ public class AgentConfig {
             private double snipThreshold = 0.65;
             private double pruneThreshold = 0.82;
             private double summarizeThreshold = 0.95;
-        /** 压缩充分性阈值：单次压缩降幅低于此比例则升级档位。 */
-            private double sufficiencyPct = 0.05;
 
             public double getSnipThreshold() {
                 return snipThreshold;
@@ -367,14 +365,6 @@ public class AgentConfig {
 
             public void setSummarizeThreshold(double v) {
                 this.summarizeThreshold = v;
-            }
-
-            public double getSufficiencyPct() {
-                return sufficiencyPct;
-            }
-
-            public void setSufficiencyPct(double v) {
-                this.sufficiencyPct = v;
             }
         }
 

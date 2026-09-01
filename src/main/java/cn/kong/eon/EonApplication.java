@@ -260,8 +260,7 @@ public class EonApplication {
         log.info("入站管线已装配: {} 条规则 | 参数卸载已移至在站策略 (阈值 {} 字符)",
                 rules.size(), offloadMinChars);
 
-        return new ContextPipeline(rules, artifactStore,
-                toolRegistry, objectMapper, snipKeepChars, offloadMinChars);
+        return new ContextPipeline(rules, artifactStore, toolRegistry, snipKeepChars);
     }
 
     /**
@@ -289,7 +288,7 @@ public class EonApplication {
                 ctxCfg.getSummarizeMaxInputChars(), ctxCfg.getSummarizeMaxOutputChars(),
                 llmClient, transcriptPath));
 
-        ContextPolicy policy = new ContextPolicy(rules, comp.getSufficiencyPct());
+        ContextPolicy policy = new ContextPolicy(rules);
         log.info("上下文策略已装配: {} 条规则 | 参数卸载 {} (阈值 {} 字符) | 有损阈值 {}/{}/{} | 轮数节奏 {}",
                 rules.size(),
                 ctxCfg.getOffload().isEnabled() ? "启用" : "停用",

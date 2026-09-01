@@ -136,16 +136,6 @@ public class DownloadFileTool implements ToolExecutor {
         return String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024));
     }
 
-    @Override
-    public String summarizeArgs(Map<String, Object> args) {
-        Object u = args.get("url");
-        return u != null ? "{url: \"" + truncate(String.valueOf(u), 50) + "\"}" : args.toString();
-    }
-
-    private static String truncate(String s, int maxLen) {
-        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
-    }
-
     @Tool(name = "download_file", value = {
             "从指定 URL 下载文件并保存到本地。当用户要求下载文件、保存远程内容到本地时使用此工具。",
             "文件以流式方式直接写入本地磁盘，不经过对话上下文，支持大文件（上限 100MB）。"

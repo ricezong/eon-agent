@@ -2,18 +2,12 @@ package cn.kong.eon.agent.context.policy;
 
 import cn.kong.eon.agent.context.ContextMetrics;
 import cn.kong.eon.agent.context.ContextWindow;
-import cn.kong.eon.agent.context.block.BlockKind;
 import cn.kong.eon.agent.context.block.BlockProjector;
 import cn.kong.eon.agent.context.block.ContextBlock;
-import cn.kong.eon.agent.context.block.Retention;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.llm.LlmResponse;
 import cn.kong.eon.model.CompressionState;
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.ToolExecutionResultMessage;
-import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.data.message.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -190,10 +184,5 @@ public class SummarizeRule implements ContextRule {
     private static String truncate(String s, int max) {
         if (s == null) return "";
         return s.length() > max ? s.substring(0, max) + "..." : s;
-    }
-
-    /** 判断块是否属于逐字保留层。 */
-    static boolean isVerbatim(ContextBlock block) {
-        return block.retention() == Retention.VERBATIM || block.kind() == BlockKind.USER_INPUT;
     }
 }

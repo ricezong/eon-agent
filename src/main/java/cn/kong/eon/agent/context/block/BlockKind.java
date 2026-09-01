@@ -7,9 +7,6 @@ package cn.kong.eon.agent.context.block;
  */
 public enum BlockKind {
 
-    /** 系统提示词 / 摘要锚点层 */
-    SYSTEM,
-
     /** 用户输入。逐字保留，摘要会丢失措辞与隐含意图 */
     USER_INPUT,
 

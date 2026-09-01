@@ -92,16 +92,6 @@ public class ListDirTool implements ToolExecutor {
         return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
     }
 
-    @Override
-    public String summarizeArgs(Map<String, Object> args) {
-        Object p = args.get("target_directory");
-        return p != null ? "{path: \"" + truncate(String.valueOf(p), 50) + "\"}" : args.toString();
-    }
-
-    private static String truncate(String s, int maxLen) {
-        return s != null && s.length() > maxLen ? s.substring(0, maxLen) + "..." : s;
-    }
-
     @Tool(name = "list_dir", value = {
             "浏览目录中的文件和子目录。当用户需要查看某个文件夹里有什么文件时使用此工具。",
             "返回文件名、类型和大小信息。"
