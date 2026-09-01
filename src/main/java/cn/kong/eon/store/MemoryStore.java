@@ -16,6 +16,7 @@ import java.util.UUID;
 
 /**
  * 跨会话记忆存储。记忆文件存储在 {storage.base_dir}/memories/ 下，跨会话共享。
+ * 支持增删改查、注入渲染和引用替换。
  */
 public class MemoryStore {
     private static final Logger log = LoggerFactory.getLogger(MemoryStore.class);
@@ -33,9 +34,7 @@ public class MemoryStore {
         }
     }
 
-    /**
-     * 记忆条目。
-     */
+    /** 记忆条目，包含 id、标题、内容和时间戳。 */
     public static class MemoryItem {
         public String id;
         public String title;
@@ -55,9 +54,7 @@ public class MemoryStore {
         }
     }
 
-    /**
-     * 创建新记忆。
-     */
+    /** 创建新记忆并保存到磁盘。 */
     public MemoryItem create(String title, String content) {
         String id = "mem_" + UUID.randomUUID().toString().substring(0, 8);
         MemoryItem item = new MemoryItem(id, title, content);
@@ -66,9 +63,7 @@ public class MemoryStore {
         return item;
     }
 
-    /**
-     * 更新已有记忆。
-     */
+    /** 更新已有记忆的标题和内容。 */
     public MemoryItem update(String id, String title, String content) {
         MemoryItem existing = load(id);
         if (existing == null) {
@@ -82,9 +77,7 @@ public class MemoryStore {
         return existing;
     }
 
-    /**
-     * 删除记忆。
-     */
+    /** 删除指定记忆文件。 */
     public boolean delete(String id) {
         Path file = memoryDir.resolve(id + ".json");
         try {
@@ -97,9 +90,7 @@ public class MemoryStore {
         }
     }
 
-    /**
-     * 加载全部记忆（按创建时间排序，保证注入顺序确定性）。
-     */
+    /** 加载全部记忆，按创建时间排序保证注入顺序确定性。 */
     public List<MemoryItem> loadAll() {
         List<MemoryItem> items = new ArrayList<>();
         try (var stream = Files.list(memoryDir)) {
@@ -120,9 +111,7 @@ public class MemoryStore {
         return items;
     }
 
-    /**
-     * 渲染为注入块文本。
-     */
+    /** 渲染全部记忆为 XML 注入块文本。 */
     public String renderForInjection() {
         List<MemoryItem> items = loadAll();
         if (items.isEmpty()) return "";
@@ -135,9 +124,7 @@ public class MemoryStore {
         return sb.toString();
     }
 
-    /**
-     * 将文本中的 [[memory:xxx]] 引用替换为标题（内容摘要）。
-     */
+    /** 将文本中的 [[memory:xxx]] 引用替换为记忆标题和内容摘要。 */
     public String renderReferences(String text) {
         if (text == null || text.isEmpty()) return text;
         java.util.regex.Pattern p = java.util.regex.Pattern.compile("\\[\\[memory:(mem_[a-f0-9]+)\\]\\]");
@@ -150,7 +137,6 @@ public class MemoryStore {
                 String replacement = item.title + "（" + truncate(item.content, 60) + "）";
                 m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(replacement));
             } else {
-                // 记忆不存在，保留原文
                 m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(m.group()));
             }
         }
@@ -158,6 +144,7 @@ public class MemoryStore {
         return sb.toString();
     }
 
+    /** 从磁盘加载单个记忆。 */
     private MemoryItem load(String id) {
         Path file = memoryDir.resolve(id + ".json");
         if (!Files.exists(file)) return null;
@@ -169,6 +156,7 @@ public class MemoryStore {
         }
     }
 
+    /** 保存记忆到磁盘。 */
     private void save(MemoryItem item) {
         Path file = memoryDir.resolve(item.id + ".json");
         try {
@@ -178,6 +166,7 @@ public class MemoryStore {
         }
     }
 
+    /** 截断字符串到指定长度并添加省略号。 */
     private String truncate(String s, int max) {
         if (s == null) return "";
         return s.length() <= max ? s : s.substring(0, max) + "...";

@@ -25,21 +25,25 @@ public class CompressionState {
         this.lastTurnCompressed = 0;
     }
 
+    /** 块是否已被截断。 */
     public boolean isSnipped(String id) {
         return snippedIds.contains(id);
     }
 
+    /** 块是否已被裁剪。 */
     public boolean isPruned(String id) {
         return prunedIds.contains(id);
     }
 
+    /** 标记块为已截断。 */
     public void markSnipped(String id) {
         snippedIds.add(id);
     }
 
+    /** 标记块为已裁剪（隐含已截断）。 */
     public void markPruned(String id) {
         prunedIds.add(id);
-        snippedIds.add(id);  // Prune 隐含 Snip
+        snippedIds.add(id);
     }
 
     public Set<String> getSnippedIds() {

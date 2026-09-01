@@ -9,21 +9,8 @@ import java.util.Map;
 
 /**
  * 工具参数的无损卸载：把"参数全量"替换为"参数骨架 + 路径引用"。
- * <p>
- * 在站的 {@code ArgumentOffloadRule} 使用本类完成参数骨架化，
- * 输出必须是严格合法的 JSON——历史上曾因在 JSON 外追加注释
- * 导致请求被供应商拒收（400），合并后此约束由本类统一保证。
- * <p>
- * <b>为什么无损</b>：声明了 {@code persistsArguments()} 的工具（典型是 write）
- * 已把内容完整写进磁盘，历史里那份 arguments 与磁盘文件逐字节重复，
- * 替换成路径引用不损失任何信息，模型需要时可 read_file 取回。
- * <p>
- * <b>硬约束：输出必须是严格合法的 JSON。</b>
- * 这段文本会作为历史工具调用的 {@code arguments} 原样回传给模型，
- * 供应商会校验该字段格式，不合法会直接拒收整个请求
- * （{@code 400 Invalid request parameters}）。
- * 因此说明文字只能放在 JSON 的字符串值<i>内部</i>，
- * JSON 外壳之外不允许有任何内容（注释也不行）。
+ * 输出必须是严格合法的 JSON——这段文本会作为历史工具调用的 arguments 原样回传给模型，
+ * 供应商会校验该字段格式，不合法会直接拒收整个请求。
  */
 public final class ArgumentOffloader {
 
@@ -39,13 +26,8 @@ public final class ArgumentOffloader {
     /**
      * 把参数 JSON 替换为"骨架 + 路径引用"。
      *
-     * @param argumentsJson 原始参数 JSON
-     * @param path          落盘路径，用于生成说明；可为 null
-     * @param mapper        序列化器
-     * @return 严格合法的 JSON 字符串；
-     *         无可替换的大字段、解析失败或序列化失败时返回 <b>null</b>，
-     *         调用方必须据此<b>放弃卸载</b>——宁可多占几轮 token，
-     *         也不能发出一个会被拒收的请求
+     * @return 严格合法的 JSON 字符串；无可替换的大字段、解析失败或序列化失败时返回 null，
+     *         调用方必须据此放弃卸载——宁可多占几轮 token，也不能发出一个会被拒收的请求
      */
     public static String offload(String argumentsJson, String path, ObjectMapper mapper) {
         Map<String, Object> args = parse(argumentsJson, mapper);
@@ -72,7 +54,7 @@ public final class ArgumentOffloader {
     }
 
     /**
-     * 从参数中提取落盘路径，用于生成"内容已落盘至 X"的说明。
+     * 从参数中提取落盘路径。
      *
      * @return 路径；参数非法或不含路径字段时返回 null
      */
@@ -85,7 +67,7 @@ public final class ArgumentOffloader {
         return null;
     }
 
-    /** 卸载说明文本。只能作为 JSON 的字符串值使用，不能拼在 JSON 外面。 */
+    /** 卸载说明文本。只能作为 JSON 的字符串值使用。 */
     public static String note(String path) {
         return path != null
                 ? "内容已完整落盘至 " + path + "，可用 read_file 读取"

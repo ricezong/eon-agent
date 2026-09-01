@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 单轮 Turn 的结构化日志记录，由 TurnLogger.flush 统一输出。
+ * 单轮 Turn 的结构化日志记录，由 {@link TurnLogger#flush} 统一输出摘要日志。
  */
 public class TurnRecord {
 
@@ -32,14 +32,16 @@ public class TurnRecord {
 
     final List<StopEvent> stopEvents = new ArrayList<>();
 
+    /** 工具执行明细。 */
     record ToolEntry(String name, boolean success, String argsSummary, int renderedLen) {
     }
 
+    /** 停止事件类型。 */
     enum StopEventType {REQUESTED, ESCALATED, GRACE_CONSUMED}
 
+    /** 停止事件记录。 */
     record StopEvent(StopEventType type, StopCategory category, String message, int graceRemaining) {
     }
-
 
     TurnRecord turnHeader(int turnNumber, long usedTokens, long maxTokens) {
         this.turnNumber = turnNumber;

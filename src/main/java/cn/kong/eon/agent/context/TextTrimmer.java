@@ -1,8 +1,7 @@
 package cn.kong.eon.agent.context;
 
 /**
- * 头尾保留截断。保留内容的前半和后半，中间用省略标记替代，
- * 让模型既知道开头（结构、意图）也知道结尾（结论、错误）。
+ * 头尾保留截断。保留内容的前半和后半，中间用省略标记替代。
  */
 public final class TextTrimmer {
 

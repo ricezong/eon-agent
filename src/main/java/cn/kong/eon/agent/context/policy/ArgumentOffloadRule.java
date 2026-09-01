@@ -10,26 +10,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 工具参数无损卸载（在站规则）。受保护区约束，与 Snip/Prune 一样
- * 只处置 cutoffTurn 之前的块。
+ * 工具参数无损卸载（运行时规则）。受尾部保护区约束，只处置 cutoffTurn 之前的块。
  * <p>
- * <b>为什么无损</b>：声明了 {@code persistsArguments()} 的工具（典型是 write）
- * 已经用 {@code Files.writeString} 把内容完整写到磁盘了，
- * 历史里那份 arguments 和磁盘文件<b>逐字节重复</b>。
- * 把它换成"参数骨架 + 路径引用"不损失任何信息，模型需要时可 read_file 取回。
+ * 声明了 persistsArguments() 的工具（如 write_file）已把内容完整写到磁盘，
+ * 历史中的 arguments 与磁盘文件逐字节重复，替换为"骨架 + 路径引用"不损失任何信息。
  * <p>
- * <b>为什么从入站移到在站</b>：入站卸载会在模型刚写入后立刻骨架化参数，
- * 导致下一轮模型看不到上一轮写了什么内容（只看到"内容已落盘至 X"），
- * 可能引发重复写入。移到在站后，保护区内的近期块不受影响，
- * 模型在近期对话中能看到完整的参数内容。
- * <p>
- * <b>安全边界一</b>：只有执行<b>成功</b>的调用才卸载（块上的 success 标记由
- * 入站 {@code ToolResultFormatRule} 设置）。
- * 失败的调用没有真正落盘，卸载会永久丢失内容。
- * <p>
- * <b>安全边界二</b>：替换文本必须由 {@link ArgumentOffloader} 生成，
- * 以保证输出是严格合法的 JSON——这段文本会作为历史工具调用的
- * {@code arguments} 原样回传给模型，供应商会校验其格式。
+ * 安全边界：只卸载执行成功的调用（失败调用未真正落盘），替换文本必须由
+ * {@link ArgumentOffloader} 生成以保证严格合法的 JSON。
  */
 public class ArgumentOffloadRule implements ContextRule {
     private static final Logger log = LoggerFactory.getLogger(ArgumentOffloadRule.class);
@@ -73,8 +60,7 @@ public class ArgumentOffloadRule implements ContextRule {
             int originalChars = block.chars();
             String path = ArgumentOffloader.extractPath(block.text(), objectMapper);
 
-            // 返回 null 表示无法保持合法 JSON，放弃卸载。
-            // 宁可让这份冗余多占几轮 token，也不能发出一个会被供应商拒收的请求。
+            // 返回 null 表示无法保持合法 JSON，放弃卸载
             String replacement = ArgumentOffloader.offload(block.text(), path, objectMapper);
             if (replacement == null) {
                 log.debug("[在站] 参数卸载跳过: {}({}) 无可替换的超长字段",

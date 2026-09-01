@@ -29,9 +29,7 @@ public class McpClientManager {
         this.serverUrl = serverUrl;
     }
 
-    /**
-     * 连接 MCP 服务。
-     */
+    /** 连接 MCP 服务。 */
     public void connect() {
         log.info("连接 MCP 服务: key={}, url={}", serverKey, serverUrl);
         try {
@@ -51,9 +49,7 @@ public class McpClientManager {
         }
     }
 
-    /**
-     * 获取 MCP 服务提供的工具列表。
-     */
+    /** 获取 MCP 服务提供的工具列表。 */
     public List<ToolSpecification> listTools() {
         if (mcpClient == null) {
             log.warn("MCP 客户端未连接，无法获取工具列表");
@@ -72,9 +68,7 @@ public class McpClientManager {
         }
     }
 
-    /**
-     * 执行 MCP 工具调用。
-     */
+    /** 执行 MCP 工具调用。 */
     public ToolOutcome executeTool(String toolName, String arguments) {
         if (mcpClient == null) {
             return ToolOutcome.failure("MCP 客户端未连接");
@@ -94,6 +88,7 @@ public class McpClientManager {
         }
     }
 
+    /** 关闭 MCP 客户端连接。 */
     public void close() {
         if (mcpClient != null) {
             try {

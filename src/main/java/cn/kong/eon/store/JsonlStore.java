@@ -19,19 +19,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * JSONL 消息存储，两层结构：
- * <ul>
- *   <li><b>磁盘文件</b>：append-only 审计账本，永不修改，每条消息一行 JSON，供事后检索回溯</li>
- *   <li><b>内存窗口</b>：{@link ContextWindow}，当前上下文视图。以<b>内容块</b>为单位，
- *       可被入站管线与压缩策略就地改写（卸载/截短/占位/删除），
- *       是每轮构建 LLM 上下文的数据源</li>
- * </ul>
- * 磁盘写的是<b>入站处置后</b>的形态，与内存窗口一致：
- * 超大工具结果已落盘为 artifact、超大调用参数已卸载，账本因此只留引用。
- * 这与窗口同源（都是管线的输出），所以"账本里看到的"就是"模型当时看到的"。
- * <p>
- * 内容并未丢失：落盘的原文在 artifact 里，卸载的参数在被写入的工作区文件里——
- * 两条入站规则都以"已持久化"为前提才敢做替换。
+ * JSONL 消息存储。维护两层结构：磁盘 append-only 审计账本（永不修改）
+ * 和内存 {@link ContextWindow} 上下文视图（可被入站管线与压缩策略改写）。
+ * 磁盘记录入站处置后的形态，与内存窗口保持一致。
  */
 public class JsonlStore {
     private static final Logger log = LoggerFactory.getLogger(JsonlStore.class);
@@ -54,19 +44,13 @@ public class JsonlStore {
         }
     }
 
-    /**
-     * 注入入站管线。装配期调用一次；未注入时消息原样进入窗口（无入站处置）。
-     */
+    /** 注入入站管线，装配期调用一次。 */
     public void setPipeline(ContextPipeline pipeline) {
         this.pipeline = pipeline;
     }
 
     /**
      * 追加一条消息：经入站管线处置 → 进入内存窗口 → 写磁盘账本。
-     * <p>
-     * 顺序是先管线后账本，因为<b>账本记的是管线的输出</b>而非原始消息。
-     * 若反过来写原文，单条记录会膨胀到十几万字符（大工具结果 / 大调用参数），
-     * "一条消息一行"的约定就名存实亡了。
      *
      * @param turn               入站轮次
      * @param succeededToolCalls 本轮执行成功的工具调用 id（卸载的安全边界）
@@ -83,32 +67,23 @@ public class JsonlStore {
         }
     }
 
-    /**
-     * 简化重载：无工具上下文时使用。
-     */
+    /** 无工具上下文时的简化重载。 */
     public synchronized void append(ChatMessage message, int turn) {
         append(message, turn, Collections.emptySet());
     }
 
-    /**
-     * 返回消息快照（由窗口的块组装而来，修改不影响内部视图）。
-     */
+    /** 返回消息快照，由窗口块组装而来，修改不影响内部视图。 */
     public synchronized List<ChatMessage> snapshot() {
         return window.toMessages();
     }
 
-    /**
-     * 内存窗口。压缩策略与度量直接作用于它。
-     */
+    /** 获取内存窗口，压缩策略与度量直接作用于它。 */
     public ContextWindow window() {
         return window;
     }
 
     /**
-     * 用给定块列表整体替换内存窗口。
-     * <p>
-     * 只影响内存视图，不回写磁盘——磁盘账本保持完整历史，
-     * 供摘要提示词中约定的检索回溯使用。
+     * 用给定块列表整体替换内存窗口。只影响内存视图，不回写磁盘。
      */
     public synchronized void replaceAll(List<ChatMessage> compressed) {
         window.clear();
@@ -118,6 +93,7 @@ public class JsonlStore {
         log.debug("上下文视图已更新: {} 个块", window.size());
     }
 
+    /** 追加一条 JSON 到磁盘账本。 */
     private void appendToLedger(ChatMessage message) {
         String json = serialize(message);
         try {
@@ -129,6 +105,7 @@ public class JsonlStore {
         }
     }
 
+    /** 从磁盘账本加载历史消息到内存窗口，历史消息原样恢复不回溯入站处置。 */
     private void loadAll() {
         try {
             List<String> lines = Files.readAllLines(jsonlFile);
@@ -137,7 +114,7 @@ public class JsonlStore {
                 if (line.isBlank()) continue;
                 ChatMessage msg = deserialize(line);
                 if (msg != null) {
-                    // 历史消息原样恢复：入站处置不回溯（否则会重复落盘 artifact）
+                    // 历史消息原样恢复：入站处置不回溯
                     window.addAll(BlockProjector.explode(msg, "h" + window.size(), turn, null));
                 }
             }
@@ -149,6 +126,7 @@ public class JsonlStore {
         }
     }
 
+    /** 序列化消息为 JSON 字符串。 */
     private String serialize(ChatMessage message) {
         try {
             SerializedMessage sm = SerializedMessage.from(message);
@@ -159,6 +137,7 @@ public class JsonlStore {
         }
     }
 
+    /** 反序列化 JSON 字符串为消息。 */
     private ChatMessage deserialize(String json) {
         try {
             SerializedMessage sm = mapper.readValue(json, SerializedMessage.class);
@@ -183,6 +162,7 @@ public class JsonlStore {
         public SerializedMessage() {
         }
 
+        /** 从 ChatMessage 构建序列化结构。 */
         public static SerializedMessage from(ChatMessage msg) {
             SerializedMessage sm = new SerializedMessage();
             if (msg instanceof SystemMessage m) {
@@ -214,6 +194,7 @@ public class JsonlStore {
             return sm;
         }
 
+        /** 从序列化结构重建 ChatMessage。 */
         public ChatMessage toChatMessage() {
             return switch (type) {
                 case "system" -> SystemMessage.from(content);
@@ -249,6 +230,7 @@ public class JsonlStore {
         }
     }
 
+    /** 工具调用引用，用于序列化 AI 消息中的工具执行请求。 */
     public static class ToolCallRef {
         public String id;
         public String name;

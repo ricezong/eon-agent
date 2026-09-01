@@ -4,9 +4,8 @@ import java.nio.file.Path;
 
 /**
  * 路径解析器。统一处理相对路径/绝对路径解析和沙箱校验。
- * - 相对路径基于 workspace 解析
- * - 绝对路径直接使用（沙箱开启时仍需在工作区内）
- * - 禁止 `..` 穿越逃逸
+ * 相对路径基于 workspace 解析；绝对路径直接使用（沙箱开启时仍需在工作区内）；
+ * 禁止 {@code ..} 穿越逃逸。
  */
 public class PathResolver {
 

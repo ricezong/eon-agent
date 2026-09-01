@@ -13,30 +13,20 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * 上下文窗口。块序列的一等持有者，取代原先"到处传递 {@code List<ChatMessage>}"的做法。
- * <p>
- * 职责：
- * <ul>
- *   <li>持有有序块列表，供入站管线追加、供策略就地改写、供投射层组装出消息</li>
- *   <li>按<b>轮次</b>而不是按消息条数计算尾部保护区（原先的 {@code size - turns*2 - 2} 是近似）</li>
- *   <li>维护 tool_use / tool_result 配对不变式</li>
- * </ul>
+ * 上下文窗口。块序列的一等持有者。
+ * 职责：持有有序块列表、按轮次计算尾部保护区、维护 tool_use/tool_result 配对不变式。
  */
 public class ContextWindow {
     private static final Logger log = LoggerFactory.getLogger(ContextWindow.class);
 
     private final List<ContextBlock> blocks = new ArrayList<>();
 
-    /**
-     * 追加块。
-     */
+    /** 追加块。 */
     public void addAll(List<ContextBlock> newBlocks) {
         blocks.addAll(newBlocks);
     }
 
-    /**
-     * 可变的块列表视图，供规则就地改写。
-     */
+    /** 可变的块列表视图，供规则就地改写。 */
     public List<ContextBlock> blocks() {
         return blocks;
     }
@@ -58,16 +48,12 @@ public class ContextWindow {
         blocks.clear();
     }
 
-    /**
-     * 组装为 LangChain4j 消息序列（每轮构建 LLM 上下文时调用）。
-     */
+    /** 组装为 LangChain4j 消息序列。 */
     public List<ChatMessage> toMessages() {
         return BlockProjector.assemble(blocks);
     }
 
-    /**
-     * 当前最大入站轮次。
-     */
+    /** 当前最大入站轮次。 */
     public int latestTurn() {
         int max = 0;
         for (ContextBlock block : blocks) {
@@ -87,11 +73,7 @@ public class ContextWindow {
 
     /**
      * 删除 cutoffTurn 之前的所有可压缩块，返回被删除的块。
-     * <p>
-     * {@link Retention#VERBATIM} 块（用户输入、系统提示词）在此自动保留，
-     * 无需任何特判——这正是把保留策略做成数据标签的直接收益：
-     * 过去 {@code subList(0, n).clear()} 会把早期用户消息连锅端掉，
-     * 只能寄望于 LLM 在摘要 prompt 里自觉执行。
+     * {@link Retention#VERBATIM} 块自动保留。
      */
     public List<ContextBlock> removeBefore(int cutoffTurn) {
         List<ContextBlock> removed = new ArrayList<>();
@@ -110,9 +92,7 @@ public class ContextWindow {
 
     /**
      * 修复 tool_use / tool_result 配对：丢弃孤立的结果块，为缺失结果的调用块补合成结果。
-     * <p>
-     * 删除块（尤其是 Summarize 删区间）会切断配对，LLM API 对此零容忍，
-     * 所以这是窗口的<b>结构不变式</b>，由窗口自己维护，而不是外挂一个修复器在调用点手动调用。
+     * 删除块会切断配对，LLM API 对此零容忍，所以这是窗口的结构不变式。
      */
     public void repairPairing() {
         java.util.Set<String> callIds = new java.util.HashSet<>();
@@ -139,9 +119,6 @@ public class ContextWindow {
                 repaired.add(block);
             } else if (block.kind() == BlockKind.TOOL_ARGS) {
                 String callId = block.toolCallId();
-                // 重复的 tool_use id 只丢弃参数块，保留模型正文块——
-                // 去重是为了满足"一个 tool_use id 只能出现一次"的 API 不变式，
-                // 正文是无辜的，不该连带丢失。
                 if (callId != null && seenCallIds.contains(callId)) {
                     dropped++;
                     continue;
@@ -160,8 +137,6 @@ public class ContextWindow {
             if (block.kind() == BlockKind.TOOL_ARGS
                     && block.toolCallId() != null
                     && !seenResultIds.contains(block.toolCallId())) {
-                // 合成结果必须是<b>独立消息组</b>：若挂在原 AI 组内，
-                // 组装时会被并入 AiMessage 而丢失（AI 组只认 AI_TEXT 与 TOOL_ARGS 块）。
                 withSynthetics.add(ContextBlock.builder()
                         .id(block.id() + "#synthetic")
                         .kind(BlockKind.TOOL_RESULT)
@@ -185,9 +160,7 @@ public class ContextWindow {
         }
     }
 
-    /**
-     * 按类型统计字符数，供度量与日志使用。
-     */
+    /** 按类型统计字符数。 */
     public long charsByKind(BlockKind kind) {
         long total = 0;
         for (ContextBlock block : blocks) {
@@ -202,9 +175,7 @@ public class ContextWindow {
         return total;
     }
 
-    /**
-     * 相对入站已节省的字符总数（无损卸载 + 有损压缩）。
-     */
+    /** 相对入站已节省的字符总数（无损卸载 + 有损压缩）。 */
     public long savedChars() {
         long total = 0;
         for (ContextBlock block : blocks) total += block.savedChars();

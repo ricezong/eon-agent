@@ -21,7 +21,6 @@ import java.util.Map;
 
 /**
  * todo_write 工具：创建和管理结构化任务列表。
- * Schema 对齐方案：content/id/status + merge。
  * merge=true 按 id 合并，merge=false 全量替换。
  */
 public class TodoWriteTool implements ToolExecutor {
@@ -63,7 +62,7 @@ public class TodoWriteTool implements ToolExecutor {
             items.add(item);
         }
 
-        // 校验单一焦点
+        // 校验单一焦点：同一时间只能有一个任务处于 in_progress
         if (!context.todoStore().validateSingleFocus(items)) {
             return ToolOutcome.failure(
                     "多个待办事项处于 'in_progress' 状态。同一时间只能有一个任务处于进行中状态。");
@@ -85,6 +84,7 @@ public class TodoWriteTool implements ToolExecutor {
         return ToolOutcome.success("待办列表已更新。 " + progress + "\n" + formatTodoList(result));
     }
 
+    /** 解析状态字符串为枚举值。 */
     private TodoStatus parseStatus(String statusStr) {
         return switch (statusStr.toLowerCase()) {
             case "in_progress" -> TodoStatus.IN_PROGRESS;
@@ -95,6 +95,7 @@ public class TodoWriteTool implements ToolExecutor {
         };
     }
 
+    /** 格式化 Todo 列表为文本。 */
     private String formatTodoList(List<TodoItem> items) {
         StringBuilder sb = new StringBuilder();
         for (TodoItem t : items) {

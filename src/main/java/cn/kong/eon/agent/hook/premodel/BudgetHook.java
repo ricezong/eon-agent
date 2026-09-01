@@ -47,7 +47,6 @@ public class BudgetHook implements Hook.PreModelHook {
         if (ratio >= budget.getHardThreshold()) {
             log.warn("[预算] 硬超限 {}% ({}/{}) → 停止",
                     String.format("%.0f", ratio * 100), used, maxBudget);
-            // 请求优雅停止
             StopReason reason = new StopReason(
                     StopCategory.BUDGET_EXCEEDED,
                     "Token 预算硬超限: " + used + " >= " + (long) (maxBudget * budget.getHardThreshold()),

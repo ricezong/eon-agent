@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.function.Function;
 
 /**
- * Hook 调度返回值。三态 sealed interface，无 null 歧义。
+ * Hook 调度器。按阶段分组调度各 Hook，统一返回三态 {@link FireResult}。
  */
 public class HookDispatcher {
 
@@ -35,9 +35,8 @@ public class HookDispatcher {
 
     /**
      * 调度 PreModel Hook。
-     * <p>
      * 与其他阶段不同：stop 后不 finalize、不 skip，继续遍历后续 hook。
-     * 原因：如 BudgetHook stop 后 ContextCompactHook 仍需执行。
+     * 原因：BudgetHook stop 后 ContextCompactHook 仍需执行。
      */
     public static FireResult dispatchPreModel(
             List<Hook.PreModelHook> hooks,
@@ -56,9 +55,7 @@ public class HookDispatcher {
     }
 
     /**
-     * 调度 PostModel Hook。
-     * <p>
-     * stop 后 finalize + skip，跳过后续 hook。
+     * 调度 PostModel Hook。stop 后 finalize + skip，跳过后续 hook。
      */
     public static FireResult dispatchPostModel(
             List<Hook.PostModelHook> hooks,
@@ -79,9 +76,7 @@ public class HookDispatcher {
     }
 
     /**
-     * 调度 PreTool Hook。
-     * <p>
-     * stop 后 finalize + skip，跳过后续 hook。
+     * 调度 PreTool Hook。stop 后 finalize + skip，跳过后续 hook。
      */
     public static FireResult dispatchPreTool(
             List<Hook.PreToolHook> hooks,
@@ -102,9 +97,7 @@ public class HookDispatcher {
     }
 
     /**
-     * 调度 PostTool Hook。
-     * <p>
-     * stop 后 finalize + skip，跳过后续 hook。
+     * 调度 PostTool Hook。stop 后 finalize + skip，跳过后续 hook。
      */
     public static FireResult dispatchPostTool(
             List<Hook.PostToolHook> hooks,

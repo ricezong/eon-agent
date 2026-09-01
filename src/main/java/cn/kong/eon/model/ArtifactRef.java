@@ -19,6 +19,7 @@ public class ArtifactRef {
     public ArtifactRef() {
     }
 
+    /** 创建引用实例。 */
     public static ArtifactRef of(String refId, String source, String summary, long sizeChars, String filePath) {
         ArtifactRef a = new ArtifactRef();
         a.refId = refId;

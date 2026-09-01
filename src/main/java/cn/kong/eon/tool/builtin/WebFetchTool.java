@@ -21,9 +21,7 @@ import java.util.*;
 
 /**
  * web_fetch 工具：批量抓取 URL 内容并转为 markdown。
- * - 保持原始协议，不升级或降级
- * - 缓存 TTL 可配置（默认 15 分钟），LRU 容量上限可配置（默认 64）
- * - 内容过大时截断
+ * 保持原始协议，不升级或降级。内容过大时截断。包含 LRU 缓存（可配置 TTL 和容量）。
  */
 public class WebFetchTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(WebFetchTool.class);
@@ -38,10 +36,10 @@ public class WebFetchTool implements ToolExecutor {
 
     private final FlexmarkHtmlConverter htmlConverter = FlexmarkHtmlConverter.builder().build();
 
-    /** LRU 缓存：URL → (内容, 时间戳)，带容量上限和 TTL 过期 */
+    /** LRU 缓存：URL → (内容, 时间戳)，带容量上限和 TTL 过期。 */
     private final Map<String, CacheEntry> cache;
 
-    /** 默认构造，生产环境通过 descriptor(int, long, int, HttpClient) 传入配置 */
+    /** 默认构造，生产环境通过 descriptor(int, long, int, HttpClient) 传入配置。 */
     public WebFetchTool() {
         this(50000, 15 * 60 * 1000L, 64, HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
@@ -132,6 +130,7 @@ public class WebFetchTool implements ToolExecutor {
         return ToolOutcome.success(output.toString());
     }
 
+    /** 抓取单个 URL 内容，HTML 转 markdown，超长截断。 */
     private String fetchUrl(String rawUrl) throws Exception {
         String url = rawUrl.trim();
 
@@ -176,6 +175,7 @@ public class WebFetchTool implements ToolExecutor {
         return result;
     }
 
+    /** HTML 转 markdown 并清理多余空行。 */
     private String htmlToMarkdown(String html) {
         String markdown = htmlConverter.convert(html);
         String result = markdown.replaceAll("\\n{3,}", "\n\n").trim();
@@ -185,6 +185,7 @@ public class WebFetchTool implements ToolExecutor {
         return result;
     }
 
+    /** 从缓存获取内容（检查 TTL）。 */
     private String getFromCache(String url) {
         synchronized (cache) {
             CacheEntry entry = cache.get(url);
@@ -197,10 +198,12 @@ public class WebFetchTool implements ToolExecutor {
         }
     }
 
+    /** 写入缓存。 */
     private void putToCache(String url, String content) {
         cache.put(url, new CacheEntry(content, System.currentTimeMillis()));
     }
 
+    /** 清理过期缓存条目。 */
     private void cleanCache() {
         long now = System.currentTimeMillis();
         synchronized (cache) {
@@ -208,6 +211,7 @@ public class WebFetchTool implements ToolExecutor {
         }
     }
 
+    /** 缓存条目。 */
     private record CacheEntry(String content, long timestamp) {
     }
 }

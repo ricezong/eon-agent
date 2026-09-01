@@ -14,20 +14,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 投射层：{@code ChatMessage} ⇄ {@code List<ContextBlock>} 双向转换。
- * <p>
- * 这是 A1 方案（ContextBlock + 投射层，与 LangChain4j 兼容）的边界：
- * 上下文的<b>领域操作</b>（压缩、卸载、度量、保留）全部在块上进行，
- * 只在进出 LLM 的两端做一次投射，从而不必自研消息模型、也不必改动
- * JsonlStore 的磁盘序列化格式。
- * <p>
- * 爆炸（explode）规则：
- * <pre>
- *   SystemMessage                 → [SYSTEM]
- *   UserMessage                   → [USER_INPUT]
- *   AiMessage(text, reqs)         → [AI_TEXT, TOOL_ARGS × N]
- *   ToolExecutionResultMessage    → [TOOL_RESULT]
- * </pre>
+ * 投射层：ChatMessage ⇄ List&lt;ContextBlock&gt; 双向转换。
+ * 爆炸（explode）：SystemMessage → [SYSTEM]，UserMessage → [USER_INPUT]，
+ * AiMessage(text, reqs) → [AI_TEXT, TOOL_ARGS × N]，ToolExecutionResultMessage → [TOOL_RESULT]。
  * 组装（assemble）是逆操作：按 groupId 归并，组内按 ordinal 排序。
  */
 public final class BlockProjector {
@@ -62,7 +51,6 @@ public final class BlockProjector {
 
         if (msg instanceof AiMessage am) {
             int ordinal = 0;
-            // 正文块：正文为空时不产生块，避免空块干扰度量与重组
             if (am.text() != null && !am.text().isBlank()) {
                 blocks.add(base(BlockKind.AI_TEXT, Retention.COMPRESSIBLE, groupId, ordinal++, turn)
                         .text(am.text())
@@ -80,7 +68,6 @@ public final class BlockProjector {
                             .build());
                 }
             }
-            // 极端情况：既无正文也无工具调用，保留一个空正文块以维持消息存在
             if (blocks.isEmpty()) {
                 blocks.add(base(BlockKind.AI_TEXT, Retention.COMPRESSIBLE, groupId, 0, turn)
                         .text(am.text() != null ? am.text() : "")
@@ -107,7 +94,7 @@ public final class BlockProjector {
     /**
      * 把整个消息列表爆炸为块序列（每条消息一个 group）。
      *
-     * @param turn   所有块的入站轮次（批量投射时无法区分，统一取值）
+     * @param turn   所有块的入站轮次
      * @param lookup 工具元数据查询
      */
     public static List<ContextBlock> explodeAll(List<ChatMessage> messages, int turn, ToolSupport lookup) {
@@ -121,7 +108,6 @@ public final class BlockProjector {
 
     /**
      * 把块序列组装回消息序列（逆操作）。
-     * <p>
      * 按 groupId 首次出现顺序归并，组内按 ordinal 升序还原。
      */
     public static List<ChatMessage> assemble(List<ContextBlock> blocks) {
@@ -171,10 +157,7 @@ public final class BlockProjector {
                     }
                 }
                 if (!requests.isEmpty()) {
-                    // 参数块被卸载后，arguments 是"参数骨架 + 落盘说明"，
-                    // 但它必须仍是<b>严格合法的 JSON</b>：这段文本会作为历史工具调用的
-                    // 参数原样回传给模型，供应商会校验其格式，不合法会直接拒收整个请求。
-                    // 卸载方（ArgumentOffloadRule）负责维持这条约束。
+                    // 卸载后的 arguments 必须仍是严格合法的 JSON，否则供应商会拒收整个请求
                     return (text != null && !text.isBlank())
                             ? AiMessage.from(text, requests)
                             : AiMessage.from(requests);

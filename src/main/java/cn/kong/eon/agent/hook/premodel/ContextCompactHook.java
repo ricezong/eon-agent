@@ -14,18 +14,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 上下文策略执行点（PreModel, order=100）。
- * <p>
- * 这里<b>没有任何压缩逻辑</b>——只有一次调用：
- * <pre>
- *     policy.runEligible(window, metrics, state, ...)
- * </pre>
- * "有几种处置方式、各自的触发阈值是多少"全部由 {@link ContextRule} 自己声明，
- * 策略机只回答"谁该跑"。因此新增一种处置 = 加一个规则实现类，本类一行不改。
- * <p>
- * 改造前这里是 11 步 if-else 编排，其中第 118 行的
- * {@code effectiveWaterLevel = waterTriggered ? waterLevel : snipThreshold}
- * 是最典型的症状：想表达"按轮数压"的意图，却只能伪造一个水位值来复用现成代码路径，
- * 代价是轮数触发被永久钉死在 Snip 级。现在轮数、水位、预算投影都是一等触发类型。
+ * 调用 {@link ContextPolicy#runEligible} 执行满足触发条件的压缩规则。
  */
 public class ContextCompactHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(ContextCompactHook.class);
@@ -43,9 +32,6 @@ public class ContextCompactHook implements Hook.PreModelHook {
         return "ContextCompact";
     }
 
-    /**
-     * 始终激活。上下文策略是每次模型调用前的必要检查。
-     */
     @Override
     public boolean isActive(SessionState state) {
         return true;
@@ -70,7 +56,7 @@ public class ContextCompactHook implements Hook.PreModelHook {
                 window, ctx.metrics(state), cs, turnsSinceLastCompress,
                 tailGuardTurns, state.getTurnCount());
 
-        // 处置后窗口变了，度量要重算：水位下降应反映到本轮日志与下一轮的触发判定
+        // 处置后窗口变了，度量要重算
         var metricsAfter = ctx.metrics(state);
         cs.setLastWaterLevel(metricsAfter.waterLevel());
 
@@ -78,8 +64,7 @@ public class ContextCompactHook implements Hook.PreModelHook {
             return HookResult.ok();
         }
 
-        // 删除块会切断 tool_use / tool_result 配对，LLM API 对此零容忍。
-        // 这是窗口的结构不变式，由窗口自己维护，而不是调用点记得手动调一次。
+        // 删除块会切断 tool_use / tool_result 配对，由窗口自动修复
         window.repairPairing();
         cs.setLastTurnCompressed(state.getTurnCount());
 

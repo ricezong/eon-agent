@@ -11,8 +11,6 @@ public interface ArtifactSink {
     /** 无落盘能力时的空实现 */
     ArtifactSink NONE = (source, content, summary) -> null;
 
-    /**
-     * 保存完整内容，返回引用。
-     */
+    /** 保存完整内容，返回引用。 */
     ArtifactRef save(String source, String content, String summary);
 }

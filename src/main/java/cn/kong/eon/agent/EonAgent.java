@@ -128,13 +128,12 @@ public class EonAgent {
         log.debug("Hook 已注册: {}", hook.name());
     }
 
+    /** 已注册的 Hook 总数。 */
     public int getHookCount() {
         return totalHookCount;
     }
 
-    /**
-     * 关闭 Agent，释放线程池和工具资源。
-     */
+    /** 关闭 Agent，释放线程池和工具资源。 */
     public void shutdown() {
         toolHandler.shutdown();
         toolRegistry.closeAll();
@@ -145,9 +144,7 @@ public class EonAgent {
     //  主循环
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * 运行 Agent 主循环，返回最终输出文本。
-     */
+    /** 运行 Agent 主循环，返回最终输出文本。 */
     public String run(SessionState state) {
         initRun(state);
 
@@ -189,7 +186,6 @@ public class EonAgent {
 
     /**
      * 执行单个 Turn。try-finally 确保 finalize + flush 一定被执行。
-     * <p>
      * 返回 {@link TurnAction}：Continue 继续循环，Exit 退出并携带输出。
      */
     private TurnAction executeTurn(SessionState state, int turnStartTokens) {
@@ -262,9 +258,7 @@ public class EonAgent {
         }
     }
 
-    /**
-     * Extension Loop：PreTool → 执行工具 → PostTool。
-     */
+    /** Extension Loop：PreTool → 执行工具 → PostTool。 */
     private FireResult executeExtensionLoop(TurnRecord rec, SessionState state,
                                             List<ToolExecutionRequest> requests) {
         // PreTool Hooks
@@ -319,18 +313,14 @@ public class EonAgent {
     //  退出处理
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * 统一退出处理：渲染记忆引用 → 记录完成日志 → 返回输出。
-     */
+    /** 统一退出处理：渲染记忆引用 → 记录完成日志 → 返回输出。 */
     private String completeExit(SessionState state, String rawOutput) {
         String output = renderMemoryReferences(rawOutput);
         logger.agentComplete(state);
         return output;
     }
 
-    /**
-     * 将 [[memory:xxx]] 引用替换为标题。
-     */
+    /** 将 [[memory:xxx]] 引用替换为标题。 */
     private String renderMemoryReferences(String text) {
         if (text == null || text.isEmpty()) return text;
         return toolContext.memoryStore().renderReferences(text);
@@ -340,14 +330,16 @@ public class EonAgent {
     //  初始化
     // ═══════════════════════════════════════════════════════════════════
 
+    /** 初始化运行：记录启动日志、写入用户输入到 JSONL。 */
     private void initRun(SessionState state) {
         logger.agentStart(state);
         state.setStopState(SessionState.StopState.none());
         String tagged = "<user_query>\n" + state.getUserInput() + "\n</user_query>";
-        // 轮次 0：用户输入不属于任何已执行的 turn，这样尾部保护与轮数触发都以同一基准计算
+        // 轮次 0：用户输入不属于任何已执行的 turn
         jsonlStore.append(UserMessage.from(tagged), 0);
     }
 
+    /** 输出 Turn 日志并清理引用。 */
     private void flushTurn(TurnRecord rec) {
         logger.flush(rec);
         this.currentRec = null;
@@ -357,6 +349,7 @@ public class EonAgent {
     //  上下文构建
     // ═══════════════════════════════════════════════════════════════════
 
+    /** 构建 ContextBuilder：设置系统提示、摘要、记忆、窗口、预算口径。 */
     private ContextBuilder buildContext(SessionState state) {
         ContextBuilder ctx = new ContextBuilder();
         ctx.setTokenCountEstimator(llmClient.getTokenCountEstimator());
@@ -376,10 +369,7 @@ public class EonAgent {
 
     /**
      * 估算工具 schema 的 token 开销。规格数量 × 单规格均值，缓存后复用。
-     * <p>
-     * 精确值需要逐条序列化 JSON，而它每轮都一样——按规格数估算足够，
-     * 关键是<b>不要漏掉这一项</b>：9 个内置 + MCP 工具约数千 token，
-     * 100 轮就是预算的 15%。
+     * 不能漏掉这一项：9 个内置 + MCP 工具约数千 token，100 轮就是预算的 15%。
      */
     private long estimateToolSchemaTokens() {
         if (cachedToolSchemaTokens < 0) {
@@ -389,9 +379,7 @@ public class EonAgent {
         return cachedToolSchemaTokens;
     }
 
-    /**
-     * 将 pendingNudges 和 formatCorrections 渲染到 ContextBuilder。
-     */
+    /** 将 pendingNudges 和 formatCorrections 渲染到 ContextBuilder。 */
     private void renderNudges(SessionState state, ContextBuilder ctx) {
         if (state.getPendingNudges().isEmpty() && state.getFormatCorrections().isEmpty()) {
             return;
@@ -407,9 +395,7 @@ public class EonAgent {
         ctx.setRuntimeNudges(sb.toString());
     }
 
-    /**
-     * 校验工具是否存在，不存在则注入格式纠正提示。
-     */
+    /** 校验工具是否存在，不存在则注入格式纠正提示。 */
     private void validateToolExistence(SessionState state, List<ToolExecutionRequest> requests) {
         for (ToolExecutionRequest req : requests) {
             if (!toolRegistry.contains(req.name())) {

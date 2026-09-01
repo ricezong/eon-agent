@@ -2,8 +2,8 @@ package cn.kong.eon.tool;
 
 import cn.kong.eon.agent.context.ToolSupport;
 import cn.kong.eon.model.SessionState;
-import cn.kong.eon.tool.mcp.McpClientManager;
 import cn.kong.eon.model.ToolPermission;
+import cn.kong.eon.tool.mcp.McpClientManager;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -14,9 +14,7 @@ import java.util.*;
 
 /**
  * 工具注册表。统一管理本地工具和 MCP 工具的元数据与执行。
- * <p>
- * 同时实现 {@link ToolSupport}，向上下文层暴露「参数是否已落盘」「参数短摘要」两个查询能力，
- * 使无损卸载规则无需感知工具层细节。
+ * 同时实现 {@link ToolSupport}，向上下文层暴露参数落盘查询和参数摘要能力。
  */
 public class ToolRegistry implements ToolSupport {
     private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
@@ -35,9 +33,7 @@ public class ToolRegistry implements ToolSupport {
         this.sanitizer = new ArgumentSanitizer(objectMapper);
     }
 
-    /**
-     * 注册本地工具（受白名单过滤）。
-     */
+    /** 注册本地工具（受白名单过滤）。 */
     public void register(ToolDescriptor descriptor) {
         if (!whitelist.isEmpty() && !whitelist.contains(descriptor.getName())) {
             log.warn("工具 {} 不在白名单中，跳过注册", descriptor.getName());
@@ -71,6 +67,7 @@ public class ToolRegistry implements ToolSupport {
         return count;
     }
 
+    /** 解析权限字符串为枚举值。 */
     private ToolPermission parsePermission(String permission) {
         if (permission == null) return ToolPermission.READONLY;
         return switch (permission.toUpperCase()) {
@@ -81,24 +78,22 @@ public class ToolRegistry implements ToolSupport {
         };
     }
 
+    /** 获取本地工具描述符。 */
     public ToolDescriptor get(String name) {
         return tools.get(name);
     }
 
-    /**
-     * 判断工具是否存在（本地或 MCP）。
-     */
+    /** 工具是否存在（本地或 MCP）。 */
     public boolean contains(String name) {
         return tools.containsKey(name) || mcpToolSpecs.containsKey(name);
     }
 
+    /** 是否为 MCP 工具。 */
     public boolean isMcpTool(String name) {
         return mcpToolSpecs.containsKey(name);
     }
 
-    /**
-     * 获取所有工具 Schema（本地 + MCP）。
-     */
+    /** 获取所有工具 Schema（本地 + MCP）。 */
     public List<ToolSpecification> getSpecifications() {
         List<ToolSpecification> all = new ArrayList<>();
         for (ToolDescriptor desc : tools.values()) {
@@ -108,15 +103,13 @@ public class ToolRegistry implements ToolSupport {
         return all;
     }
 
-    /**
-     * 执行工具（本地或 MCP）。
-     */
+    /** 执行工具（本地或 MCP），返回执行结果。 */
     public ToolOutcome execute(String name, Map<String, Object> arguments,
                                SessionState state, ToolContext context) {
         ToolDescriptor descriptor = tools.get(name);
         if (descriptor != null) {
             try {
-                // 根据工具 Schema 清洗参数类型（处理 LLM 输出类型不规范的问题）
+                // 根据工具 Schema 清洗参数类型
                 Map<String, Object> sanitized = sanitizer.sanitize(descriptor.getSpecification(), arguments);
                 ToolOutcome result = descriptor.getExecutor().execute(sanitized, state, context);
                 log.debug("本地工具执行: {} -> 成功={} {} 字符", name, result.success(), result.content().length());
@@ -143,9 +136,7 @@ public class ToolRegistry implements ToolSupport {
         return ToolOutcome.failure("工具不存在: " + name);
     }
 
-    /**
-     * 获取工具权限（MCP 工具默认 READONLY）。
-     */
+    /** 获取工具权限（MCP 工具默认 READONLY）。 */
     public ToolPermission getPermission(String name) {
         ToolDescriptor descriptor = tools.get(name);
         if (descriptor != null) {
@@ -157,25 +148,20 @@ public class ToolRegistry implements ToolSupport {
         return null;
     }
 
+    /** 工具是否为破坏性权限。 */
     public boolean isDestructive(String name) {
         ToolPermission perm = getPermission(name);
         return perm == ToolPermission.DESTRUCTIVE;
     }
 
-    // ═══════════════════ 上下文层查询接口 ═══════════════════
-
-    /**
-     * 本地工具是否会把调用参数完整落盘。MCP 工具一律视为否（无法证实）。
-     */
+    /** 本地工具是否会把调用参数完整落盘。MCP 工具一律视为否。 */
     @Override
     public boolean persistsArguments(String name) {
         ToolDescriptor descriptor = tools.get(name);
         return descriptor != null && descriptor.getExecutor().persistsArguments();
     }
 
-    /**
-     * 参数的短摘要。工具不存在或参数无法解析时返回 null，调用方据此回退。
-     */
+    /** 参数的短摘要。工具不存在或参数无法解析时返回 null。 */
     @Override
     public String summarizeArgs(String name, String argumentsJson) {
         ToolDescriptor descriptor = tools.get(name);
@@ -190,11 +176,12 @@ public class ToolRegistry implements ToolSupport {
         }
     }
 
-
+    /** 白名单（只读）。 */
     public Set<String> getWhitelist() {
         return Collections.unmodifiableSet(whitelist);
     }
 
+    /** 所有工具名称（本地 + MCP）。 */
     public Collection<String> getAllToolNames() {
         Set<String> names = new LinkedHashSet<>();
         names.addAll(tools.keySet());
@@ -202,17 +189,17 @@ public class ToolRegistry implements ToolSupport {
         return names;
     }
 
+    /** 所有本地工具描述符。 */
     public Collection<ToolDescriptor> getAll() {
         return tools.values();
     }
 
+    /** MCP 工具数量。 */
     public int getMcpToolCount() {
         return mcpToolSpecs.size();
     }
 
-    /**
-     * 释放所有本地工具持有的资源（如 Scanner、文件句柄等）。
-     */
+    /** 释放所有本地工具持有的资源。 */
     public void closeAll() {
         for (ToolDescriptor desc : tools.values()) {
             try {
@@ -224,6 +211,7 @@ public class ToolRegistry implements ToolSupport {
         log.info("所有本地工具已关闭（{}）", tools.size());
     }
 
+    /** 将参数 Map 转为 JSON 字符串（用于 MCP 工具调用）。 */
     private String convertArgsToJson(Map<String, Object> arguments) {
         if (arguments == null || arguments.isEmpty()) {
             return "{}";

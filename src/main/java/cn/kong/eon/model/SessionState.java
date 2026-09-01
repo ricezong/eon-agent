@@ -46,6 +46,7 @@ public class SessionState {
         this.lastToolResults = new ArrayList<>();
     }
 
+    /** 创建新的会话状态。 */
     public static SessionState create(String sessionId, String userOriginalInput) {
         SessionState s = new SessionState();
         s.sessionId = sessionId;
@@ -55,11 +56,8 @@ public class SessionState {
 
     /**
      * 同一会话内开始一次新的用户输入（复用本状态）。
-     * <p>
-     * 重置任务级状态：用户输入、轮数、运行时提醒与临时消息字段；
-     * 保留会话级状态：token 累计、压缩状态、todo 使用标记、预算软触发标记。
-     * turnCount 归零使步数上限按单次任务计；
-     * lastTurnCompressed 随之归零，保持轮数触发判断的基准一致。
+     * 重置任务级状态（用户输入、轮数、运行时提醒与临时消息字段），
+     * 保留会话级状态（token 累计、压缩状态、todo 使用标记、预算软触发标记）。
      */
     public void beginRun(String userInput) {
         this.userInput = userInput;
@@ -74,14 +72,17 @@ public class SessionState {
         this.lastResponse = null;
     }
 
+    /** 递增轮次计数。 */
     public void incrementTurn() {
         this.turnCount++;
     }
 
+    /** 添加运行时提醒。 */
     public void addNudge(String nudge) {
         pendingNudges.add(nudge);
     }
 
+    /** 添加格式纠正提示。 */
     public void addFormatCorrection(String correction) {
         formatCorrections.add(correction);
     }
@@ -206,6 +207,7 @@ public class SessionState {
         this.stopState = stopState;
     }
 
+    /** 是否有活跃的停止请求。 */
     public boolean isStopRequested() {
         return stopState != null && stopState.isActive();
     }
@@ -217,18 +219,18 @@ public class SessionState {
         private StopReason reason;
         private int remainingGraceSteps;
 
+        /** 创建无停止请求的初始状态。 */
         public static StopState none() {
             return new StopState();
         }
 
+        /** 发起停止请求，初始化 grace steps。 */
         public void request(StopReason reason) {
             this.reason = reason;
             this.remainingGraceSteps = reason.getGraceSteps();
         }
 
-        /**
-         * 消耗一个 grace step，返回是否还有剩余。
-         */
+        /** 消耗一个 grace step，返回是否还有剩余。 */
         public boolean consumeGraceStep() {
             if (remainingGraceSteps > 0) {
                 remainingGraceSteps--;
@@ -236,6 +238,7 @@ public class SessionState {
             return remainingGraceSteps > 0;
         }
 
+        /** 是否有活跃的停止请求。 */
         public boolean isActive() {
             return reason != null;
         }

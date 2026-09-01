@@ -4,13 +4,7 @@ import cn.kong.eon.agent.context.block.BlockKind;
 import cn.kong.eon.agent.context.block.ContextBlock;
 
 /**
- * 工具结果格式化（order=20）。
- * <p>
- * 给结果套上统一外壳：工具名、状态、内容、截断提示与 artifact 引用。
- * 只做格式化，不做任何大小决策——决策属于 {@link ArtifactSpillRule}。
- * <p>
- * 原先这段逻辑和落盘决策混在同一个 {@code render()} 方法里，
- * 导致"格式化"和"上下文大小控制"两件事无法单独演进。
+ * 工具结果截断（入站规则）。超过阈值的工具结果按头尾保留截断。
  */
 public class ToolResultFormatRule implements IngestRule {
 

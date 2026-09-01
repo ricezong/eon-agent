@@ -1,8 +1,8 @@
 package cn.kong.eon.agent.support;
 
+import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.agent.hook.StopCategory;
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.model.SessionState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.ChatMessage;
@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 /**
- * Turn 日志器。收集式设计：各步骤写入 TurnRecord，turn 结束后 flush 输出 2 行摘要日志。
+ * Turn 日志器。收集式设计：各步骤写入 TurnRecord，turn 结束后 flush 输出摘要日志。
  */
 public class TurnLogger {
     private static final Logger log = LoggerFactory.getLogger(TurnLogger.class);
@@ -23,11 +23,12 @@ public class TurnLogger {
         this.config = config;
     }
 
-
+    /** 创建新的日志记录对象。 */
     public TurnRecord newRecord() {
         return new TurnRecord();
     }
 
+    /** 记录轮次头信息：轮次号、已用/最大 token、停止状态。 */
     public void turnHeader(TurnRecord rec, SessionState state) {
         long used = state.getUsageAccum().getTotalTokens();
         long max = config.getBudget().getMaxTokens();
@@ -37,43 +38,49 @@ public class TurnLogger {
         }
     }
 
+    /** 记录上下文信息：消息数、估算 token、工具数、构成分解。 */
     public void contextInfo(TurnRecord rec, ContextBuilder ctx, List<ChatMessage> messages, SessionState state, int toolCount) {
         rec.context(messages.size(), ctx.estimateTokens(), toolCount);
-        // 构成分解：上下文被谁占满，过去要写脚本翻 transcript 才知道，现在日志里直接可见
         rec.setComposition(ctx.metrics(state).composition());
     }
 
+    /** 记录 LLM 响应中请求的工具列表。 */
     public void llmResponse(TurnRecord rec, List<ToolExecutionRequest> requests) {
         List<String> toolNames = (requests != null && !requests.isEmpty()) ? requests.stream().map(ToolExecutionRequest::name).toList() : List.of();
         rec.llm(toolNames);
     }
 
+    /** 标记输出被截断。 */
     public void outputTruncated(TurnRecord rec) {
         rec.outputTruncated();
     }
 
+    /** 记录单个工具的执行结果。 */
     public void toolExecuted(TurnRecord rec, String toolName, boolean success, String argsSummary, int renderedLen) {
         rec.addTool(toolName, success, argsSummary, renderedLen);
     }
 
-
+    /** 记录停止请求事件。 */
     public void stopRequested(TurnRecord rec, StopCategory category, String msg, int grace) {
         rec.addStopEvent(TurnRecord.StopEventType.REQUESTED, category, msg, grace);
     }
 
+    /** 记录停止升级事件（宽限期耗尽，硬终止）。 */
     public void stopEscalated(TurnRecord rec, StopCategory category, String msg) {
         rec.addStopEvent(TurnRecord.StopEventType.ESCALATED, category, msg, -1);
     }
 
+    /** 记录宽限期消耗事件。 */
     public void graceConsumed(TurnRecord rec, String reason, int remaining) {
         rec.addStopEvent(TurnRecord.StopEventType.GRACE_CONSUMED, null, reason, remaining);
     }
 
+    /** 记录轮次结束时的 token 统计。 */
     public void turnDone(TurnRecord rec, SessionState state, int turnStartTokens) {
         rec.turnDone(turnStartTokens, state.getUsageAccum().getTotalTokens(), config.getBudget().getMaxTokens());
     }
 
-
+    /** 输出轮次摘要日志（2 行 INFO + DEBUG 级工具明细 + WARN 级停止事件）。 */
     public void flush(TurnRecord rec) {
         StringBuilder line = new StringBuilder(192);
         line.append("Turn ").append(rec.turnNumber).append(" 完成");
@@ -99,7 +106,6 @@ public class TurnLogger {
                 line.append(tool.name()).append(tool.success() ? " ✓" : " ✗");
             }
         } else if (!rec.toolNames.isEmpty()) {
-            // LLM 请求了工具但未执行（被 PostModel Hook 跳过等）
             line.append(" │ LLM 请求工具 ").append(rec.toolNames).append("（未执行）");
         } else {
             line.append(" │ LLM 输出最终回复");
@@ -131,19 +137,19 @@ public class TurnLogger {
         }
     }
 
-
+    /** Agent 启动日志。 */
     public void agentStart(SessionState state) {
         log.info("┌─ EonAgent 启动 │ 会话: {} │ 最大步数: {} │ 预算: {} tokens", state.getSessionId(), config.getLoop().getMaxSteps(), config.getBudget().getMaxTokens());
         log.info("├─ 用户请求: {}", state.getUserInput());
     }
 
+    /** Agent 正常完成日志。 */
     public void agentComplete(SessionState state) {
         log.info("└─ EonAgent 完成 │ turns={} │ tokens={}", state.getTurnCount(), state.getUsageAccum().getTotalTokens());
     }
 
+    /** Agent 被强制终止日志。 */
     public void stopForced(String category, int turns, int tokens) {
         log.warn("└─ ⚠ 强制终止: {} │ turns={} │ tokens={}", category, turns, tokens);
     }
-
-
 }

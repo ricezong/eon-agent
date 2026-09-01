@@ -31,9 +31,9 @@ public class DownloadFileTool implements ToolExecutor {
     private static final int TIMEOUT_SECONDS = 60;
 
     private final long maxFileSize;
-
     private final HttpClient httpClient;
 
+    /** 默认构造，最大文件 100MB。 */
     public DownloadFileTool() {
         this(100L * 1024 * 1024);
     }
@@ -128,6 +128,7 @@ public class DownloadFileTool implements ToolExecutor {
         }
     }
 
+    /** 格式化文件大小为可读字符串。 */
     private String formatSize(long bytes) {
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
@@ -156,7 +157,7 @@ public class DownloadFileTool implements ToolExecutor {
         return null;
     }
 
-    /** 默认构造，生产环境通过 descriptor(long, HttpClient) 传入配置 */
+    /** 默认构造，生产环境通过 descriptor(long, HttpClient) 传入配置。 */
     public static ToolDescriptor descriptor() {
         return ToolDescriptor.fromAnnotated(new DownloadFileTool(), ToolPermission.RESTRICTED_WRITE);
     }

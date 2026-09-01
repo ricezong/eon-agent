@@ -4,16 +4,9 @@ import java.util.Objects;
 
 /**
  * 上下文内容块。上下文领域模型的最小单位。
- * <p>
- * 与 LangChain4j 的 {@code ChatMessage} 的区别：
- * {@code ChatMessage} 是<b>传输类型</b>（一条消息可含多块内容），
- * {@code ContextBlock} 是<b>领域类型</b>（一块内容 = 一个可独立处置的单元）。
- * 两者通过 {@link BlockProjector} 双向投射。
- * <p>
+ * 与 LangChain4j 的 ChatMessage 的区别：ChatMessage 是传输类型（一条消息可含多块内容），
+ * ContextBlock 是领域类型（一块内容 = 一个可独立处置的单元）。两者通过 BlockProjector 双向投射。
  * 状态（是否已卸载 / 已截断 / 已裁剪）住在块自身上，而不是外部的去重集合里。
- * 这样"压缩进度"与"被压缩的内容"永不脱离——过去状态存在
- * {@code CompressionState.snippedIds} 里，而内存视图重启后从磁盘原文重建，
- * 两者会失配；块级状态随内存视图同生共死，不存在这个问题。
  */
 public final class ContextBlock {
 
@@ -24,7 +17,7 @@ public final class ContextBlock {
     private final String groupId;
     /** 组内序号，重组时恢复原始顺序 */
     private final int ordinal;
-    /** 入站轮次。尾部保护区按轮次判定，而非按消息条数近似 */
+    /** 入站轮次。尾部保护区按轮次判定 */
     private final int turn;
     /** 工具名（仅 TOOL_ARGS / TOOL_RESULT） */
     private final String toolName;
@@ -34,14 +27,9 @@ public final class ContextBlock {
     private final int originalChars;
 
     private String text;
-    /** 落盘 artifact 引用 id（如 art_001）。非空表示磁盘上有完整副本 */
+    /** 落盘 artifact 引用 id。非空表示磁盘上有完整副本 */
     private String refId;
-    /**
-     * 工具结果块标记的执行成功与否；null 表示未知（非结果块，或从历史恢复）。
-     * <p>
-     * 这个字段是<b>无损卸载的安全判据</b>：只有执行成功的调用才保证参数内容真正落盘，
-     * 失败的调用卸载会永久丢失内容。放在块上，策略层才能在不接触工具层的情况下做出判断。
-     */
+    /** 工具结果块标记的执行成功与否；null 表示未知。无损卸载的安全判据。 */
     private Boolean success;
     private boolean offloaded;
     private boolean snipped;
@@ -105,9 +93,7 @@ public final class ContextBlock {
         return text;
     }
 
-    /**
-     * 原地改写内容。压缩与卸载规则通过它作用到块上。
-     */
+    /** 原地改写内容。压缩与卸载规则通过它作用到块上。 */
     public void setText(String newText) {
         this.text = newText != null ? newText : "";
     }
@@ -116,10 +102,7 @@ public final class ContextBlock {
         return text.length();
     }
 
-    /**
-     * 落盘 artifact 引用 id。非空即表示磁盘上存在完整副本，
-     * 此时把块替换为纯引用是<b>无损</b>操作。
-     */
+    /** 落盘 artifact 引用 id。非空即表示磁盘上存在完整副本。 */
     public String refId() {
         return refId;
     }
@@ -175,9 +158,7 @@ public final class ContextBlock {
         this.snipped = true;
     }
 
-    /**
-     * 是否还有处置空间：已被裁剪的块不再参与任何规则。
-     */
+    /** 是否还有处置空间：已被裁剪的块不再参与任何规则。 */
     public boolean isDisposed() {
         return pruned;
     }

@@ -7,7 +7,6 @@ import java.util.Map;
 
 /**
  * 上下文度量。水位、预算投影、构成分解。
- * <p>
  * 被 ContextPolicy（触发规则）和 ContextCompactHook（日志输出）消费。
  */
 public final class ContextMetrics {
@@ -38,11 +37,7 @@ public final class ContextMetrics {
         this.tokensByKind = map;
     }
 
-    // ═══════════════════ 水位 ═══════════════════
-
-    /**
-     * 上下文水位：本轮真实要发送的量占窗口的比例。
-     */
+    /** 上下文水位：本轮真实要发送的量占窗口的比例。 */
     public double waterLevel() {
         if (contextMaxTokens <= 0) return 0.0;
         return Math.min(1.0, (double) sentTokens() / contextMaxTokens);
@@ -53,30 +48,22 @@ public final class ContextMetrics {
         return transcriptTokens + anchorTokens + toolSchemaTokens + outputReserveTokens;
     }
 
-    // ═══════════════════ 预算 ═══════════════════
-
     public long budgetRemainingTokens() {
         return Math.max(0, budgetMaxTokens - budgetUsedTokens);
     }
 
-    /**
-     * 预算投影：按当前单轮成本，剩余预算还能支撑多少轮。
-     */
+    /** 预算投影：按当前单轮成本，剩余预算还能支撑多少轮。 */
     public double projectedRemainingTurns() {
         long perTurn = sentTokens();
         if (perTurn <= 0) return Double.MAX_VALUE;
         return (double) budgetRemainingTokens() / perTurn;
     }
 
-    // ═══════════════════ 构成 ═══════════════════
-
     public Map<BlockKind, Long> tokensByKind() {
         return tokensByKind;
     }
 
-    /**
-     * 构成分解的可读形式，例如 {@code TOOL_ARGS 72% | TOOL_RESULT 26% | AI_TEXT 2%}。
-     */
+    /** 构成分解的可读形式，例如 {@code TOOL_ARGS 72% | TOOL_RESULT 26% | AI_TEXT 2%}。 */
     public String composition() {
         final long total = tokensByKind.values().stream().mapToLong(Long::longValue).sum();
         if (total == 0) return "(空)";

@@ -5,7 +5,7 @@ import cn.kong.eon.agent.context.ContextWindow;
 import cn.kong.eon.model.CompressionState;
 
 /**
- * 规则执行上下文。策略机在调用规则时打包传入，规则按需取用。
+ * 规则执行上下文。所有规则通过它访问窗口、度量和压缩状态。
  */
 public record RuleContext(
         ContextWindow window,

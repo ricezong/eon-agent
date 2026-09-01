@@ -14,10 +14,12 @@ public class TokenUsage {
     public TokenUsage() {
     }
 
+    /** 创建零值实例。 */
     public static TokenUsage zero() {
         return new TokenUsage();
     }
 
+    /** 累加另一个用量。 */
     public void add(TokenUsage other) {
         this.promptTokens += other.promptTokens;
         this.completionTokens += other.completionTokens;

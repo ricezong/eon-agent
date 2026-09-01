@@ -7,10 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Prune：把旧的工具结果替换为占位符（有损，第二级）。
- * <p>
- * 仅当磁盘上<b>没有</b>副本时才真正有损；已落盘的块会保留 artifact 引用，
- * 此时降级为无损操作——这是把"是否已落盘"建模成块状态后的自然结果。
+ * 裁剪规则。删除过老的 TOOL_RESULT / TOOL_ARGS / AI_TEXT 块。
+ * 删除块会切断 tool_use/tool_result 配对，由 {@link ContextWindow#repairPairing()} 自动修复。
  */
 public class PruneRule implements ContextRule {
     private static final Logger log = LoggerFactory.getLogger(PruneRule.class);

@@ -4,9 +4,6 @@ import java.util.*;
 
 /**
  * CLI 模式的交互回调实现。通过 stdin 向用户展示问题并读取答案。
- * <p>
- * 当 {@link AskQuestionTool} 需要向用户收集答案时，此实现直接在终端
- * 打印问题和选项，等待用户输入编号或选项文本后返回结果。
  */
 public class CliInteractionCallback implements InteractionCallback {
 
@@ -16,13 +13,14 @@ public class CliInteractionCallback implements InteractionCallback {
         this.scanner = scanner;
     }
 
-    /**
-     * 获取共享的 Scanner，供 CLI 循环复用（避免多个 Scanner 争抢 System.in）。
-     */
+    /** 获取共享的 Scanner，供 CLI 循环复用。 */
     public Scanner getScanner() {
         return scanner;
     }
 
+    /**
+     * 在终端逐个展示问题，读取用户输入的选项编号或 optionId，返回答案映射。
+     */
     @Override
     @SuppressWarnings("unchecked")
     public Map<String, String> askQuestions(List<Map<String, Object>> questions, String title) {

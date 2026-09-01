@@ -34,7 +34,6 @@ public class WebSearchTool implements ToolExecutor {
 
     private final ObjectMapper mapper;
     private final HttpClient httpClient;
-
     private final String apiKey;
 
     public WebSearchTool(String apiKey, ObjectMapper objectMapper) {
@@ -90,7 +89,6 @@ public class WebSearchTool implements ToolExecutor {
             return ToolOutcome.failure("百度千帆 API Key 未配置（请检查 agent.yaml 的 web_search.api_key 或环境变量 QIANFAN_API_KEY）");
         }
 
-        // ArgumentSanitizer 已保证类型为 Integer
         int topK = arguments.containsKey("max_results")
                 ? Math.min((Integer) arguments.get("max_results"), 20)
                 : DEFAULT_TOP_K;
@@ -112,6 +110,7 @@ public class WebSearchTool implements ToolExecutor {
         }
     }
 
+    /** 构建千帆 API 请求体。 */
     private ObjectNode buildRequestBody(String query, int topK, String siteFilter, String recencyFilter) {
         ObjectNode body = mapper.createObjectNode();
 
@@ -141,6 +140,7 @@ public class WebSearchTool implements ToolExecutor {
         return body;
     }
 
+    /** 调用千帆 API 并返回响应体。 */
     private String callApi(ObjectNode body) throws Exception {
         String requestBody = mapper.writeValueAsString(body);
 
@@ -158,7 +158,6 @@ public class WebSearchTool implements ToolExecutor {
 
         if (response.statusCode() != 200) {
             log.error("千帆 API 返回非 200: status={}, body={}", response.statusCode(), response.body());
-            // 解析错误消息并抛异常，让 execute() 返回 failure 触发熔断
             String errorMsg = "HTTP " + response.statusCode();
             try {
                 JsonNode errNode = mapper.readTree(response.body());
@@ -173,6 +172,7 @@ public class WebSearchTool implements ToolExecutor {
         return response.body();
     }
 
+    /** 解析千帆 API 响应为可读的搜索结果文本。 */
     private String parseResponse(String responseJson, String query) throws Exception {
         JsonNode root = mapper.readTree(responseJson);
 

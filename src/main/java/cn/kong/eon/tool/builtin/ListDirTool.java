@@ -78,11 +78,13 @@ public class ListDirTool implements ToolExecutor {
         }
     }
 
+    /** 判断是否为隐藏文件（以 . 开头）。 */
     private boolean isDotFile(Path p) {
         String name = p.getFileName().toString();
         return name.startsWith(".");
     }
 
+    /** 格式化文件大小为可读字符串。 */
     private String formatSize(long bytes) {
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);

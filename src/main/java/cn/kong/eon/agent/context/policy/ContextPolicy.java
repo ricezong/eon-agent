@@ -10,15 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 上下文策略机。取代原先 ContextCompactHook 里 11 步的 if-else 编排。
- * <p>
- * 策略机只做两件事：
- * <ol>
- *   <li>遍历规则，问"你的触发条件满足了吗"</li>
- *   <li>收集执行结果</li>
- * </ol>
- * 它<b>不知道</b>有几种压缩、阈值是多少——全是规则自己的事。
- * 因此新增处置方式 = 加一个 {@link ContextRule} 实现类，策略机一行不改。
+ * 上下文策略运行器。在 PreModel 阶段执行满足触发条件的压缩规则。
+ * 规则按声明顺序执行，前一个规则处置后，后一个规则看到的是已更新的窗口状态。
  */
 public class ContextPolicy {
     private static final Logger log = LoggerFactory.getLogger(ContextPolicy.class);
@@ -32,7 +25,7 @@ public class ContextPolicy {
     }
 
     /**
-     * 运行所有满足触发条件的规则。
+     * 依次执行满足触发条件的规则。
      *
      * @param window                 上下文窗口（就地修改）
      * @param metrics                当前度量

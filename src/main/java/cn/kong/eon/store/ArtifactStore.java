@@ -13,7 +13,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Artifact 存储。大文本工具结果落盘，上下文只保留引用。
+ * Artifact 存储。将大文本工具结果落盘，上下文只保留引用。
+ * 实现 {@link ArtifactSink} 接口供入站管线调用。
  */
 public class ArtifactStore implements ArtifactSink {
     private static final Logger log = LoggerFactory.getLogger(ArtifactStore.class);
@@ -31,9 +32,7 @@ public class ArtifactStore implements ArtifactSink {
         }
     }
 
-    /**
-     * 保存大文本为 artifact，返回引用。
-     */
+    /** 保存大文本为 artifact，返回引用。 */
     @Override
     public ArtifactRef save(String source, String content, String summary) {
         int seq = counter.incrementAndGet();
@@ -53,9 +52,7 @@ public class ArtifactStore implements ArtifactSink {
         return ref;
     }
 
-    /**
-     * 读取 artifact 全文。
-     */
+    /** 读取 artifact 全文。 */
     public String readContent(String refId) {
         ArtifactRef ref = refs.get(refId);
         if (ref == null) return null;

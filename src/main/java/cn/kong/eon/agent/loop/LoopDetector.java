@@ -139,17 +139,17 @@ public class LoopDetector {
         return DetectionResult.ok();
     }
 
+    /** 工具是否已被熔断。 */
     public boolean isToolTripped(String toolName) {
         return trippedTools.contains(toolName);
     }
 
-    /**
-     * 重置指定工具的指纹计数（成功调用后允许相同参数再次使用）。
-     */
+    /** 重置指定工具的指纹计数（成功调用后允许相同参数再次使用）。 */
     private void resetFingerprintsForTool(String toolName) {
         callFingerprintCount.entrySet().removeIf(e -> e.getKey().startsWith(toolName + "|"));
     }
 
+    /** 检测结果。 */
     public record DetectionResult(Level level, String message) {
         public static DetectionResult ok() {
             return new DetectionResult(Level.OK, null);
@@ -172,5 +172,6 @@ public class LoopDetector {
         }
     }
 
+    /** 检测级别。 */
     public enum Level {OK, WARN, STOP}
 }

@@ -14,16 +14,12 @@ public final class HookResult {
         this.stopReason = stopReason;
     }
 
-    /**
-     * 继续，一切正常。
-     */
+    /** 继续，一切正常。 */
     public static HookResult ok() {
         return new HookResult(Action.CONTINUE, null);
     }
 
-    /**
-     * 请求优雅停止。EonAgent 注入收尾 nudge，给 LLM graceSteps 轮调用 finish 的机会。
-     */
+    /** 请求优雅停止。EonAgent 注入收尾 nudge，给 LLM graceSteps 轮调用 finish 的机会。 */
     public static HookResult stop(StopReason stopReason) {
         return new HookResult(Action.STOP, stopReason);
     }
@@ -36,9 +32,7 @@ public final class HookResult {
         return stopReason;
     }
 
-    /**
-     * Hook 动作枚举。
-     */
+    /** Hook 动作枚举。 */
     public enum Action {
         CONTINUE,
         STOP

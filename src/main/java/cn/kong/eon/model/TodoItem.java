@@ -28,6 +28,7 @@ public class TodoItem {
         this.version = 1;
     }
 
+    /** 创建新的 Todo 项。 */
     public static TodoItem of(String id, String content, String priority) {
         TodoItem t = new TodoItem();
         t.id = id;

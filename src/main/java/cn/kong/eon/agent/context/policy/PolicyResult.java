@@ -3,8 +3,7 @@ package cn.kong.eon.agent.context.policy;
 import java.util.List;
 
 /**
- * 策略机一次运行的结果，也是单条规则的执行结果。
- * 合并了原 RuleOutcome 和 PolicyResult 两个类型。
+ * 压缩策略执行结果。
  */
 public record PolicyResult(
         boolean applied,

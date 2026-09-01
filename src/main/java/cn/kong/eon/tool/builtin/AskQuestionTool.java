@@ -16,9 +16,7 @@ import java.util.*;
 
 /**
  * AskQuestion 工具：向用户收集结构化多选答案。
- * <p>
- * 每个问题包含 id、prompt、options（≥2），可选 allow_multiple。
- * 通过 {@link InteractionCallback} 暂停 Agent，等待 HTTP 端点提交答案后恢复。
+ * 通过 {@link InteractionCallback} 暂停 Agent，等待用户提交答案后恢复。
  */
 public class AskQuestionTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(AskQuestionTool.class);
@@ -80,6 +78,7 @@ public class AskQuestionTool implements ToolExecutor {
         return executeViaCallback(arguments, callback, state, title);
     }
 
+    /** 通过交互回调向用户收集答案。 */
     @SuppressWarnings("unchecked")
     private ToolOutcome executeViaCallback(Map<String, Object> arguments,
                                            InteractionCallback callback,

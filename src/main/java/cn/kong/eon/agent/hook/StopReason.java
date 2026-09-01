@@ -32,9 +32,7 @@ public final class StopReason {
         return graceSteps;
     }
 
-    /**
-     * 构建收尾 nudge 文本，引导 LLM 直接输出总结回复。
-     */
+    /** 构建收尾 nudge 文本，引导 LLM 直接输出总结回复。 */
     public String toNudgeText() {
         return String.format(
                 "⚠️ 任务因以下原因即将终止，请在剩余 %d 轮内整理已有信息，直接输出最终总结回复。\n" +

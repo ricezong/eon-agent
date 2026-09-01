@@ -23,9 +23,7 @@ public class ArgumentSanitizer {
         this.mapper = objectMapper;
     }
 
-    /**
-     * 根据工具 Schema 清洗参数，返回清洗后的新 Map（不修改原 Map）。
-     */
+    /** 根据工具 Schema 清洗参数，返回清洗后的新 Map（不修改原 Map）。 */
     public Map<String, Object> sanitize(ToolSpecification spec, Map<String, Object> args) {
         if (args == null || args.isEmpty()) return args;
         if (spec == null || spec.parameters() == null) return args;
@@ -51,6 +49,7 @@ public class ArgumentSanitizer {
         return cleaned;
     }
 
+    /** 根据 Schema 类型分发转换。 */
     private Object sanitizeValue(String propName, JsonSchemaElement schema, Object raw) {
         if (schema instanceof JsonArraySchema) {
             return toArray(raw);
@@ -68,9 +67,7 @@ public class ArgumentSanitizer {
         return raw;
     }
 
-    /**
-     * 转 List：如果 raw 是 String 且能解析为 JSON 数组，则转换。
-     */
+    /** 转 List：如果 raw 是 String 且能解析为 JSON 数组，则转换。 */
     private Object toArray(Object raw) {
         if (raw instanceof List<?>) return raw;
         if (raw instanceof String s) {
@@ -83,9 +80,7 @@ public class ArgumentSanitizer {
         return raw;
     }
 
-    /**
-     * 转 Boolean：如果 raw 是 String "true"/"false"（不区分大小写），则转换。
-     */
+    /** 转 Boolean：如果 raw 是 String "true"/"false"（不区分大小写），则转换。 */
     private Object toBoolean(Object raw) {
         if (raw instanceof Boolean) return raw;
         if (raw instanceof String s) {
@@ -96,9 +91,7 @@ public class ArgumentSanitizer {
         return raw;
     }
 
-    /**
-     * 转 Integer：如果 raw 是 String 且是纯数字，则转换。
-     */
+    /** 转 Integer：如果 raw 是 String 且是纯数字，则转换。 */
     private Object toInteger(Object raw) {
         if (raw instanceof Integer) return raw;
         if (raw instanceof Number n) return n.intValue();
@@ -111,9 +104,7 @@ public class ArgumentSanitizer {
         return raw;
     }
 
-    /**
-     * 转 Double：如果 raw 是 String 且是数字，则转换。
-     */
+    /** 转 Double：如果 raw 是 String 且是数字，则转换。 */
     private Object toNumber(Object raw) {
         if (raw instanceof Double) return raw;
         if (raw instanceof Number n) return n.doubleValue();

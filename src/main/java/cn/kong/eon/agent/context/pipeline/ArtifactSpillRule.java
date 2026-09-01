@@ -8,20 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 大工具结果落盘（order=10）。
- * <p>
- * 原文超过阈值时完整落盘为 artifact，块里只留头尾摘要 + 引用。
- * 落盘的是<b>原始内容</b>，因此必须排在格式化规则之前。
- * <p>
- * 这条规则原先住在 {@code ToolResultRenderer} 里（工具执行层）。
- * 上移到入站管线的理由：控制"什么进入上下文、多大"是上下文边界的职责，
- * 放在工具层会导致工具结果有策略、工具参数没策略的不对称。
- * <p>
- * 阈值沿用原先的层层递进设计：
- * <pre>
- *   落盘阈值 = snipKeepChars × 3
- *   落盘摘要 = snipKeepChars × 2   （&gt; snipKeepChars，可被 Snip 二次截断）
- * </pre>
+ * 大工具结果落盘（入站规则）。
+ * 原文超过阈值（snipKeepChars × 3）时完整落盘为 artifact，块里只留头尾摘要 + 引用。
  */
 public class ArtifactSpillRule implements IngestRule {
     private static final Logger log = LoggerFactory.getLogger(ArtifactSpillRule.class);

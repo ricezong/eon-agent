@@ -19,7 +19,7 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * LLM 客户端封装，使用 LangChain4j OpenAiChatModel，支持指数退避重试。
+ * LLM 客户端封装。基于 LangChain4j OpenAiChatModel，支持指数退避重试和 Token 估算。
  */
 public class LlmClient {
     private static final Logger log = LoggerFactory.getLogger(LlmClient.class);
@@ -58,16 +58,12 @@ public class LlmClient {
                 llmConfig.getProvider(), llmConfig.getModelName(), llmConfig.getBaseUrl());
     }
 
-    /**
-     * 暴露 TokenCountEstimator 供 ContextBuilder 做精确估算。
-     */
+    /** 暴露 TokenCountEstimator 供 ContextBuilder 做精确估算。 */
     public TokenCountEstimator getTokenCountEstimator() {
         return tokenCountEstimator;
     }
 
-    /**
-     * 调用 LLM，带指数退避重试。
-     */
+    /** 调用 LLM，带指数退避重试。不可重试异常立即失败。 */
     public LlmResponse chat(List<ChatMessage> messages, List<ToolSpecification> tools) {
         int attempt = 0;
         Exception lastException = null;
@@ -127,6 +123,7 @@ public class LlmClient {
         throw new LlmStalledException("LLM 调用连续失败 " + retryConfig.getAttempts() + " 次，模型不可用");
     }
 
+    /** 计算指数退避延迟，含随机抖动。 */
     private long calculateDelay(int attempt) {
         long base = (long) (retryConfig.getMinDelayMs() * Math.pow(2, attempt - 1));
         long jitter = (long) (base * retryConfig.getJitter() * (Math.random() - 0.5) * 2);

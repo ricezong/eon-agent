@@ -62,27 +62,17 @@ public final class IngestContext {
         return turn;
     }
 
-    /**
-     * 参数 JSON 的序列化器。规则需要它来做参数卸载
-     * （卸载必须保持严格合法 JSON，见 {@code ArgumentOffloader}）。
-     */
+    /** 参数 JSON 的序列化器。规则需要它来做参数卸载。 */
     public ObjectMapper objectMapper() {
         return objectMapper;
     }
 
-    /**
-     * 本次入站的工具调用 id 是否执行成功。
-     * <p>
-     * 只有成功的调用才能保证其参数已真正落盘，
-     * 卸载失败的调用参数会永久丢失内容——所以必须校验。
-     */
+    /** 本次入站的工具调用 id 是否执行成功。卸载失败的调用参数会永久丢失内容。 */
     public boolean succeeded(String toolCallId) {
         return toolCallId != null && succeededToolCallIds.contains(toolCallId);
     }
 
-    /**
-     * 解析参数 JSON。解析失败返回空 Map。
-     */
+    /** 解析参数 JSON。解析失败返回空 Map。 */
     public Map<String, Object> parseArgs(String json) {
         if (json == null || json.isBlank() || objectMapper == null) return Map.of();
         try {
@@ -94,9 +84,7 @@ public final class IngestContext {
         }
     }
 
-    /**
-     * 序列化回 JSON。失败时返回 null，调用方据此回退到文本摘要。
-     */
+    /** 序列化回 JSON。失败时返回 null。 */
     public String toJson(Map<String, Object> args) {
         if (objectMapper == null) return null;
         try {

@@ -7,6 +7,7 @@ import cn.kong.eon.tool.ToolOutcome;
  */
 public record ToolExecutionResult(String toolCallId, String toolName, boolean success, String content) {
 
+    /** 从 ToolOutcome 构建结果。 */
     public static ToolExecutionResult of(String toolCallId, String toolName, ToolOutcome outcome, String renderedContent) {
         return new ToolExecutionResult(toolCallId, toolName, outcome.success(), renderedContent);
     }

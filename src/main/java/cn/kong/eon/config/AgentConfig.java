@@ -11,13 +11,8 @@ import java.util.*;
 
 /**
  * Agent 配置加载器。从 agent.yaml 加载配置，使用 Jackson YAML POJO 绑定。
- * <p>
- * 采用 {@link PropertyNamingStrategies#SNAKE_CASE} 自动将 YAML snake_case key 映射到 Java 驼峰属性，
- * 消除手动 Map 强转和类型不安全访问。
- * 所有嵌套配置类使用无参构造 + setter，由 Jackson 自动注入；
- * 对外通过 getter 暴露，构造完成后不可变。
- * <p>
- * 环境变量引用 {@code ${VAR}} / {@code ${VAR:-default}} 在加载后对敏感字段（api_key）执行。
+ * 采用 snake_case 自动映射到驼峰属性，构造完成后不可变。
+ * 支持 {@code ${VAR}} / {@code ${VAR:-default}} 环境变量引用。
  */
 public class AgentConfig {
 
@@ -37,6 +32,7 @@ public class AgentConfig {
     private CompressionConfig compression;
     private MemoryConfig memory;
 
+    /** 从输入流加载配置，执行校验和环境变量解析。 */
     public static AgentConfig load(InputStream yamlStream) {
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
                 .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
@@ -53,6 +49,7 @@ public class AgentConfig {
         }
     }
 
+    /** 从 classpath 加载配置文件。 */
     public static AgentConfig loadFromClasspath(String path) {
         try (InputStream is = AgentConfig.class.getClassLoader().getResourceAsStream(path)) {
             if (is == null) throw new IllegalStateException("classpath 中找不到配置: " + path);
@@ -64,9 +61,7 @@ public class AgentConfig {
         }
     }
 
-    /**
-     * 启动期校验：确保关键配置非 null，为缺失的节点提供默认值。
-     */
+    /** 启动期校验：为缺失的配置节点提供默认值。 */
     private void validate() {
         if (llm == null) llm = new LlmConfig();
         if (context == null) context = new ContextConfig();
@@ -85,9 +80,7 @@ public class AgentConfig {
         if (memory == null) memory = new MemoryConfig();
     }
 
-    /**
-     * 对敏感字段执行环境变量解析。
-     */
+    /** 对敏感字段（api_key）执行环境变量解析。 */
     private void resolveEnvVars() {
         if (llm != null) {
             llm.apiKey = resolveEnv(llm.apiKey);
@@ -97,9 +90,7 @@ public class AgentConfig {
         }
     }
 
-    /**
-     * 解析环境变量引用。支持 {@code ${VAR}} 和 {@code ${VAR:-default}}。
-     */
+    /** 解析环境变量引用，支持 ${VAR} 和 ${VAR:-default} 两种形式。 */
     static String resolveEnv(String value) {
         if (value == null) return "";
         if (!value.startsWith("${") || !value.endsWith("}")) return value;
@@ -228,7 +219,7 @@ public class AgentConfig {
         this.memory = memory;
     }
 
-    /** 顶层 mode 节 */
+    /** 运行模式配置。 */
     public static class ModeConfig {
         private boolean checkpointEnabled = false;
 
@@ -241,7 +232,7 @@ public class AgentConfig {
         }
     }
 
-    /** 顶层 compression 节 */
+    /** 上下文压缩配置。 */
     public static class CompressionConfig {
         private int summarizeTurns = 4;
 
@@ -254,7 +245,7 @@ public class AgentConfig {
         }
     }
 
-    /** 顶层 memory 节 */
+    /** 记忆功能配置。 */
     public static class MemoryConfig {
         private boolean enabled = true;
 
@@ -351,7 +342,7 @@ public class AgentConfig {
             private double snipThreshold = 0.65;
             private double pruneThreshold = 0.82;
             private double summarizeThreshold = 0.95;
-            /** 压缩充分性：单次压缩降幅低于此比例则升级档位（对齐 COMPACT_SUFFICIENCY 思路） */
+        /** 压缩充分性阈值：单次压缩降幅低于此比例则升级档位。 */
             private double sufficiencyPct = 0.05;
 
             public double getSnipThreshold() {
@@ -388,14 +379,12 @@ public class AgentConfig {
         }
 
         /**
-         * 无损参数卸载。只处理"内容在磁盘上另有完整副本"的参数块，零信息损失。
-         * <p>
-         * 与有损压缩的本质区别决定它<b>不该等水位</b>：
-         * 无损处置越早做，中间每一轮省下的重复发送成本越多。
+         * 无损参数卸载配置。只处理内容在磁盘上另有完整副本的参数块，零信息损失。
+         * 不等水位：越早做，中间每轮省下的重复发送成本越多。
          */
         public static class Offload {
             private boolean enabled = true;
-            /** 参数块超过此字符数才卸载；短参数的骨架化反而更长，不划算 */
+        /** 参数块超过此字符数才卸载，短参数骨架化反而更长。 */
             private int minChars = 2000;
 
             public boolean isEnabled() {
@@ -416,10 +405,8 @@ public class AgentConfig {
         }
 
         /**
-         * 预算感知。判据不是水位而是预算投影：按当前单轮成本，剩余预算还够跑几轮。
-         * <p>
-         * 水位是<b>瞬时大小</b>，预算是<b>大小对时间的积分</b>。
-         * 上下文没满、但增速快时，预算会先耗尽——这个量纲差异只有投影能捕捉。
+         * 预算感知配置。按当前单轮成本估算剩余预算可支撑的轮数。
+         * 水位是瞬时大小，预算是大小的积分——预算会先于水位耗尽。
          */
         public static class BudgetAware {
             private boolean enabled = true;

@@ -53,7 +53,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Eon Agent 启动类。加载配置、初始化组件、连接 MCP 服务、提供交互式 CLI 循环。
+ * Eon Agent 启动类。负责配置加载、组件初始化、MCP 连接、工具注册、
+ * 上下文架构装配和 Hook 注册，提供交互式 CLI 循环。
  */
 public class EonApplication {
 
@@ -81,12 +82,12 @@ public class EonApplication {
     private final EonAgent agent;
     private final String workDir;
     private final String transcriptPath;
-    /** 会话级状态：整个会话共享，跨多次用户输入保留预算/压缩等累积状态 */
+    /** 会话级状态，跨多次用户输入保留预算/压缩等累积状态。 */
     private final SessionState sessionState;
-    /** CLI 交互回调（共享 Scanner） */
+    /** CLI 交互回调，共享 Scanner。 */
     private final CliInteractionCallback cliInteractionCallback;
 
-    /** MCP 客户端（生命周期管理） */
+    /** MCP 客户端列表，用于生命周期管理。 */
     private final java.util.List<McpClientManager> mcpClients = new java.util.ArrayList<>();
 
     public EonApplication() {
@@ -165,10 +166,7 @@ public class EonApplication {
     }
 
     /**
-     * 运行一轮对话（同一会话内复用会话级状态）。
-     *
-     * @param userInput 用户输入文本
-     * @return Agent 输出结果
+     * 运行一轮对话，同一会话内复用会话级状态。
      */
     public String run(String userInput) {
         if (userInput == null || userInput.isBlank()) {
@@ -186,9 +184,7 @@ public class EonApplication {
         return output;
     }
 
-    /**
-     * 关闭应用，释放资源。
-     */
+    /** 关闭应用，释放 MCP 连接等资源。 */
     public void shutdown() {
         log.info("正在关闭 EonApplication...");
         agent.shutdown();
@@ -198,6 +194,7 @@ public class EonApplication {
         log.info("EonApplication 已关闭。");
     }
 
+    /** 创建 ObjectMapper，注册 JavaTime 模块。 */
     private ObjectMapper createObjectMapper() {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
@@ -205,6 +202,7 @@ public class EonApplication {
         return mapper;
     }
 
+    /** 加载系统提示词，优先从 classpath 加载，回退到文件系统。 */
     private String loadSystemPrompt(String path) {
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(path)) {
             if (is != null) {
@@ -225,6 +223,7 @@ public class EonApplication {
         return "";
     }
 
+    /** 解析并创建存储根目录。 */
     private Path resolveSessionBaseDir() {
         Path base = Path.of(config.getStorage().getBaseDir()).toAbsolutePath();
         try {
@@ -235,6 +234,7 @@ public class EonApplication {
         return base;
     }
 
+    /** 生成会话 ID，包含时间戳和随机后缀。 */
     private String generateSessionId() {
         return SESSION_ID_PREFIX + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
                 + "_" + UUID.randomUUID().toString().substring(0, 6);
@@ -245,15 +245,8 @@ public class EonApplication {
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * 入站管线：所有内容进入上下文的唯一关卡。
-     * <p>
-     * 规则按声明顺序执行，顺序有语义含义：
-     * <ol>
-     *   <li>{@code ArtifactSpill} — 大结果先落盘，落的是原文</li>
-     *   <li>{@code ToolResultFormat} — 再套格式化外壳，只加元数据不改内容</li>
-     * </ol>
-     * 参数卸载已移至在站策略（受保护区约束），避免模型在近期对话中丢失参数上下文。
-     * 新增一种入站处置 = 往这个列表加一条规则，调用方与配置读取逻辑都不用动。
+     * 创建入站管线。规则按声明顺序执行：先 ArtifactSpill 落盘大结果，
+     * 再 ToolResultFormat 套格式化外壳。参数卸载已移至在站策略。
      */
     private ContextPipeline createContextPipeline() {
         var ctxCfg = config.getContext();
@@ -272,10 +265,7 @@ public class EonApplication {
     }
 
     /**
-     * 上下文策略机：在站处置规则的集合，每条规则自带触发声明。
-     * <p>
-     * 这里集中了"什么时候该处置上下文"的全部知识，
-     * 而策略机本身不知道有几种规则、阈值是多少。
+     * 创建上下文策略机。集中管理在站处置规则：无损参数卸载 + 有损三级阶梯压缩。
      */
     private ContextPolicy createContextPolicy() {
         var ctxCfg = config.getContext();
@@ -309,6 +299,7 @@ public class EonApplication {
         return policy;
     }
 
+    /** 创建工具注册表，注册所有内置工具。 */
     private ToolRegistry createToolRegistry() {
         ToolRegistry registry = new ToolRegistry(config.getTools().getWhitelist(), objectMapper);
 
@@ -344,6 +335,7 @@ public class EonApplication {
         return registry;
     }
 
+    /** 连接所有已启用的 MCP 服务并注册其工具。 */
     private void connectMcpServers() {
         var mcpConfig = config.getMcp();
         if (mcpConfig == null || mcpConfig.getServers() == null) return;
@@ -372,6 +364,7 @@ public class EonApplication {
         }
     }
 
+    /** 注册所有 Hook 到 Agent。 */
     private void registerHooks() {
         // PreModel Hooks
         agent.addHook(new BudgetHook(config));
@@ -412,9 +405,7 @@ public class EonApplication {
         runCliLoop(app);
     }
 
-    /**
-     * 交互式 CLI 循环。支持 /exit、/quit 退出，/tools 列出工具，/clear 清屏。
-     */
+    /** 交互式 CLI 循环，支持 /exit、/quit、/tools、/clear、/help 命令。 */
     private static void runCliLoop(EonApplication app) {
         java.util.Scanner scanner = app.cliInteractionCallback.getScanner();
 

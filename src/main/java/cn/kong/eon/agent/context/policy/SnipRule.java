@@ -8,10 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Snip：截短旧的工具结果，采用头尾保留策略（有损，最温和的一级）。
- * <p>
- * 只作用于 {@link BlockKind#TOOL_RESULT} 且 {@code retention != VERBATIM} 的块。
- * 用户消息与系统块由 Retention 标签天然排除，无需 instanceof 特判。
+ * 截断规则。对超长的可压缩块做头尾保留截断（Snip）。
  */
 public class SnipRule implements ContextRule {
     private static final Logger log = LoggerFactory.getLogger(SnipRule.class);

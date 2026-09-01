@@ -21,11 +21,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Summarize：LLM 生成结构化摘要，并删除被覆盖的旧块（有损，最后一级）。
- * <p>
- * <b>关键改进</b>：删除走 {@link ContextWindow#removeBefore(int)}，
- * 它只删 {@link Retention#COMPRESSIBLE} 的块，
- * {@link Retention#VERBATIM} 的用户消息与系统块<b>自动保留</b>。
+ * 摘要规则（有损，最后一级）。用 LLM 对旧块生成结构化摘要后删除原文。
+ * 删除走 {@link ContextWindow#removeBefore(int)}，VERBATIM 块自动保留。
  */
 public class SummarizeRule implements ContextRule {
     private static final Logger log = LoggerFactory.getLogger(SummarizeRule.class);
@@ -106,6 +103,7 @@ public class SummarizeRule implements ContextRule {
         return PolicyResult.of(removed.size(), before, after, "Summarize×" + removed.size());
     }
 
+    /** 调用 LLM 生成增量摘要。 */
     private String generateSummary(String dialogText, CompressionState state) {
         String existing = state.getLastSummary();
         String existingSection = (existing != null && !existing.isBlank()) ? existing : "(无旧摘要，首次生成)";
@@ -141,7 +139,7 @@ public class SummarizeRule implements ContextRule {
         LlmResponse response = llmClient.chat(messages, null);
         String summary = response.aiMessage() != null ? response.aiMessage().text() : null;
         if (summary == null || summary.isBlank()) {
-            log.warn("[压缩] Summarize: LLM 返回空摘要");
+            log.warn("[Summarize] LLM 返回空摘要");
             return null;
         }
         return summary.length() > maxOutputChars
@@ -149,10 +147,7 @@ public class SummarizeRule implements ContextRule {
                 : summary;
     }
 
-    /**
-     * 把待删除的块格式化为对话文本。按块而非按消息遍历，
-     * 因此工具参数块与正文块可以分别控制长度。
-     */
+    /** 把待删除的块格式化为对话文本，按块而非按消息遍历以分别控制长度。 */
     private String formatBlocks(List<ContextBlock> blocks) {
         List<ChatMessage> messages = BlockProjector.assemble(blocks);
         StringBuilder sb = new StringBuilder();
@@ -197,7 +192,7 @@ public class SummarizeRule implements ContextRule {
         return s.length() > max ? s.substring(0, max) + "..." : s;
     }
 
-    /** 供测试与日志使用：判断块是否属于逐字保留层 */
+    /** 判断块是否属于逐字保留层。 */
     static boolean isVerbatim(ContextBlock block) {
         return block.retention() == Retention.VERBATIM || block.kind() == BlockKind.USER_INPUT;
     }

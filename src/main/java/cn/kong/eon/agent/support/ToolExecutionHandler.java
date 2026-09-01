@@ -18,16 +18,14 @@ import java.util.concurrent.*;
 /**
  * 工具执行处理器。封装工具执行全流程：参数解析 → 执行 → todo_write 后处理 → 日志。
  * 支持并行执行，串行豁免清单（todo_write/AskQuestion）强制串行。
- * <p>
- * 这里<b>不做任何结果渲染与大小控制</b>：工具结果以原始输出回填，
- * 由入站管线统一决定"落不落盘、怎么格式化"。
- * 渲染原本挂在工具层，导致上下文大小策略散落在两个地方、且只对工具结果生效。
+ * 工具结果以原始输出回填，由入站管线统一决定落盘与格式化策略。
  */
 public class ToolExecutionHandler {
     private static final Logger log = LoggerFactory.getLogger(ToolExecutionHandler.class);
 
     private static final String TODO_WRITE = "todo_write";
-    /** 串行豁免清单：顺序敏感或交互互斥的工具强制串行 */
+
+    /** 串行豁免清单：顺序敏感或交互互斥的工具强制串行。 */
     private static final Set<String> SERIAL_ONLY = Set.of(TODO_WRITE, "AskQuestion");
 
     private final ToolRegistry toolRegistry;
@@ -57,6 +55,7 @@ public class ToolExecutionHandler {
 
     /**
      * 执行所有待执行的工具调用。被熔断的工具跳过执行，返回合成错误结果。
+     * 多请求时按串行/可并行分区执行。
      */
     public List<ToolExecutionResult> execute(TurnRecord rec, SessionState state) {
         List<ToolExecutionRequest> requests = state.getPendingToolCalls();
@@ -115,7 +114,7 @@ public class ToolExecutionHandler {
             results.set(idx, executeSingle(requests.get(idx), rec, state));
         }
 
-        // 确保没有 null 残留（防御性）
+        // 防御性检查：确保没有 null 残留
         for (int i = 0; i < results.size(); i++) {
             if (results.get(i) == null) {
                 results.set(i, syntheticError(requests.get(i), "内部错误: 结果未生成", rec, state));
@@ -127,7 +126,7 @@ public class ToolExecutionHandler {
     }
 
     /**
-     * 执行单个工具请求（含熔断检查、参数解析、执行、渲染、日志、todo_write 后处理）。
+     * 执行单个工具请求：熔断检查 → 参数解析 → 执行 → 日志 → todo_write 后处理。
      */
     private ToolExecutionResult executeSingle(ToolExecutionRequest req, TurnRecord rec, SessionState state) {
         // 被熔断的工具跳过执行
@@ -148,7 +147,7 @@ public class ToolExecutionHandler {
         // 原始输出直接回填；落盘与格式化由入站管线负责
         ToolExecutionResult result = ToolExecutionResult.of(req.id(), req.name(), outcome, outcome.content());
 
-        // todo_write 后处理
+        // todo_write 成功后激活 TodoNavigator 并记录快照
         if (TODO_WRITE.equals(req.name()) && outcome.success()) {
             if (!state.hasTodoBeenUsed()) {
                 state.setTodoBeenUsed(true);
@@ -163,9 +162,7 @@ public class ToolExecutionHandler {
         return result;
     }
 
-    /**
-     * 合成错误结果（用于并行异常隔离）。
-     */
+    /** 合成错误结果（用于并行异常隔离）。 */
     private ToolExecutionResult syntheticError(ToolExecutionRequest req, String errorMsg,
                                                TurnRecord rec, SessionState state) {
         ToolOutcome outcome = ToolOutcome.failure(errorMsg);
@@ -173,6 +170,7 @@ public class ToolExecutionHandler {
         return ToolExecutionResult.of(req.id(), req.name(), outcome, outcome.content());
     }
 
+    /** 解析工具参数 JSON 为 Map。 */
     private Map<String, Object> parseArgs(String json) {
         if (json == null || json.isBlank()) return Map.of();
         try {
@@ -184,9 +182,7 @@ public class ToolExecutionHandler {
         }
     }
 
-    /**
-     * 关闭线程池。
-     */
+    /** 关闭线程池。 */
     public void shutdown() {
         parallelExecutor.shutdown();
         try {

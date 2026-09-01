@@ -17,7 +17,7 @@ import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Checkpoint 存储。每轮 todo_write 后保存快照。
+ * Checkpoint 存储。在 todo_write 成功后保存会话快照到磁盘。
  */
 public class CheckpointStore {
     private static final Logger log = LoggerFactory.getLogger(CheckpointStore.class);
@@ -38,7 +38,7 @@ public class CheckpointStore {
     }
 
     /**
-     * 保存 checkpoint。
+     * 保存 checkpoint 到磁盘。
      */
     public Checkpoint save(String sessionId, int turnCount,
                            java.util.List<TodoItem> todoSnapshot,

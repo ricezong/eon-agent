@@ -60,5 +60,3 @@ public class ToolDescriptor {
         return new ToolDescriptor(spec.name(), spec.description(), permission, spec, executor);
     }
 }
-
-
