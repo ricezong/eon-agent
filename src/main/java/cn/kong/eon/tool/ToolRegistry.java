@@ -155,9 +155,9 @@ public class ToolRegistry implements ToolSupport {
 
     /** 本地工具是否会把调用参数完整落盘。MCP 工具一律视为否。 */
     @Override
-    public boolean persistsArguments(String name) {
+    public boolean persistsArgs(String name) {
         ToolDescriptor descriptor = tools.get(name);
-        return descriptor != null && descriptor.getExecutor().persistsArguments();
+        return descriptor != null && descriptor.getExecutor().persistsArgs();
     }
 
     /** 白名单（只读）。 */

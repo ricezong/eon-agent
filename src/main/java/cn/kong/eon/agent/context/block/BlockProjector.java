@@ -149,13 +149,16 @@ public final class BlockProjector {
         return sb.toString();
     }
 
+    /** 块 id 的组内分隔符，id = groupId + 分隔符 + ordinal */
+    private static final String ID_SEPARATOR = "#";
+
     private static ContextBlock.Builder base(BlockKind kind,
                                              Retention retention,
                                              String groupId,
                                              int ordinal,
                                              int turn) {
         return ContextBlock.builder()
-                .id(groupId + "#" + ordinal)
+                .id(groupId + ID_SEPARATOR + ordinal)
                 .kind(kind)
                 .retention(retention)
                 .groupId(groupId)

@@ -8,13 +8,10 @@ package cn.kong.eon.agent.context;
 @FunctionalInterface
 public interface ToolSupport {
 
-    /** 无工具可用时的实现。 */
-    ToolSupport NONE = toolName -> false;
-
     /**
      * 工具是否会把它的调用参数完整持久化到磁盘。
      * 为 true 时，该工具调用成功的 TOOL_ARGS 块被标记为 recoverable，
      * 清空其内容不损失信息。
      */
-    boolean persistsArguments(String toolName);
+    boolean persistsArgs(String toolName);
 }

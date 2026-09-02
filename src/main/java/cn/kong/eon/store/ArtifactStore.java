@@ -1,6 +1,6 @@
 package cn.kong.eon.store;
 
-import cn.kong.eon.agent.context.ArtifactSink;
+import cn.kong.eon.agent.context.StoreSupport;
 import cn.kong.eon.model.ArtifactRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,9 +14,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Artifact 存储。将大文本工具结果落盘，上下文只保留引用。
- * 实现 {@link ArtifactSink} 接口供入站管线调用。
+ * 实现 {@link StoreSupport} 接口供入站管线调用。
  */
-public class ArtifactStore implements ArtifactSink {
+public class ArtifactStore implements StoreSupport {
     private static final Logger log = LoggerFactory.getLogger(ArtifactStore.class);
 
     private final Path artifactDir;

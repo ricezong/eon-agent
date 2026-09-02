@@ -63,7 +63,7 @@ public class WriteFileTool implements ToolExecutor {
      * 上下文里那份参数与磁盘文件逐字节重复，可无损卸载。
      */
     @Override
-    public boolean persistsArguments() {
+    public boolean persistsArgs() {
         return true;
     }
 

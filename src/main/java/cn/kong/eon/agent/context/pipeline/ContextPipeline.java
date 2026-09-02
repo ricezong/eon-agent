@@ -1,6 +1,6 @@
 package cn.kong.eon.agent.context.pipeline;
 
-import cn.kong.eon.agent.context.ArtifactSink;
+import cn.kong.eon.agent.context.StoreSupport;
 import cn.kong.eon.agent.context.ToolSupport;
 import cn.kong.eon.agent.context.block.BlockProjector;
 import cn.kong.eon.agent.context.block.ContextBlock;
@@ -18,19 +18,21 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class ContextPipeline {
 
+    private static final String GROUP_ID_PREFIX = "g";
+
     private final List<IngestRule> rules;
-    private final ArtifactSink artifactSink;
+    private final StoreSupport storeSupport;
     private final ToolSupport toolSupport;
     private final int snipKeepChars;
     private final AtomicInteger groupSeq = new AtomicInteger(0);
 
     public ContextPipeline(List<IngestRule> rules,
-                           ArtifactSink artifactSink,
+                           StoreSupport storeSupport,
                            ToolSupport toolSupport,
                            int snipKeepChars) {
         this.rules = new ArrayList<>(rules);
-        this.artifactSink = Objects.requireNonNull(artifactSink);
-        this.toolSupport = Objects.requireNonNull(toolSupport);
+        this.storeSupport = storeSupport;
+        this.toolSupport = toolSupport;
         this.snipKeepChars = snipKeepChars;
     }
 
@@ -42,11 +44,14 @@ public class ContextPipeline {
      */
     public List<ContextBlock> ingest(ChatMessage msg, int turn, Set<String> succeededToolCalls) {
         IngestContext ctx = new IngestContext(
-                artifactSink, toolSupport, snipKeepChars,
+                storeSupport,
+                toolSupport,
+                snipKeepChars,
                 succeededToolCalls != null ? succeededToolCalls : Collections.emptySet(),
                 turn);
 
-        String groupId = "g" + groupSeq.incrementAndGet();
+        String groupId = GROUP_ID_PREFIX + groupSeq.incrementAndGet();
+        // 消息分块
         List<ContextBlock> blocks = BlockProjector.explode(msg, groupId, turn);
         for (ContextBlock block : blocks) {
             for (IngestRule rule : rules) {

@@ -20,6 +20,10 @@ import java.util.Set;
 public class ContextWindow {
     private static final Logger log = LoggerFactory.getLogger(ContextWindow.class);
 
+    /** 合成结果块的 id / groupId 后缀，用于与真实块区分 */
+    private static final String SYNTHETIC_ID_SUFFIX = "#synthetic";
+    private static final String SYNTHETIC_GROUP_SUFFIX = "#syn-";
+
     private final List<ContextBlock> blocks = new ArrayList<>();
 
     /** 追加块。 */
@@ -131,10 +135,10 @@ public class ContextWindow {
                     && block.toolCallId() != null
                     && !seenResultIds.contains(block.toolCallId())) {
                 withSynthetics.add(ContextBlock.builder()
-                        .id(block.id() + "#synthetic")
+                        .id(block.id() + SYNTHETIC_ID_SUFFIX)
                         .kind(BlockKind.TOOL_RESULT)
                         .retention(Retention.COMPRESSIBLE)
-                        .groupId(block.groupId() + "#syn-" + block.toolCallId())
+                        .groupId(block.groupId() + SYNTHETIC_GROUP_SUFFIX + block.toolCallId())
                         .ordinal(block.ordinal())
                         .turn(block.turn())
                         .toolName(block.toolName())

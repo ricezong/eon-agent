@@ -17,9 +17,6 @@ public class ToolResultFormatRule implements IngestRule {
 
     /**
      * 只作用于工具结果块。
-     * 幂等由结构保证，不靠内容判据：管线是单向闸门，块进窗口后不再回到管线
-     * （历史恢复由 explode 直入窗口，压缩由 BlockDisposer 直接改写），
-     * 而每次入站的块都由不可变的 ChatMessage 重新爆炸得到，文本不带上一轮处置的痕迹。
      */
     @Override
     public boolean appliesTo(ContextBlock block, IngestContext ctx) {

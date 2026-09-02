@@ -23,8 +23,8 @@ public class ToolArgsRecoverRule implements IngestRule {
 
     @Override
     public void apply(ContextBlock block, IngestContext ctx) {
-        boolean persisted = block.toolName() != null
-                && ctx.toolSupport().persistsArguments(block.toolName());
+        // 当前具是否会把它的调用参数完整持久化到磁盘。落盘的话 TOOL_ARGS 可以替换为占位符
+        boolean persisted = block.toolName() != null && ctx.toolSupport().persistsArgs(block.toolName());
         block.setRecoverable(persisted && ctx.succeeded(block.toolCallId()));
     }
 }

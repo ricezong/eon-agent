@@ -17,7 +17,6 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -36,7 +35,7 @@ public class JsonlStore {
     public JsonlStore(Path jsonlFile, ObjectMapper objectMapper, ContextPipeline pipeline) {
         this.jsonlFile = jsonlFile;
         this.mapper = objectMapper;
-        this.pipeline = Objects.requireNonNull(pipeline, "pipeline");
+        this.pipeline = pipeline;
         try {
             Files.createDirectories(jsonlFile.getParent());
             if (Files.exists(jsonlFile)) {

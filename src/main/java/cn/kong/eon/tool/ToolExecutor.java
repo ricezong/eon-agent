@@ -22,7 +22,7 @@ public interface ToolExecutor {
      * 返回 true 时，上下文层会将该工具的 arguments 块标记为可无损卸载。
      * 典型场景：write 类工具的参数与磁盘文件逐字节重复。默认 false。
      */
-    default boolean persistsArguments() {
+    default boolean persistsArgs() {
         return false;
     }
 
