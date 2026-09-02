@@ -3,8 +3,7 @@ package cn.kong.eon.agent.context.pipeline;
 import cn.kong.eon.agent.context.block.ContextBlock;
 
 /**
- * 入站规则。在消息进入上下文的那一刻对内容块做处置，不依赖水位。
- * 规则按在 {@link ContextPipeline} 构造时列表中的声明顺序执行。
+ * 入站规则。在消息进入上下文的那一刻对内容块做处置。
  */
 public interface IngestRule {
 

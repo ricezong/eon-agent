@@ -316,8 +316,7 @@ public class EonAgent {
     private void initRun(SessionState state) {
         logger.agentStart(state);
         String tagged = "<user_query>\n" + state.getUserInput() + "\n</user_query>";
-        // 轮次 0：用户输入不属于任何已执行的 turn
-        jsonlStore.append(UserMessage.from(tagged), 0);
+        jsonlStore.append(UserMessage.from(tagged));
     }
 
     /** 输出 Turn 日志。 */

@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 入站管线。所有内容进入上下文的唯一关卡。
- * 规则按列表声明顺序执行，新加一种处置方式 = 加一条规则，不需要改动调用方。
+ * 规则按列表声明顺序执行。
  */
 public class ContextPipeline {
 
@@ -29,8 +29,8 @@ public class ContextPipeline {
                            ToolSupport toolSupport,
                            int snipKeepChars) {
         this.rules = new ArrayList<>(rules);
-        this.artifactSink = artifactSink != null ? artifactSink : ArtifactSink.NONE;
-        this.toolSupport = toolSupport != null ? toolSupport : ToolSupport.NONE;
+        this.artifactSink = Objects.requireNonNull(artifactSink);
+        this.toolSupport = Objects.requireNonNull(toolSupport);
         this.snipKeepChars = snipKeepChars;
     }
 

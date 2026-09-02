@@ -60,8 +60,8 @@ public class JsonlStore {
     }
 
     /** 无工具上下文时的简化重载。 */
-    public synchronized void append(ChatMessage message, int turn) {
-        append(message, turn, Collections.emptySet());
+    public synchronized void append(ChatMessage message) {
+        append(message, 0, Collections.emptySet());
     }
 
     /** 获取内存窗口，压缩策略与度量直接作用于它。 */

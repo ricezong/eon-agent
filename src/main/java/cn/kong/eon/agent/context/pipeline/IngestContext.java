@@ -22,11 +22,10 @@ public final class IngestContext {
                          int snipKeepChars,
                          Set<String> succeededToolCallIds,
                          int turn) {
-        this.artifactSink = artifactSink != null ? artifactSink : ArtifactSink.NONE;
-        this.toolSupport = toolSupport != null ? toolSupport : ToolSupport.NONE;
+        this.artifactSink = artifactSink;
+        this.toolSupport = toolSupport;
         this.snipKeepChars = snipKeepChars;
-        this.succeededToolCallIds = succeededToolCallIds != null
-                ? succeededToolCallIds : Collections.emptySet();
+        this.succeededToolCallIds = succeededToolCallIds != null ? succeededToolCallIds : Collections.emptySet();
         this.turn = turn;
     }
 
