@@ -1,5 +1,6 @@
 package cn.kong.eon.config;
 
+import cn.kong.eon.agent.context.block.CompressionLevel;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -29,7 +30,6 @@ public class AgentConfig {
     private WebSearchConfig webSearch;
     private ModeConfig mode;
     private BudgetConfig budget;
-    private CompressionConfig compression;
     private MemoryConfig memory;
 
     /** 从输入流加载配置，执行校验和环境变量解析。 */
@@ -66,7 +66,6 @@ public class AgentConfig {
         if (llm == null) llm = new LlmConfig();
         if (context == null) context = new ContextConfig();
         if (context.getCompression() == null) context.setCompression(new ContextConfig.Compression());
-        if (context.getOffload() == null) context.setOffload(new ContextConfig.Offload());
         if (loop == null) loop = new LoopConfig();
         if (loopDetect == null) loopDetect = new LoopDetectConfig();
         if (retry == null) retry = new RetryConfig();
@@ -76,7 +75,6 @@ public class AgentConfig {
         if (webSearch == null) webSearch = new WebSearchConfig();
         if (mode == null) mode = new ModeConfig();
         if (budget == null) budget = new BudgetConfig();
-        if (compression == null) compression = new CompressionConfig();
         if (memory == null) memory = new MemoryConfig();
     }
 
@@ -159,10 +157,6 @@ public class AgentConfig {
         return budget;
     }
 
-    public int getSummarizeTurns() {
-        return compression != null ? compression.summarizeTurns : 4;
-    }
-
     public MemoryConfig getMemory() {
         return memory;
     }
@@ -211,10 +205,6 @@ public class AgentConfig {
         this.budget = budget;
     }
 
-    public void setCompression(CompressionConfig compression) {
-        this.compression = compression;
-    }
-
     public void setMemory(MemoryConfig memory) {
         this.memory = memory;
     }
@@ -229,19 +219,6 @@ public class AgentConfig {
 
         public void setCheckpointEnabled(boolean checkpointEnabled) {
             this.checkpointEnabled = checkpointEnabled;
-        }
-    }
-
-    /** 上下文压缩配置。 */
-    public static class CompressionConfig {
-        private int summarizeTurns = 4;
-
-        public int getSummarizeTurns() {
-            return summarizeTurns;
-        }
-
-        public void setSummarizeTurns(int summarizeTurns) {
-            this.summarizeTurns = summarizeTurns;
         }
     }
 
@@ -328,95 +305,84 @@ public class AgentConfig {
         private int maxTokens = 120000;
         private String systemPromptPath = "prompts/system_prompt.md";
         private int summarizeMaxInputChars = 50000;
-        private Compression compression;
-
         private int snipKeepChars = 2000;
         private int summarizeMaxOutputChars = 2000;
-        private int tailGuardMinTurns = 3;
-        /** 无损参数卸载配置 */
-        private Offload offload = new Offload();
-        /** 预算感知配置 */
-        private BudgetAware budgetAware = new BudgetAware();
+        private Compression compression = new Compression();
 
+        /**
+         * 压缩机制配置。各项含义见
+         * {@link cn.kong.eon.agent.context.policy.CompressionSettings}，取值约束在那里统一校验。
+         */
         public static class Compression {
-            private double snipThreshold = 0.65;
-            private double pruneThreshold = 0.82;
-            private double summarizeThreshold = 0.95;
+            /** SNIP 档水位下限 */
+            private double snipWaterLevel = 0.65;
+            /** PRUNE 档水位下限 */
+            private double pruneWaterLevel = 0.80;
+            /** SUMMARIZE 档水位下限 */
+            private double summarizeWaterLevel = 0.92;
+            /** 轮数触发周期：轮次序号为其整数倍时命中轮数入口 */
+            private int turnInterval = 7;
+            /** 轮数入口命中且水位三档均未命中时执行的档位 */
+            private CompressionLevel turnLevel = CompressionLevel.SNIP;
+            /** 尾部保护区轮数：最近这些轮的内容不参与任何档位 */
+            private int tailGuardTurns = 3;
+            /** 参数块骨架化的最小字符数，短参数骨架化反而更长 */
+            private int offloadMinChars = 2000;
 
-            public double getSnipThreshold() {
-                return snipThreshold;
+            public double getSnipWaterLevel() {
+                return snipWaterLevel;
             }
 
-            public void setSnipThreshold(double v) {
-                this.snipThreshold = v;
+            public void setSnipWaterLevel(double v) {
+                this.snipWaterLevel = v;
             }
 
-            public double getPruneThreshold() {
-                return pruneThreshold;
+            public double getPruneWaterLevel() {
+                return pruneWaterLevel;
             }
 
-            public void setPruneThreshold(double v) {
-                this.pruneThreshold = v;
+            public void setPruneWaterLevel(double v) {
+                this.pruneWaterLevel = v;
             }
 
-            public double getSummarizeThreshold() {
-                return summarizeThreshold;
+            public double getSummarizeWaterLevel() {
+                return summarizeWaterLevel;
             }
 
-            public void setSummarizeThreshold(double v) {
-                this.summarizeThreshold = v;
-            }
-        }
-
-        /**
-         * 无损参数卸载配置。只处理内容在磁盘上另有完整副本的参数块，零信息损失。
-         * 不等水位：越早做，中间每轮省下的重复发送成本越多。
-         */
-        public static class Offload {
-            private boolean enabled = true;
-        /** 参数块超过此字符数才卸载，短参数骨架化反而更长。 */
-            private int minChars = 2000;
-
-            public boolean isEnabled() {
-                return enabled;
+            public void setSummarizeWaterLevel(double v) {
+                this.summarizeWaterLevel = v;
             }
 
-            public void setEnabled(boolean v) {
-                this.enabled = v;
+            public int getTurnInterval() {
+                return turnInterval;
             }
 
-            public int getMinChars() {
-                return minChars;
+            public void setTurnInterval(int v) {
+                this.turnInterval = v;
             }
 
-            public void setMinChars(int v) {
-                this.minChars = v;
-            }
-        }
-
-        /**
-         * 预算感知配置。按当前单轮成本估算剩余预算可支撑的轮数。
-         * 水位是瞬时大小，预算是大小的积分——预算会先于水位耗尽。
-         */
-        public static class BudgetAware {
-            private boolean enabled = true;
-            /** 剩余预算支撑不了这么多轮时，触发无损处置 */
-            private double minRemainingTurns = 8.0;
-
-            public boolean isEnabled() {
-                return enabled;
+            public CompressionLevel getTurnLevel() {
+                return turnLevel;
             }
 
-            public void setEnabled(boolean v) {
-                this.enabled = v;
+            public void setTurnLevel(CompressionLevel v) {
+                this.turnLevel = v;
             }
 
-            public double getMinRemainingTurns() {
-                return minRemainingTurns;
+            public int getTailGuardTurns() {
+                return tailGuardTurns;
             }
 
-            public void setMinRemainingTurns(double v) {
-                this.minRemainingTurns = v;
+            public void setTailGuardTurns(int v) {
+                this.tailGuardTurns = v;
+            }
+
+            public int getOffloadMinChars() {
+                return offloadMinChars;
+            }
+
+            public void setOffloadMinChars(int v) {
+                this.offloadMinChars = v;
             }
         }
 
@@ -444,14 +410,6 @@ public class AgentConfig {
             this.summarizeMaxInputChars = v;
         }
 
-        public Compression getCompression() {
-            return compression;
-        }
-
-        public void setCompression(Compression v) {
-            this.compression = v;
-        }
-
         public int getSnipKeepChars() {
             return snipKeepChars;
         }
@@ -468,28 +426,12 @@ public class AgentConfig {
             this.summarizeMaxOutputChars = v;
         }
 
-        public int getTailGuardMinTurns() {
-            return tailGuardMinTurns;
+        public Compression getCompression() {
+            return compression;
         }
 
-        public void setTailGuardMinTurns(int v) {
-            this.tailGuardMinTurns = v;
-        }
-
-        public Offload getOffload() {
-            return offload;
-        }
-
-        public void setOffload(Offload v) {
-            this.offload = v;
-        }
-
-        public BudgetAware getBudgetAware() {
-            return budgetAware;
-        }
-
-        public void setBudgetAware(BudgetAware v) {
-            this.budgetAware = v;
+        public void setCompression(Compression v) {
+            this.compression = v;
         }
     }
 

@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 /**
  * 大工具结果落盘（入站规则）。
  * 原文超过阈值（snipKeepChars × 3）时完整落盘为 artifact，块里只留头尾摘要 + 引用。
+ * 落盘成功后该块即视为可恢复，后续档位清空其内容不损失信息。
  */
 public class ArtifactSpillRule implements IngestRule {
     private static final Logger log = LoggerFactory.getLogger(ArtifactSpillRule.class);
@@ -40,7 +41,7 @@ public class ArtifactSpillRule implements IngestRule {
 
         block.setText(summary);
         block.setRefId(ref.getRefId());
-        block.markOffloaded();
+        block.setRecoverable(true);
         log.info("[入站] {} 落盘: {} ({} -> {} 字符)",
                 block.toolName(), ref.getRefId(), raw.length(), summary.length());
     }

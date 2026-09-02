@@ -4,7 +4,7 @@ import cn.kong.eon.agent.context.block.BlockKind;
 import cn.kong.eon.agent.context.block.ContextBlock;
 
 /**
- * 工具结果截断（入站规则）。超过阈值的工具结果按头尾保留截断。
+ * 工具结果格式化（入站规则）。为工具结果套上统一的展示外壳，附带执行状态与落盘引用。
  */
 public class ToolResultFormatRule implements IngestRule {
 
@@ -28,13 +28,11 @@ public class ToolResultFormatRule implements IngestRule {
         int headChars = keepChars / 2;
         int tailChars = keepChars - headChars;
 
-        boolean success = ctx.succeeded(block.toolCallId());
-        // 把执行结果记到块上：无损卸载规则据此判断"参数是否真的落盘"
-        block.setSuccess(success);
+        boolean succeeded = ctx.succeeded(block.toolCallId());
 
         StringBuilder sb = new StringBuilder(display.length() + 160);
         sb.append("[Tool result] ").append(toolName).append('\n');
-        sb.append("├─ 状态: ").append(success ? "成功" : "失败").append('\n');
+        sb.append("├─ 状态: ").append(succeeded ? "成功" : "失败").append('\n');
         sb.append("├─ 内容:\n").append(display).append('\n');
 
         if (refId != null) {

@@ -9,8 +9,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 上下文窗口。块序列的一等持有者。
@@ -26,14 +27,9 @@ public class ContextWindow {
         blocks.addAll(newBlocks);
     }
 
-    /** 可变的块列表视图，供规则就地改写。 */
+    /** 块列表，供处置逻辑就地改写。 */
     public List<ContextBlock> blocks() {
         return blocks;
-    }
-
-    /** 只读视图 */
-    public List<ContextBlock> view() {
-        return Collections.unmodifiableList(blocks);
     }
 
     public int size() {
@@ -42,10 +38,6 @@ public class ContextWindow {
 
     public boolean isEmpty() {
         return blocks.isEmpty();
-    }
-
-    public void clear() {
-        blocks.clear();
     }
 
     /** 组装为 LangChain4j 消息序列。 */
@@ -63,16 +55,17 @@ public class ContextWindow {
     }
 
     /**
-     * 尾部保护区起始轮次：turn >= cutoff 的块不参与任何压缩。
+     * 尾部保护区起始轮次：turn >= cutoff 的块不参与任何档位的处置。
+     * 保护最近 tailGuardTurns 轮，即 latestTurn 与 latestTurn - tailGuardTurns + 1 之间的所有轮次。
      *
      * @param tailGuardTurns 保护的最近轮数
      */
     public int cutoffTurn(int tailGuardTurns) {
-        return latestTurn() - tailGuardTurns;
+        return latestTurn() - tailGuardTurns + 1;
     }
 
     /**
-     * 删除 cutoffTurn 之前的所有可压缩块，返回被删除的块。
+     * 删除 cutoffTurn 之前的所有可改写块，返回被删除的块。
      * {@link Retention#VERBATIM} 块自动保留。
      */
     public List<ContextBlock> removeBefore(int cutoffTurn) {
@@ -95,7 +88,7 @@ public class ContextWindow {
      * 删除块会切断配对，LLM API 对此零容忍，所以这是窗口的结构不变式。
      */
     public void repairPairing() {
-        java.util.Set<String> callIds = new java.util.HashSet<>();
+        Set<String> callIds = new HashSet<>();
         for (ContextBlock block : blocks) {
             if (block.kind() == BlockKind.TOOL_ARGS && block.toolCallId() != null) {
                 callIds.add(block.toolCallId());
@@ -103,8 +96,8 @@ public class ContextWindow {
         }
 
         List<ContextBlock> repaired = new ArrayList<>(blocks.size() + 4);
-        java.util.Set<String> seenCallIds = new java.util.HashSet<>();
-        java.util.Set<String> seenResultIds = new java.util.HashSet<>();
+        Set<String> seenCallIds = new HashSet<>();
+        Set<String> seenResultIds = new HashSet<>();
         int dropped = 0;
         int inserted = 0;
 
@@ -146,7 +139,7 @@ public class ContextWindow {
                         .turn(block.turn())
                         .toolName(block.toolName())
                         .toolCallId(block.toolCallId())
-                        .text("[合成] 工具结果缺失（可能被压缩或卸载），请重新调用此工具获取最新结果")
+                        .text("[合成] 工具结果缺失，请重新调用此工具获取最新结果")
                         .build());
                 inserted++;
             }
@@ -167,7 +160,7 @@ public class ContextWindow {
         return total;
     }
 
-    /** 相对入站已节省的字符总数（无损卸载 + 有损压缩）。 */
+    /** 相对入站已节省的字符总数。 */
     public long savedChars() {
         long total = 0;
         for (ContextBlock block : blocks) total += block.savedChars();

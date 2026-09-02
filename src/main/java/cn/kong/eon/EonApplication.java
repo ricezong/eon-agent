@@ -4,13 +4,12 @@ import cn.kong.eon.agent.EonAgent;
 import cn.kong.eon.agent.context.pipeline.ArtifactSpillRule;
 import cn.kong.eon.agent.context.pipeline.ContextPipeline;
 import cn.kong.eon.agent.context.pipeline.IngestRule;
+import cn.kong.eon.agent.context.pipeline.ToolArgsRecoverRule;
 import cn.kong.eon.agent.context.pipeline.ToolResultFormatRule;
-import cn.kong.eon.agent.context.policy.ArgumentOffloadRule;
-import cn.kong.eon.agent.context.policy.ContextPolicy;
-import cn.kong.eon.agent.context.policy.ContextRule;
-import cn.kong.eon.agent.context.policy.PruneRule;
-import cn.kong.eon.agent.context.policy.SnipRule;
-import cn.kong.eon.agent.context.policy.SummarizeRule;
+import cn.kong.eon.agent.context.policy.BlockDisposer;
+import cn.kong.eon.agent.context.policy.CompressionPolicy;
+import cn.kong.eon.agent.context.policy.CompressionSettings;
+import cn.kong.eon.agent.context.policy.ContextSummarizer;
 import cn.kong.eon.agent.hook.postmodel.LoopDetectHook;
 import cn.kong.eon.agent.hook.posttool.CheckpointHook;
 import cn.kong.eon.agent.hook.posttool.FailureBreakerHook;
@@ -75,7 +74,7 @@ public class EonApplication {
     private final MemoryStore memoryStore;
     private final JsonlStore jsonlStore;
     private final ContextPipeline contextPipeline;
-    private final ContextPolicy contextPolicy;
+    private final CompressionPolicy compressionPolicy;
     private final ToolContext toolContext;
     private final HttpConfig httpConfig;
     private final LoopDetector loopDetector;
@@ -152,7 +151,7 @@ public class EonApplication {
         // 入站管线必须在 JsonlStore 记录任何消息之前注入，否则消息会绕过关卡直接进窗口。
         this.contextPipeline = createContextPipeline();
         jsonlStore.setPipeline(contextPipeline);
-        this.contextPolicy = createContextPolicy();
+        this.compressionPolicy = createCompressionPolicy();
 
         this.agent = new EonAgent(
                 config, llmClient, toolRegistry,
@@ -245,57 +244,50 @@ public class EonApplication {
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * 创建入站管线。规则按声明顺序执行：先 ArtifactSpill 落盘大结果，
-     * 再 ToolResultFormat 套格式化外壳。参数卸载已移至在站策略。
+     * 创建入站管线。规则按声明顺序执行：ArtifactSpill 落盘大结果，
+     * ToolResultFormat 套格式化外壳，ToolArgsRecover 标记参数块的可恢复性。
      */
     private ContextPipeline createContextPipeline() {
-        var ctxCfg = config.getContext();
-        int snipKeepChars = ctxCfg.getSnipKeepChars();
-        int offloadMinChars = ctxCfg.getOffload().getMinChars();
+        int snipKeepChars = config.getContext().getSnipKeepChars();
 
         List<IngestRule> rules = new ArrayList<>();
         rules.add(new ArtifactSpillRule());
         rules.add(new ToolResultFormatRule());
+        rules.add(new ToolArgsRecoverRule());
 
-        log.info("入站管线已装配: {} 条规则 | 参数卸载已移至在站策略 (阈值 {} 字符)",
-                rules.size(), offloadMinChars);
+        log.info("入站管线已装配: {} 条规则", rules.size());
 
         return new ContextPipeline(rules, artifactStore, toolRegistry, snipKeepChars);
     }
 
-    /**
-     * 创建上下文策略机。集中管理在站处置规则：无损参数卸载 + 有损三级阶梯压缩。
-     */
-    private ContextPolicy createContextPolicy() {
+    /** 创建压缩策略：档位判定 + 块处置 + 摘要生成。 */
+    private CompressionPolicy createCompressionPolicy() {
         var ctxCfg = config.getContext();
         var comp = ctxCfg.getCompression();
-        int summarizeTurns = config.getSummarizeTurns();
 
-        List<ContextRule> rules = new ArrayList<>();
+        CompressionSettings settings = new CompressionSettings(
+                comp.getSnipWaterLevel(),
+                comp.getPruneWaterLevel(),
+                comp.getSummarizeWaterLevel(),
+                comp.getTurnInterval(),
+                comp.getTurnLevel(),
+                comp.getTailGuardTurns(),
+                ctxCfg.getSnipKeepChars(),
+                comp.getOffloadMinChars(),
+                ctxCfg.getSummarizeMaxInputChars(),
+                ctxCfg.getSummarizeMaxOutputChars());
 
-        // ── 无损级：参数卸载（水位最低，先于有损压缩） ──
-        if (ctxCfg.getOffload().isEnabled()) {
-            rules.add(new ArgumentOffloadRule(
-                    comp.getSnipThreshold(), summarizeTurns,
-                    ctxCfg.getOffload().getMinChars(),
-                    toolRegistry, objectMapper));
-        }
+        BlockDisposer disposer = new BlockDisposer(settings, objectMapper);
+        ContextSummarizer summarizer = new ContextSummarizer(
+                llmClient, transcriptPath,
+                ctxCfg.getSummarizeMaxInputChars(), ctxCfg.getSummarizeMaxOutputChars());
 
-        // ── 有损三级阶梯：水位 / 轮数双入口，倍率形成阶梯 ──
-        rules.add(new SnipRule(comp.getSnipThreshold(), summarizeTurns, ctxCfg.getSnipKeepChars()));
-        rules.add(new PruneRule(comp.getPruneThreshold(), summarizeTurns));
-        rules.add(new SummarizeRule(comp.getSummarizeThreshold(), summarizeTurns,
-                ctxCfg.getSummarizeMaxInputChars(), ctxCfg.getSummarizeMaxOutputChars(),
-                llmClient, transcriptPath));
+        log.info("压缩策略已装配: 水位 {}/{}/{} | 轮数周期 {} 档位 {} | 尾部保护 {} 轮 | 参数骨架化阈值 {} 字符",
+                comp.getSnipWaterLevel(), comp.getPruneWaterLevel(), comp.getSummarizeWaterLevel(),
+                comp.getTurnInterval(), comp.getTurnLevel(),
+                comp.getTailGuardTurns(), comp.getOffloadMinChars());
 
-        ContextPolicy policy = new ContextPolicy(rules);
-        log.info("上下文策略已装配: {} 条规则 | 参数卸载 {} (阈值 {} 字符) | 有损阈值 {}/{}/{} | 轮数节奏 {}",
-                rules.size(),
-                ctxCfg.getOffload().isEnabled() ? "启用" : "停用",
-                ctxCfg.getOffload().getMinChars(),
-                comp.getSnipThreshold(), comp.getPruneThreshold(), comp.getSummarizeThreshold(),
-                summarizeTurns);
-        return policy;
+        return new CompressionPolicy(settings, disposer, summarizer);
     }
 
     /** 创建工具注册表，注册所有内置工具。 */
@@ -368,7 +360,7 @@ public class EonApplication {
         // PreModel Hooks
         agent.addHook(new BudgetHook(config));
         agent.addHook(new TodoNavigatorHook(todoStore));
-        agent.addHook(new ContextCompactHook(config, contextPolicy));
+        agent.addHook(new ContextCompactHook(compressionPolicy));
 
         // PostModel Hooks
         agent.addHook(new LoopDetectHook(loopDetector));

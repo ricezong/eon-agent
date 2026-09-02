@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * 上下文度量。水位、预算投影、构成分解。
- * 被 ContextPolicy（触发规则）和 ContextCompactHook（日志输出）消费。
+ * 被档位判定（取水位）与 ContextCompactHook（日志输出）消费。
  */
 public final class ContextMetrics {
 

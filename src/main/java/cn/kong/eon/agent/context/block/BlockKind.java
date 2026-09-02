@@ -20,10 +20,5 @@ public enum BlockKind {
     TOOL_RESULT,
 
     /** 兜底类型 */
-    OTHER;
-
-    /** 是否属于工具配对结构（tool_use / tool_result）。 */
-    public boolean isToolPaired() {
-        return this == TOOL_ARGS || this == TOOL_RESULT;
-    }
+    OTHER
 }

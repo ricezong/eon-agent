@@ -3,19 +3,17 @@ package cn.kong.eon.model;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * 压缩状态。记录最新摘要与压缩节奏，供下一轮决策使用。
- * 块级状态（已截断/已裁剪）住在块自身上，不在这里维护。
+ * 压缩状态。记录最新摘要与压缩节奏。
+ * 块级状态（已施加的处置档位）住在块自身上，不在这里维护。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CompressionState {
     private String lastSummary;
-    private int summarizedMessageCount;  // 累计已摘要删除的消息数
-    private double lastWaterLevel;
-    private int lastTurnCompressed;   // 上次轮数触发压缩时的 turnCount，0=从未触发
+    private int summarizedMessageCount;
+    private int lastTurnCompressed;
 
     public CompressionState() {
         this.summarizedMessageCount = 0;
-        this.lastWaterLevel = 0.0;
         this.lastTurnCompressed = 0;
     }
 
@@ -27,6 +25,7 @@ public class CompressionState {
         this.lastSummary = lastSummary;
     }
 
+    /** 累计已摘要删除的块数。 */
     public int getSummarizedMessageCount() {
         return summarizedMessageCount;
     }
@@ -35,14 +34,7 @@ public class CompressionState {
         this.summarizedMessageCount = summarizedMessageCount;
     }
 
-    public double getLastWaterLevel() {
-        return lastWaterLevel;
-    }
-
-    public void setLastWaterLevel(double lastWaterLevel) {
-        this.lastWaterLevel = lastWaterLevel;
-    }
-
+    /** 上次产生实际压缩效果的轮次序号，供观测与日志使用，不参与档位判定。 */
     public int getLastTurnCompressed() {
         return lastTurnCompressed;
     }

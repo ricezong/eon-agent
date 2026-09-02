@@ -2,28 +2,25 @@ package cn.kong.eon.agent.hook.premodel;
 
 import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.agent.context.ContextWindow;
-import cn.kong.eon.agent.context.policy.ContextPolicy;
-import cn.kong.eon.agent.context.policy.PolicyResult;
+import cn.kong.eon.agent.context.policy.CompressionPolicy;
+import cn.kong.eon.agent.context.policy.CompressionResult;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
-import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.CompressionState;
 import cn.kong.eon.model.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 上下文策略执行点（PreModel, order=100）。
- * 调用 {@link ContextPolicy#runEligible} 执行满足触发条件的压缩规则。
+ * 压缩执行点（PreModel, order=100）。每轮调 LLM 前调用
+ * {@link CompressionPolicy#apply} 判定并执行一个压缩档位。
  */
 public class ContextCompactHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(ContextCompactHook.class);
 
-    private final AgentConfig config;
-    private final ContextPolicy policy;
+    private final CompressionPolicy policy;
 
-    public ContextCompactHook(AgentConfig config, ContextPolicy policy) {
-        this.config = config;
+    public ContextCompactHook(CompressionPolicy policy) {
         this.policy = policy;
     }
 
@@ -45,33 +42,17 @@ public class ContextCompactHook implements Hook.PreModelHook {
         }
 
         CompressionState cs = state.getCompressionState();
-        // 尾部保护区
-        int tailGuardTurns = config.getContext().getTailGuardMinTurns();
-        // 距离上次压缩后又执行了几轮
-        int turnsSinceLastCompress = state.getTurnCount() - cs.getLastTurnCompressed();
         int blocksBefore = window.size();
 
-        PolicyResult result = policy.runEligible(
-                window,
-                ctx.metrics(state),
-                cs,
-                turnsSinceLastCompress,
-                tailGuardTurns,
-                state.getTurnCount()
-        );
-
-        // 处置后窗口变了，度量要重算
-        var metricsAfter = ctx.metrics(state);
-        cs.setLastWaterLevel(metricsAfter.waterLevel());
+        CompressionResult result = policy.apply(
+                window, ctx.metrics(state), cs, state.getTurnCount());
 
         if (!result.applied()) {
             return HookResult.ok();
         }
 
-        // 删除块会切断 tool_use / tool_result 配对，由窗口自动修复
-        window.repairPairing();
-        cs.setLastTurnCompressed(state.getTurnCount());
-
+        // 处置后窗口变了，度量要重算
+        var metricsAfter = ctx.metrics(state);
         log.info("[上下文] {} | {} -> {} 块 | {} -> {} 字符 (降幅 {}) | 水位 {} | 投影剩余 {} 轮 | 构成 {}",
                 result.describe(),
                 blocksBefore, window.size(),

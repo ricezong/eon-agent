@@ -6,7 +6,8 @@ import java.util.Objects;
  * 上下文内容块。上下文领域模型的最小单位。
  * 与 LangChain4j 的 ChatMessage 的区别：ChatMessage 是传输类型（一条消息可含多块内容），
  * ContextBlock 是领域类型（一块内容 = 一个可独立处置的单元）。两者通过 BlockProjector 双向投射。
- * 状态（是否已卸载 / 已截断 / 已裁剪）住在块自身上，而不是外部的去重集合里。
+ * 块上携带三个决定其如何被处置的属性：{@link Retention}（能否改写）、
+ * {@code recoverable}（磁盘上有无副本）、{@link CompressionLevel}（已施加的处置档位）。
  */
 public final class ContextBlock {
 
@@ -29,11 +30,10 @@ public final class ContextBlock {
     private String text;
     /** 落盘 artifact 引用 id。非空表示磁盘上有完整副本 */
     private String refId;
-    /** 工具结果块标记的执行成功与否；null 表示未知。无损卸载的安全判据。 */
-    private Boolean success;
-    private boolean offloaded;
-    private boolean snipped;
-    private boolean pruned;
+    /** 磁盘上是否存在完整副本。为 true 时清空内容不损失信息。 */
+    private boolean recoverable;
+    /** 已施加的最高处置档位。档位单调递增，高档位可覆盖低档位的结果。 */
+    private CompressionLevel disposedLevel;
 
     private ContextBlock(Builder b) {
         this.id = Objects.requireNonNull(b.id, "id");
@@ -46,7 +46,7 @@ public final class ContextBlock {
         this.toolCallId = b.toolCallId;
         this.text = b.text != null ? b.text : "";
         this.originalChars = this.text.length();
-        this.offloaded = b.offloaded;
+        this.disposedLevel = CompressionLevel.NONE;
     }
 
     public static Builder builder() {
@@ -93,7 +93,7 @@ public final class ContextBlock {
         return text;
     }
 
-    /** 原地改写内容。压缩与卸载规则通过它作用到块上。 */
+    /** 原地改写内容。压缩处置通过它作用到块上。 */
     public void setText(String newText) {
         this.text = newText != null ? newText : "";
     }
@@ -111,56 +111,40 @@ public final class ContextBlock {
         this.refId = refId;
     }
 
-    /** 执行成功与否；null = 未知 */
-    public Boolean success() {
-        return success;
-    }
-
-    public void setSuccess(Boolean success) {
-        this.success = success;
-    }
-
     /** 入站时的原始字符数 */
     public int originalChars() {
         return originalChars;
     }
 
-    /** 相对入站已节省的字符数（含卸载与有损压缩） */
+    /** 相对入站已节省的字符数（含无损替换与有损压缩） */
     public int savedChars() {
         return Math.max(0, originalChars - text.length());
     }
 
-    // ═══════════════════ 状态 ═══════════════════
+    // ═══════════════════ 处置属性 ═══════════════════
 
-    public boolean isOffloaded() {
-        return offloaded;
+    /** 磁盘上是否存在完整副本。为 true 时清空内容不损失信息。 */
+    public boolean recoverable() {
+        return recoverable;
     }
 
-    public void markOffloaded() {
-        this.offloaded = true;
+    public void setRecoverable(boolean recoverable) {
+        this.recoverable = recoverable;
     }
 
-    public boolean isSnipped() {
-        return snipped;
+    /** 已施加的最高处置档位，未处置过为 {@link CompressionLevel#NONE}。 */
+    public CompressionLevel disposedLevel() {
+        return disposedLevel;
     }
 
-    public void markSnipped() {
-        this.snipped = true;
+    /** 是否已接受过不低于给定档位的处置。已接受则无需重复处置。 */
+    public boolean disposedAtOrAbove(CompressionLevel level) {
+        return disposedLevel.atLeast(level);
     }
 
-    public boolean isPruned() {
-        return pruned;
-    }
-
-    /** Prune 隐含 Snip：被裁剪的块无需再截断 */
-    public void markPruned() {
-        this.pruned = true;
-        this.snipped = true;
-    }
-
-    /** 是否还有处置空间：已被裁剪的块不再参与任何规则。 */
-    public boolean isDisposed() {
-        return pruned;
+    /** 记录已施加的档位，取历史与本次中的较高者，保证单调不回落。 */
+    public void markDisposed(CompressionLevel level) {
+        this.disposedLevel = disposedLevel.higherOf(level);
     }
 
     // ═══════════════════ 构造 ═══════════════════
@@ -175,7 +159,6 @@ public final class ContextBlock {
         private String toolName;
         private String toolCallId;
         private String text;
-        private boolean offloaded;
 
         public Builder id(String v) {
             this.id = v;
@@ -222,11 +205,6 @@ public final class ContextBlock {
             return this;
         }
 
-        public Builder offloaded(boolean v) {
-            this.offloaded = v;
-            return this;
-        }
-
         public ContextBlock build() {
             return new ContextBlock(this);
         }
@@ -239,6 +217,7 @@ public final class ContextBlock {
                 + " turn=" + turn
                 + " chars=" + text.length()
                 + (originalChars != text.length() ? " (原 " + originalChars + ")" : "")
+                + (disposedLevel != CompressionLevel.NONE ? " 档位=" + disposedLevel : "")
                 + '}';
     }
 }

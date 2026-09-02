@@ -1,6 +1,5 @@
 package cn.kong.eon.agent.context.block;
 
-import cn.kong.eon.agent.context.ToolSupport;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -17,6 +16,8 @@ import java.util.Map;
  * 爆炸（explode）：UserMessage → [USER_INPUT]，
  * AiMessage(text, reqs) → [AI_TEXT, TOOL_ARGS × N]，ToolExecutionResultMessage → [TOOL_RESULT]。
  * 组装（assemble）是逆操作：按 groupId 归并，组内按 ordinal 排序。
+ * <p>
+ * 这里只判定 {@link Retention}；"磁盘上有没有副本"由入站管线在落盘或工具执行回填时另行标记。
  */
 public final class BlockProjector {
 
@@ -28,11 +29,9 @@ public final class BlockProjector {
      *
      * @param groupId 消息组 id，同一条消息的所有块共享
      * @param turn    入站轮次
-     * @param lookup  工具元数据查询，决定 TOOL_ARGS 块的保留策略
      */
-    public static List<ContextBlock> explode(ChatMessage msg, String groupId, int turn, ToolSupport lookup) {
+    public static List<ContextBlock> explode(ChatMessage msg, String groupId, int turn) {
         List<ContextBlock> blocks = new ArrayList<>();
-        ToolSupport meta = lookup != null ? lookup : ToolSupport.NONE;
 
         if (msg instanceof UserMessage um) {
             blocks.add(base(BlockKind.USER_INPUT, Retention.VERBATIM, groupId, 0, turn)
@@ -50,10 +49,7 @@ public final class BlockProjector {
             }
             if (am.hasToolExecutionRequests()) {
                 for (ToolExecutionRequest req : am.toolExecutionRequests()) {
-                    Retention retention = meta.persistsArguments(req.name())
-                            ? Retention.OFFLOADABLE
-                            : Retention.COMPRESSIBLE;
-                    blocks.add(base(BlockKind.TOOL_ARGS, retention, groupId, ordinal++, turn)
+                    blocks.add(base(BlockKind.TOOL_ARGS, Retention.COMPRESSIBLE, groupId, ordinal++, turn)
                             .toolName(req.name())
                             .toolCallId(req.id())
                             .text(req.arguments() != null ? req.arguments() : "")
@@ -81,21 +77,6 @@ public final class BlockProjector {
                 .text(String.valueOf(msg))
                 .build());
         return blocks;
-    }
-
-    /**
-     * 把整个消息列表爆炸为块序列（每条消息一个 group）。
-     *
-     * @param turn   所有块的入站轮次
-     * @param lookup 工具元数据查询
-     */
-    public static List<ContextBlock> explodeAll(List<ChatMessage> messages, int turn, ToolSupport lookup) {
-        List<ContextBlock> all = new ArrayList<>();
-        if (messages == null) return all;
-        for (int i = 0; i < messages.size(); i++) {
-            all.addAll(explode(messages.get(i), "m" + i, turn, lookup));
-        }
-        return all;
     }
 
     /**
@@ -146,7 +127,7 @@ public final class BlockProjector {
                     }
                 }
                 if (!requests.isEmpty()) {
-                    // 卸载后的 arguments 必须仍是严格合法的 JSON，否则供应商会拒收整个请求
+                    // 处置后的 arguments 必须仍是严格合法的 JSON，否则供应商会拒收整个请求
                     return (text != null && !text.isBlank())
                             ? AiMessage.from(text, requests)
                             : AiMessage.from(requests);

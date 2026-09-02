@@ -40,7 +40,7 @@ import java.util.List;
  *   5. Extension Loop  → PreTool → 执行工具 → PostTool
  *   6. 回填消息        → AI 消息 + 工具结果写入 JSONL
  * </pre>
- * 无工具调用时任务完成；Hook 触发 stop 或步数超限时硬终止退出。
+ * 无工具调用时任务完成；Hook 触发 stop 或步数超限时终止退出。
  */
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
@@ -145,7 +145,7 @@ public class EonAgent {
         initRun(state);
 
         while (true) {
-            // 步数检查：达到上限硬终止
+            // 步数检查：达到上限终止
             if (state.getTurnCount() >= config.getLoop().getMaxSteps()) {
                 return completeExit(state, stopStateMachine.handleMaxSteps(state));
             }
@@ -320,9 +320,7 @@ public class EonAgent {
         ContextBuilder ctx = new ContextBuilder();
         ctx.setTokenCountEstimator(llmClient.getTokenCountEstimator());
         ctx.setSystemPrompt(basePrompt);
-        if (state.getCompressionState().getLastSummary() != null) {
-            ctx.setSummary(state.getCompressionState().getLastSummary());
-        }
+        ctx.setSummary(state.getCompressionState().getLastSummary());
         ctx.setMemories(toolContext.memoryStore().renderForInjection());
         ctx.setWindow(jsonlStore.window());
 

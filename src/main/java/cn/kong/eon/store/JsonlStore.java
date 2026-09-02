@@ -54,16 +54,18 @@ public class JsonlStore {
      * 追加一条消息：经入站管线处置 → 进入内存窗口 → 写磁盘账本。
      *
      * @param turn               入站轮次
-     * @param succeededToolCalls 本轮执行成功的工具调用 id（卸载的安全边界）
+     * @param succeededToolCalls 本轮执行成功的工具调用 id（可恢复性的判定依据）
      */
     public synchronized void append(ChatMessage message, int turn, Set<String> succeededToolCalls) {
         if (pipeline != null) {
+            // 将原始消息爆炸为块消息
             List<ContextBlock> blocks = pipeline.ingest(message, turn, succeededToolCalls);
+            // 写入内存
             window.addAll(blocks);
             List<ChatMessage> persisted = BlockProjector.assemble(blocks);
             appendToLedger(persisted.isEmpty() ? message : persisted.get(0));
         } else {
-            window.addAll(BlockProjector.explode(message, "g" + window.size(), turn, null));
+            window.addAll(BlockProjector.explode(message, "g" + window.size(), turn));
             appendToLedger(message);
         }
     }
@@ -71,11 +73,6 @@ public class JsonlStore {
     /** 无工具上下文时的简化重载。 */
     public synchronized void append(ChatMessage message, int turn) {
         append(message, turn, Collections.emptySet());
-    }
-
-    /** 返回消息快照，由窗口块组装而来，修改不影响内部视图。 */
-    public synchronized List<ChatMessage> snapshot() {
-        return window.toMessages();
     }
 
     /** 获取内存窗口，压缩策略与度量直接作用于它。 */
@@ -93,18 +90,27 @@ public class JsonlStore {
         }
     }
 
-    /** 从磁盘账本加载历史消息到内存窗口，历史消息原样恢复不回溯入站处置。 */
+    /**
+     * 从磁盘账本加载历史消息到内存窗口，历史消息原样恢复不回溯入站处置。
+     * 轮次按用户消息计数恢复：一条用户消息标志新一轮开始，与运行期的轮次定义一致。
+     */
     private void loadAll() {
         try {
             List<String> lines = Files.readAllLines(jsonlFile);
             int turn = 0;
             for (String line : lines) {
-                if (line.isBlank()) continue;
-                ChatMessage msg = deserialize(line);
-                if (msg != null) {
-                    // 历史消息原样恢复：入站处置不回溯
-                    window.addAll(BlockProjector.explode(msg, "h" + window.size(), turn, null));
+                if (line.isBlank()) {
+                    continue;
                 }
+                ChatMessage msg = deserialize(line);
+                if (msg == null) {
+                    continue;
+                }
+                if (msg instanceof UserMessage) {
+                    turn++;
+                }
+                // 历史消息原样恢复：入站处置不回溯
+                window.addAll(BlockProjector.explode(msg, "h" + window.size(), turn));
             }
             if (!lines.isEmpty()) {
                 log.info("从 JSONL 加载 {} 条消息 → {} 个内容块", lines.size(), window.size());

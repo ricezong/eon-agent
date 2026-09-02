@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 停止状态机。处理 maxSteps 超限、循环异常、Hook stop 三类终止场景，统一执行硬终止。
+ * 停止状态机。处理 maxSteps 超限、循环异常、Hook stop 三类终止场景。
  */
 public class StopStateMachine {
     private static final Logger log = LoggerFactory.getLogger(StopStateMachine.class);
@@ -22,7 +22,7 @@ public class StopStateMachine {
         this.logger = logger;
     }
 
-    /** maxSteps 达到上限时的硬终止，返回终止输出文本。 */
+    /** maxSteps 达到上限时的终止，返回终止输出文本。 */
     public String handleMaxSteps(SessionState state) {
         log.warn("[停止] 达到最大步数: {}", config.getLoop().getMaxSteps());
         return forceTerminate(state, new StopReason(
@@ -41,13 +41,13 @@ public class StopStateMachine {
                 StopCategory.UNEXPECTED_ERROR, e.getMessage()));
     }
 
-    /** 硬终止：记录日志并返回终止输出。 */
+    /** 终止：记录日志并返回终止输出。 */
     public String forceTerminate(SessionState state, StopReason reason) {
         logger.stopForced(reason.getCategory().name(), state.getTurnCount(), state.getUsageAccum().getTotalTokens());
         return formatTerminationOutput(state, reason);
     }
 
-    /** 拼接硬终止输出：终止原因 + 消耗统计。 */
+    /** 拼接终止输出：终止原因 + 消耗统计。 */
     private String formatTerminationOutput(SessionState state, StopReason reason) {
         return "任务终止: " + reason.getCategory().getDisplayName() + "\n"
                 + "原因: " + reason.getMessage() + "\n"

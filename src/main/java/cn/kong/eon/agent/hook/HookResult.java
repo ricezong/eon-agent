@@ -2,7 +2,7 @@ package cn.kong.eon.agent.hook;
 
 /**
  * Hook 执行返回值。ok() 继续，stop() 请求终止。
- * 所有终止场景统一走 stop，由 EonAgent 执行硬终止。
+ * 所有终止场景统一走 stop，由 EonAgent 执行终止。
  */
 public final class HookResult {
 
@@ -19,7 +19,7 @@ public final class HookResult {
         return new HookResult(Action.CONTINUE, null);
     }
 
-    /** 请求停止。EonAgent 直接硬终止。 */
+    /** 请求停止。EonAgent 直接终止。 */
     public static HookResult stop(StopReason stopReason) {
         return new HookResult(Action.STOP, stopReason);
     }

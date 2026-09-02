@@ -1,32 +1,23 @@
 package cn.kong.eon.agent.context.block;
 
 /**
- * 内容块的保留策略。"什么能压、什么必须留"从控制流里的 instanceof 判断，变成数据上的声明。
- * 判定在投射层 {@link BlockProjector} 完成，规则只需声明自己处理哪种 Retention。
+ * 内容块的保留策略。声明该块是否允许被改写。
+ * <p>
+ * 判定在投射层 {@link BlockProjector} 一次性完成，处置层只读这个声明，
+ * 不再对块类型或工具名做分支判断。
+ * <p>
+ * "磁盘上有没有副本"是与此正交的维度，由块上的 {@code recoverable} 标记表达，
+ * 它决定替换是"无损（带引用）"还是"有损（丢内容）"，不影响能否改写。
  */
 public enum Retention {
 
-    /** 逐字保留。任何有损或无损规则都不得改写。覆盖：用户输入、系统提示词。 */
+    /** 逐字保留。任何档位都不得改写。覆盖：用户输入、系统提示词。 */
     VERBATIM,
 
-    /**
-     * 可无损卸载。磁盘上已有完整副本，替换为"摘要 + 路径引用"不损失任何信息。
-     * 覆盖：声明了 persistsArguments() 的工具参数块、已落盘 artifact 的工具结果块。
-     */
-    OFFLOADABLE,
-
-    /**
-     * 仅有损压缩。磁盘上没有副本，是唯一一份，只能截断或摘要，会损失信息。
-     * 覆盖：模型正文、未落盘的工具结果、未声明持久化的工具参数块。
-     */
+    /** 允许按档位改写内容。覆盖：模型正文、工具调用参数、工具结果。 */
     COMPRESSIBLE;
 
-    /** 是否允许无损卸载。 */
-    public boolean offloadable() {
-        return this == OFFLOADABLE;
-    }
-
-    /** 是否允许有损改写（截断 / 占位符 / 删除）。 */
+    /** 是否允许改写内容。 */
     public boolean compressible() {
         return this == COMPRESSIBLE;
     }

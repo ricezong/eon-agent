@@ -24,23 +24,15 @@ context:
   summarize_max_input_chars: 80000        # 摘要输入上限
   snip_keep_chars: 4000                   # Snip 头尾保留字符数（头2000+尾2000）
   summarize_max_output_chars: 3000        # 摘要输出上限（200K 窗口允许更长摘要）
-  tail_guard_min_turns: 3                 # 尾部保护最小轮次（200K 窗口可保护更多近期对话）
+  # 压缩机制：每轮判定一个档位，水位三档优先，轮数周期兜底。
   compression:
-    snip_threshold: 0.65                  # 水位 ≥65%（~130K）：截短旧工具结果
-    prune_threshold: 0.80                 # 水位 ≥80%（~160K）：替换为占位符
-    summarize_threshold: 0.92             # 水位 ≥92%（~184K）：LLM 摘要并删旧消息
-
-  # 无损参数卸载：只处理磁盘上另有完整副本的参数块，零信息损失。
-  # 与有损压缩不同，它不等水位——无损处置越早做，中间每轮省下的重复发送成本越多。
-  offload:
-    enabled: true
-    min_chars: 2000                       # 参数块 >2000 字符才卸载；短参数骨架化反而更长
-
-  # 预算感知：判据不是水位而是"剩余预算还够跑几轮"。
-  # 水位是瞬时大小，预算是大小对时间的积分——上下文没满但增速快时，预算会先耗尽。
-  budget_aware:
-    enabled: true
-    min_remaining_turns: 8.0              # 投影剩余 <8 轮时触发无损处置（不触发有损压缩）
+    snip_water_level: 0.65                # 水位 ≥65%（~130K）：头尾截断旧工具结果
+    prune_water_level: 0.80               # 水位 ≥80%（~160K）：有磁盘副本的块清空为占位符，无副本的退化为头尾截断；工具参数在此档骨架化
+    summarize_water_level: 0.92            # 水位 ≥92%（~184K）：LLM 摘要后删除原文
+    turn_interval: 7                      # 轮次序号为此值整数倍、且水位三档均未命中时的周期对账点
+    turn_level: SNIP                      # 轮数入口命中时执行的档位（只允许 SNIP / PRUNE）
+    tail_guard_turns: 3                   # 尾部保护区：最近 3 轮的任何内容都不参与压缩
+    offload_min_chars: 2000               # 工具参数 >2000 字符才骨架化；短参数替换后反而更长
 
 # 会话级 Token 预算（控制整个会话累计消耗）
 budget:
@@ -92,9 +84,6 @@ tools:
     cache_max_entries: 64                 # LRU 缓存上限
   download:
     max_file_size_mb: 100                 # 下载文件大小上限（MB）
-
-compression:
-  summarize_turns: 7                      # 轮数触发压缩阈值
 
 memory:
   enabled: true                           # 跨会话记忆开关
