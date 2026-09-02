@@ -13,10 +13,14 @@ public final class TextTrimmer {
      * @return 截断后的文本；原文未超过保留长度时原样返回
      */
     public static String headTail(String content, int keepChars) {
-        if (content == null) return "";
+        if (content == null) {
+            return "";
+        }
         int headChars = keepChars / 2;
         int tailChars = keepChars - headChars;
-        if (content.length() <= headChars + tailChars) return content;
+        if (content.length() <= headChars + tailChars) {
+            return content;
+        }
         return content.substring(0, headChars)
                 + "\n...\n"
                 + content.substring(content.length() - tailChars);

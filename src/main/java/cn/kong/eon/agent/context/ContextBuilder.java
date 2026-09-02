@@ -35,29 +35,24 @@ public class ContextBuilder {
     private long budgetUsedTokens;
     private long budgetMaxTokens;
 
-    public ContextBuilder setSystemPrompt(String systemPrompt) {
+    public void setSystemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
-        return this;
     }
 
-    public ContextBuilder setSummary(String summary) {
+    public void setSummary(String summary) {
         this.summary = summary;
-        return this;
     }
 
-    public ContextBuilder setMemories(String memories) {
+    public void setMemories(String memories) {
         this.memories = memories;
-        return this;
     }
 
-    public ContextBuilder setNavigator(String navigator) {
+    public void setNavigator(String navigator) {
         this.navigator = navigator;
-        return this;
     }
 
-    public ContextBuilder setRuntimeNudges(String runtimeNudges) {
+    public void setRuntimeNudges(String runtimeNudges) {
         this.runtimeNudges = runtimeNudges;
-        return this;
     }
 
     /** 设置 transcript 数据源。压缩策略对窗口的就地修改会自动反映到这里。 */
@@ -75,30 +70,25 @@ public class ContextBuilder {
         return window != null ? window.toMessages() : List.of();
     }
 
-    public ContextBuilder setTokenCountEstimator(TokenCountEstimator estimator) {
+    public void setTokenCountEstimator(TokenCountEstimator estimator) {
         this.tokenCountEstimator = estimator;
-        return this;
     }
 
-    public ContextBuilder setToolSchemaTokens(long tokens) {
+    public void setToolSchemaTokens(long tokens) {
         this.toolSchemaTokens = tokens;
-        return this;
     }
 
-    public ContextBuilder setOutputReserveTokens(long tokens) {
+    public void setOutputReserveTokens(long tokens) {
         this.outputReserveTokens = tokens;
-        return this;
     }
 
-    public ContextBuilder setContextMaxTokens(long tokens) {
+    public void setContextMaxTokens(long tokens) {
         this.contextMaxTokens = tokens;
-        return this;
     }
 
-    public ContextBuilder setBudgetTokens(long used, long max) {
+    public void setBudgetTokens(long used, long max) {
         this.budgetUsedTokens = used;
         this.budgetMaxTokens = max;
-        return this;
     }
 
     /** 组装最终发送给 LLM 的消息列表。 */
