@@ -5,13 +5,11 @@ import cn.kong.eon.model.TokenUsage;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.model.TokenCountEstimator;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.exception.NonRetriableException;
-import dev.langchain4j.model.openai.OpenAiTokenCountEstimator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,14 +17,13 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * LLM 客户端封装。基于 LangChain4j OpenAiChatModel，支持指数退避重试和 Token 估算。
+ * LLM 客户端封装。基于 LangChain4j OpenAiChatModel，支持指数退避重试。
  */
 public class LlmClient {
     private static final Logger log = LoggerFactory.getLogger(LlmClient.class);
 
     private final ChatModel chatModel;
     private final AgentConfig.RetryConfig retryConfig;
-    private final TokenCountEstimator tokenCountEstimator;
 
     public LlmClient(AgentConfig config) {
         AgentConfig.LlmConfig llmConfig = config.getLlm();
@@ -43,24 +40,8 @@ public class LlmClient {
                 .logResponses(false)
                 .build();
 
-        // 若模型名不被 JTokkit 识别则回退到 gpt-4o 编码
-        TokenCountEstimator estimator;
-        try {
-            estimator = new OpenAiTokenCountEstimator(llmConfig.getModelName());
-        } catch (Exception e) {
-            log.warn("为模型 '{}' 创建 tokenizer 失败，回退到 gpt-4o: {}",
-                    llmConfig.getModelName(), e.getMessage());
-            estimator = new OpenAiTokenCountEstimator("gpt-4o");
-        }
-        this.tokenCountEstimator = estimator;
-
         log.info("LlmClient 已初始化: provider={}, model={}, baseUrl={}",
                 llmConfig.getProvider(), llmConfig.getModelName(), llmConfig.getBaseUrl());
-    }
-
-    /** 暴露 TokenCountEstimator 供 ContextBuilder 做精确估算。 */
-    public TokenCountEstimator getTokenCountEstimator() {
-        return tokenCountEstimator;
     }
 
     /** 调用 LLM，带指数退避重试。不可重试异常立即失败。 */

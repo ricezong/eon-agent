@@ -119,15 +119,17 @@ public class EonApplication {
         this.checkpointStore = new CheckpointStore(sessionDir.resolve("checkpoints"), objectMapper);
         this.memoryStore = new MemoryStore(sessionBaseDir, objectMapper);
 
+        // 工具注册表与 MCP 连接要在入站管线之前完成：管线的 ToolSupport 靠注册表判断
+        // 工具参数是否已在磁盘留副本，MCP 工具晚于管线注册会使其参数永远拿不到可恢复标记。
+        this.toolRegistry = createToolRegistry();
+        connectMcpServers();
+        this.contextPipeline = createContextPipeline();
+
         Path jsonlPath = sessionDir.resolve("transcript.jsonl");
-        this.jsonlStore = new JsonlStore(jsonlPath, objectMapper);
+        this.jsonlStore = new JsonlStore(jsonlPath, objectMapper, contextPipeline);
         this.transcriptPath = jsonlPath.toAbsolutePath().toString();
         this.sessionState = SessionState.create(sessionId, "");
         log.info("会话 {} 已初始化, transcript: {}", sessionId, transcriptPath);
-
-        this.toolRegistry = createToolRegistry();
-
-        connectMcpServers();
 
         Path workspaceDir = sessionDir.resolve("workspace");
         try {
@@ -147,10 +149,6 @@ public class EonApplication {
                 ldc.getRepeatWarn(), ldc.getRepeatStop(), ldc.getNoProgressSteps(),
                 ldc.getFailureWarn(), ldc.getFailureStop());
 
-        // ── 上下文架构装配 ──
-        // 入站管线必须在 JsonlStore 记录任何消息之前注入，否则消息会绕过关卡直接进窗口。
-        this.contextPipeline = createContextPipeline();
-        jsonlStore.setPipeline(contextPipeline);
         this.compressionPolicy = createCompressionPolicy();
 
         this.agent = new EonAgent(

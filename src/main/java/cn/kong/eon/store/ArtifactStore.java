@@ -43,7 +43,8 @@ public class ArtifactStore implements ArtifactSink {
         try {
             Files.writeString(filePath, content);
         } catch (IOException e) {
-            throw new RuntimeException("写入 artifact 失败: " + filePath, e);
+            log.error("写入 artifact 失败，本次落盘不可用: {}", filePath, e);
+            return null;
         }
 
         ArtifactRef ref = ArtifactRef.of(refId, source, summary, content.length(), filePath.toString());

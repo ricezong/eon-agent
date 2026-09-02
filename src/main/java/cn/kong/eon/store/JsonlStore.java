@@ -17,6 +17,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -30,11 +31,12 @@ public class JsonlStore {
     private final Path jsonlFile;
     private final ObjectMapper mapper;
     private final ContextWindow window = new ContextWindow();
-    private ContextPipeline pipeline;
+    private final ContextPipeline pipeline;
 
-    public JsonlStore(Path jsonlFile, ObjectMapper objectMapper) {
+    public JsonlStore(Path jsonlFile, ObjectMapper objectMapper, ContextPipeline pipeline) {
         this.jsonlFile = jsonlFile;
         this.mapper = objectMapper;
+        this.pipeline = Objects.requireNonNull(pipeline, "pipeline");
         try {
             Files.createDirectories(jsonlFile.getParent());
             if (Files.exists(jsonlFile)) {
@@ -45,11 +47,6 @@ public class JsonlStore {
         }
     }
 
-    /** 注入入站管线，装配期调用一次。 */
-    public void setPipeline(ContextPipeline pipeline) {
-        this.pipeline = pipeline;
-    }
-
     /**
      * 追加一条消息：经入站管线处置 → 进入内存窗口 → 写磁盘账本。
      *
@@ -57,17 +54,10 @@ public class JsonlStore {
      * @param succeededToolCalls 本轮执行成功的工具调用 id（可恢复性的判定依据）
      */
     public synchronized void append(ChatMessage message, int turn, Set<String> succeededToolCalls) {
-        if (pipeline != null) {
-            // 将原始消息爆炸为块消息
-            List<ContextBlock> blocks = pipeline.ingest(message, turn, succeededToolCalls);
-            // 写入内存
-            window.addAll(blocks);
-            List<ChatMessage> persisted = BlockProjector.assemble(blocks);
-            appendToLedger(persisted.isEmpty() ? message : persisted.get(0));
-        } else {
-            window.addAll(BlockProjector.explode(message, "g" + window.size(), turn));
-            appendToLedger(message);
-        }
+        List<ContextBlock> blocks = pipeline.ingest(message, turn, succeededToolCalls);
+        window.addAll(blocks);
+        List<ChatMessage> persisted = BlockProjector.assemble(blocks);
+        appendToLedger(persisted.isEmpty() ? message : persisted.get(0));
     }
 
     /** 无工具上下文时的简化重载。 */

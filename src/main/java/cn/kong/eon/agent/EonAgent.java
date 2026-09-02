@@ -22,6 +22,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.TokenCountEstimator;
+import dev.langchain4j.model.openai.OpenAiTokenCountEstimator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +54,7 @@ public class EonAgent {
     private final JsonlStore jsonlStore;
     private final String basePrompt;
     private final ToolContext toolContext;
+    private final TokenCountEstimator tokenCountEstimator;
 
     // ── 协作组件 ──
     private final TurnLogger logger;
@@ -90,6 +93,17 @@ public class EonAgent {
         this.jsonlStore = jsonlStore;
         this.basePrompt = basePrompt;
         this.toolContext = toolContext;
+
+        // 若模型名不被 JTokkit 识别则回退到 gpt-4o 编码
+        TokenCountEstimator estimator;
+        try {
+            estimator = new OpenAiTokenCountEstimator(config.getLlm().getModelName());
+        } catch (Exception e) {
+            log.warn("为模型 '{}' 创建 tokenizer 失败，回退到 gpt-4o: {}",
+                    config.getLlm().getModelName(), e.getMessage());
+            estimator = new OpenAiTokenCountEstimator("gpt-4o");
+        }
+        this.tokenCountEstimator = estimator;
 
         this.logger = new TurnLogger(config);
         this.toolHandler = new ToolExecutionHandler(
@@ -318,7 +332,7 @@ public class EonAgent {
     /** 构建 ContextBuilder：设置系统提示、摘要、记忆、窗口、预算口径。 */
     private ContextBuilder buildContext(SessionState state) {
         ContextBuilder ctx = new ContextBuilder();
-        ctx.setTokenCountEstimator(llmClient.getTokenCountEstimator());
+        ctx.setTokenCountEstimator(tokenCountEstimator);
         ctx.setSystemPrompt(basePrompt);
         ctx.setSummary(state.getCompressionState().getLastSummary());
         ctx.setMemories(toolContext.memoryStore().renderForInjection());
