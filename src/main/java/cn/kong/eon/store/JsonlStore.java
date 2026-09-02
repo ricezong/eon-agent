@@ -56,8 +56,7 @@ public class JsonlStore {
     public synchronized void append(ChatMessage message, int turn, Set<String> succeededToolCalls) {
         List<ContextBlock> blocks = pipeline.ingest(message, turn, succeededToolCalls);
         window.addAll(blocks);
-        List<ChatMessage> persisted = BlockProjector.assemble(blocks);
-        appendToLedger(persisted.isEmpty() ? message : persisted.get(0));
+        appendToLedger(message);
     }
 
     /** 无工具上下文时的简化重载。 */
