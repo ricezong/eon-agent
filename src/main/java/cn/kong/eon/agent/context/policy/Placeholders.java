@@ -29,20 +29,15 @@ public final class Placeholders {
     }
 
     /**
-     * 头尾保留截断：保留开头与结尾，中段用省略标记替代。
+     * 头尾保留截断：保留开头与结尾，中段以省略号替代。
      *
      * @param keepChars 保留的总字符数，头尾各半
      * @return 截断后的文本；原文未超过保留长度时返回 null
      */
     public static String headTail(ContextBlock block, int keepChars) {
         String raw = block.text();
-        String trimmed = TextTrimmer.headTail(raw, keepChars);
-        if (trimmed.length() >= raw.length()) return null;
-
-        String notice = block.refId() != null
-                ? "\n... [中间内容已省略。完整内容已保存，引用: " + block.refId() + "]"
-                : "\n... [中间内容已省略。此为截断后的摘要]";
-        return trimmed + notice;
+        if (raw.length() <= keepChars) return null;
+        return TextTrimmer.headTail(raw, keepChars);
     }
 
     /**

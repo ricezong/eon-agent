@@ -1,10 +1,9 @@
 package cn.kong.eon.agent.context.policy;
 
 import cn.kong.eon.agent.context.ContextWindow;
+import cn.kong.eon.agent.context.LlmSupport;
 import cn.kong.eon.agent.context.block.CompressionLevel;
 import cn.kong.eon.agent.context.block.ContextBlock;
-import cn.kong.eon.llm.LlmClient;
-import cn.kong.eon.llm.LlmResponse;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -23,14 +22,14 @@ import java.util.List;
 public class ContextSummarizer {
     private static final Logger log = LoggerFactory.getLogger(ContextSummarizer.class);
 
-    private final LlmClient llmClient;
+    private final LlmSupport llmSupport;
     private final String transcriptPath;
     private final int maxInputChars;
     private final int maxOutputChars;
 
-    public ContextSummarizer(LlmClient llmClient, String transcriptPath,
+    public ContextSummarizer(LlmSupport llmSupport, String transcriptPath,
                              int maxInputChars, int maxOutputChars) {
-        this.llmClient = llmClient;
+        this.llmSupport = llmSupport;
         this.transcriptPath = transcriptPath != null ? transcriptPath : "(transcript 路径不可用)";
         this.maxInputChars = maxInputChars;
         this.maxOutputChars = maxOutputChars;
@@ -118,8 +117,7 @@ public class ContextSummarizer {
                 SystemMessage.from("你是一个对话摘要生成器。请严格按指令生成摘要。"),
                 UserMessage.from(prompt));
 
-        LlmResponse response = llmClient.chat(messages, null);
-        String summary = response.aiMessage() != null ? response.aiMessage().text() : null;
+        String summary = llmSupport.complete(messages);
         if (summary == null || summary.isBlank()) {
             log.warn("[压缩] LLM 返回空摘要");
             return null;

@@ -1,5 +1,6 @@
 package cn.kong.eon.llm;
 
+import cn.kong.eon.agent.context.LlmSupport;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.TokenUsage;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -19,7 +20,7 @@ import java.util.List;
 /**
  * LLM 客户端封装。基于 LangChain4j OpenAiChatModel，支持指数退避重试。
  */
-public class LlmClient {
+public class LlmClient implements LlmSupport {
     private static final Logger log = LoggerFactory.getLogger(LlmClient.class);
 
     private final ChatModel chatModel;
@@ -102,6 +103,13 @@ public class LlmClient {
 
         log.error("LLM 调用连续失败 {} 次，模型不可用", retryConfig.getAttempts(), lastException);
         throw new LlmStalledException("LLM 调用连续失败 " + retryConfig.getAttempts() + " 次，模型不可用");
+    }
+
+    /** 无工具调用，返回模型文本回复。失败语义见 {@link LlmSupport#complete}。 */
+    @Override
+    public String complete(List<ChatMessage> messages) {
+        LlmResponse response = chat(messages, null);
+        return response.aiMessage() != null ? response.aiMessage().text() : null;
     }
 
     /** 计算指数退避延迟，含随机抖动。 */
