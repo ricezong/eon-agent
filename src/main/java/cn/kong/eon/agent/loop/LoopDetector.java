@@ -18,10 +18,7 @@ public class LoopDetector {
     // ── DetectionResult 消息模板（进 nudge 或 StopReason，模型可见） ──
 
     /** 熔断工具拦截提示：%s=工具名列表（逗号分隔） */
-    private static final String TRIPPED_TOOLS_WARN = """
-            工具 %s 已被熔断（连续失败过多）。
-            请标记 blocked 或调整计划，不要再调用这些工具
-            """;
+    private static final String TRIPPED_TOOLS_WARN = "工具 %s 已被熔断（连续失败过多）。请标记 blocked 或调整计划，不要再调用这些工具";
 
     /** 死循环停止原因：%d=同一参数重复调用次数 */
     private static final String REPEAT_STOP = "重复调用同一工具同一参数 %d 次，疑似死循环";
@@ -38,7 +35,10 @@ public class LoopDetector {
     /** 熔断预警提示：%1$s=工具名，%2$d=已连续失败次数，%3$d=距熔断还差次数 */
     private static final String FAILURE_WARN = """
             工具 %1$s 已连续失败 %2$d 次。
-            请立即：1) 调用 todo_write 将当前任务标记为 blocked；2) 调整计划或换一种方式；3) 不要编造参数继续尝试同一工具。再失败 %3$d 次将熔断此工具
+            请立即：
+            1) 调用 todo_write 将当前任务标记为 blocked；
+            2) 调整计划或换一种方式；
+            3) 不要编造参数继续尝试同一工具。再失败 %3$d 次将熔断此工具
             """;
 
     /** 无进展提示：%d=连续无变化的步数 */
@@ -168,6 +168,22 @@ public class LoopDetector {
     /** 工具是否已被熔断。 */
     public boolean isToolTripped(String toolName) {
         return trippedTools.contains(toolName);
+    }
+
+    /**
+     * 清空全部检测状态，在每个任务开始时调用。
+     *
+     * <p>本类是会话级单例，但内部的熔断集合、指纹计数、失败计数、Todo 快照全是任务级状态。
+     * 不重置会把上一任务的判定带进新任务：被熔断的工具在新任务里仍被 {@link #isToolTripped}
+     * 拦截而永久不可用，指纹计数也会跨任务累加导致首次调用即判死循环。
+     */
+    public void reset() {
+        callFingerprintCount.clear();
+        todoSnapshots.clear();
+        stepsWithoutProgress = 0;
+        toolFailureCount.clear();
+        trippedTools.clear();
+        log.debug("[LoopDetector] 检测状态已重置");
     }
 
     /** 重置指定工具的指纹计数（成功调用后允许相同参数再次使用）。 */

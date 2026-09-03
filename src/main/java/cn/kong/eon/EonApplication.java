@@ -170,7 +170,10 @@ public class EonApplication {
             return "输入不能为空。";
         }
 
+        // 任务边界：会话级状态与循环检测状态必须在同一点重置，
+        // 否则上一任务熔断的工具在新任务里仍会被拦截而永久不可用。
         sessionState.beginRun(userInput);
+        loopDetector.reset();
 
         log.info("=== 会话 {} 任务开始 ===", sessionState.getSessionId());
         log.info("用户输入: {}", userInput.length() > 200 ? userInput.substring(0, 200) + "..." : userInput);
