@@ -15,8 +15,8 @@ import java.util.List;
 
 /**
  * 循环检测（PostModel, order=30）。
- * 检测重复工具调用模式：同一参数重复达到 stop 阈值时直接终止。
- * 熔断工具的检测在此阶段只返回 WARN（nudge 提示），不阻止其他工具执行。
+ * 检测同一轮内重复的工具调用：同工具同参数重复达到 stop 阈值时直接终止，
+ * 达到 warn 阈值时注入 nudge。跨轮的重复尝试由失败计数与熔断负责，不在此判定。
  */
 public class LoopDetectHook implements Hook.PostModelHook {
     private static final Logger log = LoggerFactory.getLogger(LoopDetectHook.class);
