@@ -16,6 +16,12 @@ import org.slf4j.LoggerFactory;
 public class BudgetHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(BudgetHook.class);
 
+    /** 预算告警 nudge 模板：%1$d=已用 token，%2$d=预算上限，%3$.0f=已用百分比，%4$d=剩余轮数 */
+    private static final String BUDGET_WARN_NUDGE = """
+            ⚠️ 预算告警：累计已消耗 %1$d token（预算上限 %2$d，已用 %3$.0f%%）。
+            剩余约 %4$d 轮，请尽快用已有信息整理总结并直接回复用户，不要再发起新的工具调用。
+            """;
+
     private final AgentConfig config;
 
     public BudgetHook(AgentConfig config) {
@@ -46,7 +52,7 @@ public class BudgetHook implements Hook.PreModelHook {
 
         // 预算耗尽，终止
         if (used >= maxBudget) {
-            log.warn("[预算] 超限 {}% ({}/{}) → 停止", String.format("%.0f", ratio * 100), used, maxBudget);
+            log.warn("[Budget] 超限 {}% ({}/{}) → 停止", String.format("%.0f", ratio * 100), used, maxBudget);
             StopReason reason = new StopReason(
                     StopCategory.BUDGET_EXCEEDED,
                     "Token 预算超限: " + used + " >= " + maxBudget);
@@ -57,12 +63,9 @@ public class BudgetHook implements Hook.PreModelHook {
         if (ratio >= budget.getThreshold()) {
             int remainingSteps = config.getLoop().getMaxSteps() - state.getTurnCount();
             String nudge = String.format(
-                    "⚠️ 预算告警：累计已消耗 %d token（预算上限 %d，已用 %.0f%%）。"
-                            + "剩余约 %d 轮，请尽快用已有信息整理总结并直接回复用户，"
-                            + "不要再发起新的工具调用。",
-                    used, maxBudget, ratio * 100, Math.max(remainingSteps, 0));
+                    BUDGET_WARN_NUDGE, used, maxBudget, ratio * 100, Math.max(remainingSteps, 0));
             state.addNudge(nudge);
-            log.info("[预算] 告警 {}% ({}/{})", String.format("%.0f", ratio * 100), used, maxBudget);
+            log.info("[Budget] 告警 {}% ({}/{})", String.format("%.0f", ratio * 100), used, maxBudget);
         }
 
         return HookResult.ok();

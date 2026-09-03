@@ -15,6 +15,35 @@ import java.util.*;
 public class LoopDetector {
     private static final Logger log = LoggerFactory.getLogger(LoopDetector.class);
 
+    // ── DetectionResult 消息模板（进 nudge 或 StopReason，模型可见） ──
+
+    /** 熔断工具拦截提示：%s=工具名列表（逗号分隔） */
+    private static final String TRIPPED_TOOLS_WARN = """
+            工具 %s 已被熔断（连续失败过多）。
+            请标记 blocked 或调整计划，不要再调用这些工具
+            """;
+
+    /** 死循环停止原因：%d=同一参数重复调用次数 */
+    private static final String REPEAT_STOP = "重复调用同一工具同一参数 %d 次，疑似死循环";
+
+    /** 循环告警提示：%1$s=工具名，%2$d=重复调用次数 */
+    private static final String REPEAT_WARN = "工具 %1$s 已重复调用 %2$d 次，请考虑换参数或换工具";
+
+    /** 单工具熔断提示：%1$s=工具名，%2$d=连续失败次数 */
+    private static final String FAILURE_STOP = """
+            工具 %1$s 连续失败 %2$d 次，已熔断。
+            请标记 blocked 或调整计划，不要再调用此工具，其他工具仍可正常使用
+            """;
+
+    /** 熔断预警提示：%1$s=工具名，%2$d=已连续失败次数，%3$d=距熔断还差次数 */
+    private static final String FAILURE_WARN = """
+            工具 %1$s 已连续失败 %2$d 次。
+            请立即：1) 调用 todo_write 将当前任务标记为 blocked；2) 调整计划或换一种方式；3) 不要编造参数继续尝试同一工具。再失败 %3$d 次将熔断此工具
+            """;
+
+    /** 无进展提示：%d=连续无变化的步数 */
+    private static final String NO_PROGRESS_WARN = "连续 %d 步 Todo 无变化，请检查是否陷入循环";
+
     private final int repeatWarn;
     private final int repeatStop;
     private final int noProgressSteps;
@@ -55,9 +84,8 @@ public class LoopDetector {
         }
         if (!trippedNames.isEmpty()) {
             String names = String.join(", ", trippedNames);
-            log.warn("[循环检测] 熔断工具: [{}] 已被封锁", names);
-            return DetectionResult.warn("工具 " + names + " 已被熔断（连续失败过多），" +
-                    "请标记 blocked 或调整计划，不要再调用这些工具");
+            log.warn("[LoopDetector] 熔断工具: [{}] 已被封锁", names);
+            return DetectionResult.warn(String.format(TRIPPED_TOOLS_WARN, names));
         }
 
         for (ToolExecutionRequest req : requests) {
@@ -66,11 +94,11 @@ public class LoopDetector {
             callFingerprintCount.put(fingerprint, count);
 
             if (count >= repeatStop) {
-                log.warn("[循环检测] 死循环检测: 工具 '{}' 以相同参数调用 {} 次", req.name(), count);
-                return DetectionResult.stop("重复调用同一工具同一参数 " + count + " 次，疑似死循环");
+                log.warn("[LoopDetector] 死循环检测: 工具 '{}' 以相同参数调用 {} 次", req.name(), count);
+                return DetectionResult.stop(String.format(REPEAT_STOP, count));
             } else if (count >= repeatWarn) {
-                log.warn("[循环检测] 循环告警: 工具 '{}' 以相同参数调用 {} 次", req.name(), count);
-                return DetectionResult.warn("工具 " + req.name() + " 已重复调用 " + count + " 次，请考虑换参数或换工具");
+                log.warn("[LoopDetector] 循环告警: 工具 '{}' 以相同参数调用 {} 次", req.name(), count);
+                return DetectionResult.warn(String.format(REPEAT_WARN, req.name(), count));
             }
         }
         return DetectionResult.ok();
@@ -96,20 +124,17 @@ public class LoopDetector {
         int toolFails = toolFailureCount.getOrDefault(toolName, 0) + 1;
         toolFailureCount.put(toolName, toolFails);
 
-        log.warn("[循环检测] 工具 '{}' 失败: 连续失败次数={}", toolName, toolFails);
+        log.warn("[LoopDetector] 工具 '{}' 失败: 连续失败次数={}", toolName, toolFails);
 
         if (toolFails >= failureStopThreshold) {
             trippedTools.add(toolName);
-            log.error("[循环检测] 工具 '{}' 已熔断: 连续失败 {} 次", toolName, toolFails);
-            return DetectionResult.stop("工具 " + toolName + " 连续失败 " + toolFails + " 次，已熔断。" +
-                    "请标记 blocked 或调整计划，不要再调用此工具，其他工具仍可正常使用");
+            log.error("[LoopDetector] 工具 '{}' 已熔断: 连续失败 {} 次", toolName, toolFails);
+            return DetectionResult.stop(String.format(FAILURE_STOP, toolName, toolFails));
         }
 
         if (toolFails >= failureWarnThreshold) {
-            return DetectionResult.warn("工具 " + toolName + " 已连续失败 " + toolFails + " 次。" +
-                    "请立即：1) 调用 todo_write 将当前任务标记为 blocked；2) 调整计划或换一种方式；" +
-                    "3) 不要编造参数继续尝试同一工具。再失败 " +
-                    (failureStopThreshold - toolFails) + " 次将熔断此工具");
+            return DetectionResult.warn(String.format(
+                    FAILURE_WARN, toolName, toolFails, failureStopThreshold - toolFails));
         }
 
         return DetectionResult.ok();
@@ -129,8 +154,9 @@ public class LoopDetector {
             if (uniqueSnapshots.size() == 1) {
                 stepsWithoutProgress++;
                 if (stepsWithoutProgress >= 2) {
-                    log.warn("[循环检测] 无进展: Todo 连续 {} 个窗口（{} 步）未变化", stepsWithoutProgress, noProgressSteps);
-                    return DetectionResult.warn("连续 " + (noProgressSteps * stepsWithoutProgress) + " 步 Todo 无变化，请检查是否陷入循环");
+                    log.warn("[LoopDetector] 无进展: Todo 连续 {} 个窗口（{} 步）未变化", stepsWithoutProgress, noProgressSteps);
+                    return DetectionResult.warn(String.format(
+                            NO_PROGRESS_WARN, noProgressSteps * stepsWithoutProgress));
                 }
             } else {
                 stepsWithoutProgress = 0;

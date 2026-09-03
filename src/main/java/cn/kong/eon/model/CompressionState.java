@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
  * 压缩状态。记录最新摘要与压缩节奏。
- * 块级状态（已施加的处置档位）住在块自身上，不在这里维护。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CompressionState {

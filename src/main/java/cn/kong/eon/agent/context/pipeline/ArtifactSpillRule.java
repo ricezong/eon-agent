@@ -35,7 +35,7 @@ public class ArtifactSpillRule implements IngestRule {
         String raw = block.text();
         String summary = TextTrimmer.headTail(raw, ctx.snipKeepChars() * SUMMARY_MULTIPLIER);
 
-        ArtifactRef ref = ctx.artifactSink().save(
+        ArtifactRef ref = ctx.storeSupport().save(
                 block.toolName() != null ? block.toolName() : "tool", raw, summary);
         if (ref == null) {
             log.warn("[入站] artifact 落盘不可用，{} 保留原文入窗", block.toolName());

@@ -29,7 +29,7 @@ public final class IngestContext {
         this.turn = turn;
     }
 
-    public StoreSupport artifactSink() {
+    public StoreSupport storeSupport() {
         return storeSupport;
     }
 

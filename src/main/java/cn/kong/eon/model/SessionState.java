@@ -18,11 +18,9 @@ public class SessionState {
     private int turnCount;
     private TokenUsage usageAccum;
     private CompressionState compressionState;
-    private List<String> pendingNudges;      // 运行时提醒（本轮有效）
-    private List<String> formatCorrections;  // 格式纠正（本轮有效）
+    private List<String> nudges;             // 运行时提醒（本轮有效）
     private String lastAssistantText;
-
-    private boolean todoBeenUsed = false;    // 是否调用过 todo_write（激活 TodoNavigator）
+    private boolean todoBeenUsed = false;    // 是否调用过 todo_write（激活 Todo）
 
     // 运行时临时字段
     private transient List<ChatMessage> currentMessages;
@@ -34,8 +32,7 @@ public class SessionState {
         this.turnCount = 0;
         this.usageAccum = TokenUsage.zero();
         this.compressionState = new CompressionState();
-        this.pendingNudges = new ArrayList<>();
-        this.formatCorrections = new ArrayList<>();
+        this.nudges = new ArrayList<>();
         this.todoBeenUsed = false;
         this.pendingToolCalls = new ArrayList<>();
         this.lastToolResults = new ArrayList<>();
@@ -58,8 +55,7 @@ public class SessionState {
         this.userInput = userInput;
         this.turnCount = 0;
         this.compressionState.setLastTurnCompressed(0);
-        this.pendingNudges.clear();
-        this.formatCorrections.clear();
+        this.nudges.clear();
         this.lastAssistantText = null;
         this.pendingToolCalls = new ArrayList<>();
         this.lastToolResults = new ArrayList<>();
@@ -74,12 +70,7 @@ public class SessionState {
 
     /** 添加运行时提醒。 */
     public void addNudge(String nudge) {
-        pendingNudges.add(nudge);
-    }
-
-    /** 添加格式纠正提示。 */
-    public void addFormatCorrection(String correction) {
-        formatCorrections.add(correction);
+        nudges.add(nudge);
     }
 
     public String getSessionId() {
@@ -122,20 +113,12 @@ public class SessionState {
         this.compressionState = compressionState;
     }
 
-    public List<String> getPendingNudges() {
-        return pendingNudges;
+    public List<String> getNudges() {
+        return nudges;
     }
 
-    public void setPendingNudges(List<String> pendingNudges) {
-        this.pendingNudges = pendingNudges;
-    }
-
-    public List<String> getFormatCorrections() {
-        return formatCorrections;
-    }
-
-    public void setFormatCorrections(List<String> formatCorrections) {
-        this.formatCorrections = formatCorrections;
+    public void setNudges(List<String> nudges) {
+        this.nudges = nudges;
     }
 
     public String getLastAssistantText() {

@@ -51,8 +51,7 @@ public class MessageFinalizer {
             }
         }
 
-        state.getPendingNudges().clear();
-        state.getFormatCorrections().clear();
+        state.getNudges().clear();
         state.setPendingToolCalls(null);
         state.setLastToolResults(null);
         state.setLastAssistantText(null);

@@ -75,7 +75,7 @@ public class TodoWriteTool implements ToolExecutor {
             result = context.todoStore().replaceAll(items, state.getTurnCount());
         }
 
-        // 标记 todo 已使用（激活 TodoNavigatorHook）
+        // 标记 todo 已使用（激活 TodoHook）
         state.setTodoBeenUsed(true);
 
         String progress = cn.kong.eon.store.TodoStore.formatProgress(result);

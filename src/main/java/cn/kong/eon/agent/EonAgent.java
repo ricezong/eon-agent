@@ -72,6 +72,15 @@ public class EonAgent {
     /** 单个工具 schema 的 token 估算均值（名称 + 描述 + 参数定义） */
     private static final long TOOL_SCHEMA_TOKENS_ESTIMATE = 220;
 
+    /** 截断提示 nudge：finishReason=length 时注入，无动态参数 */
+    private static final String TRUNCATION_NUDGE = """
+            上一轮输出因长度限制被截断，工具调用未完成。
+            请重新调用工具，如果内容过长请分多次写入。
+            """;
+
+    /** 工具不存在提示 nudge 模板：%s=工具名 */
+    private static final String TOOL_NOT_FOUND_NUDGE = "工具 %s 不存在，请使用可用工具。";
+
     /** 缓存的工具 schema token 开销；-1 表示未计算 */
     private long cachedToolSchemaTokens = -1;
 
@@ -198,9 +207,6 @@ public class EonAgent {
                 return exit;
             }
 
-            // Hooks 执行后重新渲染 nudge（BudgetHook 等可能在此阶段注入 nudge）
-            renderNudges(state, ctx);
-
             // ── 阶段 2：构建 messages ──
             List<ChatMessage> messages = ctx.build();
             state.setCurrentMessages(messages);
@@ -281,8 +287,7 @@ public class EonAgent {
     private TurnOutcome handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
         if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
             logger.outputTruncated(rec);
-            state.addFormatCorrection(
-                    "上一轮输出因长度限制被截断，工具调用未完成。请重新调用工具，如果内容过长请分多次写入。");
+            state.addNudge(TRUNCATION_NUDGE);
             finalizer.finalizeAndAppend(state);
             return new TurnOutcome.Continue();
         }
@@ -356,27 +361,11 @@ public class EonAgent {
         return cachedToolSchemaTokens;
     }
 
-    /** 将 pendingNudges 和 formatCorrections 渲染到 ContextBuilder。 */
-    private void renderNudges(SessionState state, ContextBuilder ctx) {
-        if (state.getPendingNudges().isEmpty() && state.getFormatCorrections().isEmpty()) {
-            return;
-        }
-        StringBuilder sb = new StringBuilder("<runtime_nudges>\n");
-        for (String nudge : state.getPendingNudges()) {
-            sb.append("- ").append(nudge).append("\n");
-        }
-        for (String correction : state.getFormatCorrections()) {
-            sb.append("- ").append(correction).append("\n");
-        }
-        sb.append("</runtime_nudges>");
-        ctx.setRuntimeNudges(sb.toString());
-    }
-
     /** 校验工具是否存在，不存在则注入格式纠正提示。 */
     private void validateToolExistence(SessionState state, List<ToolExecutionRequest> requests) {
         for (ToolExecutionRequest req : requests) {
             if (!toolRegistry.contains(req.name())) {
-                state.getFormatCorrections().add("工具 " + req.name() + " 不存在，请使用可用工具。");
+                state.getNudges().add(String.format(TOOL_NOT_FOUND_NUDGE, req.name()));
             }
         }
     }

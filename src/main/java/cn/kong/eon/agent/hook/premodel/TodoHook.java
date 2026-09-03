@@ -12,21 +12,21 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 /**
- * Todo 导航渲染（PreModel, order=20）。
+ * Todo 渲染（PreModel, order=20）。
  * todo_write 调用后激活，渲染 Todo 列表到上下文。
  */
-public class TodoNavigatorHook implements Hook.PreModelHook {
-    private static final Logger log = LoggerFactory.getLogger(TodoNavigatorHook.class);
+public class TodoHook implements Hook.PreModelHook {
+    private static final Logger log = LoggerFactory.getLogger(TodoHook.class);
 
     private final TodoStore todoStore;
 
-    public TodoNavigatorHook(TodoStore todoStore) {
+    public TodoHook(TodoStore todoStore) {
         this.todoStore = todoStore;
     }
 
     @Override
     public String name() {
-        return "TodoNavigator";
+        return "Todo";
     }
 
     @Override
@@ -41,7 +41,7 @@ public class TodoNavigatorHook implements Hook.PreModelHook {
 
     @Override
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
-        StringBuilder sb = new StringBuilder("<navigator>\n");
+        StringBuilder sb = new StringBuilder("<todo>\n");
         List<TodoItem> todos = todoStore.getAll();
         if (todos.isEmpty()) {
             sb.append("（暂无任务）\n");
@@ -50,10 +50,10 @@ public class TodoNavigatorHook implements Hook.PreModelHook {
                 sb.append(t.toString()).append("\n");
             }
         }
-        sb.append("</navigator>");
+        sb.append("</todo>");
 
-        ctx.setNavigator(sb.toString());
-        log.debug("Navigator 已渲染: {} 字符", sb.length());
+        ctx.setTodo(sb.toString());
+        log.debug("Todo 已渲染: {} 字符", sb.length());
 
         return HookResult.ok();
     }

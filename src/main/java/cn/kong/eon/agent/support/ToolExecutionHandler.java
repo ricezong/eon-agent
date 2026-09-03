@@ -25,6 +25,12 @@ public class ToolExecutionHandler {
 
     private static final String TODO_WRITE = "todo_write";
 
+    /** 熔断工具的回填结果模板：%s=工具名（作为工具输出返回，模型可见） */
+    private static final String TRIPPED_TOOL_RESULT = """
+            工具 %s 已被熔断（连续失败过多）。
+            请标记 blocked 或调整计划，不要再调用此工具
+            """;
+
     /** 串行豁免清单：顺序敏感或交互互斥的工具强制串行。 */
     private static final Set<String> SERIAL_ONLY = Set.of(TODO_WRITE, "AskQuestion");
 
@@ -102,7 +108,7 @@ public class ToolExecutionHandler {
                     results.set(originalIdx, syntheticError(requests.get(originalIdx),
                             "并行执行被中断: " + e.getMessage(), rec, state));
                 } catch (ExecutionException e) {
-                    log.error("[工具] 并行执行失败 {}: {}", requests.get(originalIdx).name(), e.getMessage(), e);
+                    log.error("[ToolExecutionHandler] 并行执行失败 {}: {}", requests.get(originalIdx).name(), e.getMessage(), e);
                     results.set(originalIdx, syntheticError(requests.get(originalIdx),
                             "工具执行异常: " + e.getCause().getMessage(), rec, state));
                 }
@@ -132,7 +138,7 @@ public class ToolExecutionHandler {
         // 被熔断的工具跳过执行
         if (loopDetector.isToolTripped(req.name())) {
             ToolOutcome tripped = ToolOutcome.failure(
-                    "工具 " + req.name() + " 已被熔断（连续失败过多），请标记 blocked 或调整计划，不要再调用此工具");
+                    String.format(TRIPPED_TOOL_RESULT, req.name()));
             logger.toolExecuted(rec, req.name(), false, "(已熔断)", tripped.content().length());
             return ToolExecutionResult.of(req.id(), req.name(), tripped, tripped.content());
         }
@@ -147,11 +153,11 @@ public class ToolExecutionHandler {
         // 原始输出直接回填；落盘与格式化由入站管线负责
         ToolExecutionResult result = ToolExecutionResult.of(req.id(), req.name(), outcome, outcome.content());
 
-        // todo_write 成功后激活 TodoNavigator 并记录快照
+        // todo_write 成功后激活 Todo 并记录快照
         if (TODO_WRITE.equals(req.name()) && outcome.success()) {
             if (!state.hasTodoBeenUsed()) {
                 state.setTodoBeenUsed(true);
-                log.info("TodoNavigator 已激活: todo_write 被调用");
+                log.info("[ToolExecutionHandler] Todo 已激活: todo_write 被调用");
             }
             var snapResult = loopDetector.recordTodoSnapshot(toolContext.todoStore().getAll().toString());
             if (snapResult.shouldWarn()) {
@@ -177,7 +183,7 @@ public class ToolExecutionHandler {
             return objectMapper.readValue(json, new TypeReference<>() {
             });
         } catch (Exception e) {
-            log.warn("[工具] 参数解析失败: {}", json, e);
+            log.warn("[ToolExecutionHandler] 参数解析失败: {}", json, e);
             return Map.of();
         }
     }

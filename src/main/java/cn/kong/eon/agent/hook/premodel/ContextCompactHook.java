@@ -51,6 +51,8 @@ public class ContextCompactHook implements Hook.PreModelHook {
             return HookResult.ok();
         }
 
+        ctx.setSummary(cs.getLastSummary());
+
         // 处置后窗口变了，度量要重算
         var metricsAfter = ctx.metrics(state);
         log.info("[上下文] {} | {} -> {} 块 | {} -> {} 字符 (降幅 {}) | 水位 {} | 投影剩余 {} 轮 | 构成 {}",

@@ -15,7 +15,7 @@ import cn.kong.eon.agent.hook.posttool.CheckpointHook;
 import cn.kong.eon.agent.hook.posttool.FailureBreakerHook;
 import cn.kong.eon.agent.hook.premodel.BudgetHook;
 import cn.kong.eon.agent.hook.premodel.ContextCompactHook;
-import cn.kong.eon.agent.hook.premodel.TodoNavigatorHook;
+import cn.kong.eon.agent.hook.premodel.TodoHook;
 import cn.kong.eon.agent.hook.pretool.GateHook;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
@@ -357,7 +357,7 @@ public class EonApplication {
     private void registerHooks() {
         // PreModel Hooks
         agent.addHook(new BudgetHook(config));
-        agent.addHook(new TodoNavigatorHook(todoStore));
+        agent.addHook(new TodoHook(todoStore));
         agent.addHook(new ContextCompactHook(compressionPolicy));
 
         // PostModel Hooks

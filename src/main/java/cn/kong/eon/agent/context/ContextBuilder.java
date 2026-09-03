@@ -15,16 +15,16 @@ import java.util.Map;
 
 /**
  * 上下文构建器。分层组装发送给 LLM 的 messages。
- * 物理顺序：System Prompt → Summary → Transcript → Memories → Navigator → RuntimeNudges。
+ * 物理顺序：System Prompt → Summary → Transcript → Memories → TODO → Nudges。
  * Transcript 部分以 {@link ContextWindow}（内容块序列）为数据源，只在 {@link #build()} 时投射回消息类型。
  */
 public class ContextBuilder {
 
     private String systemPrompt;
-    private String summary;
     private String memories;
-    private String navigator;
-    private String runtimeNudges;
+    private String summary;
+    private String todo;
+    private String nudges;
     private ContextWindow window;
     private TokenCountEstimator tokenCountEstimator;
 
@@ -47,12 +47,12 @@ public class ContextBuilder {
         this.memories = memories;
     }
 
-    public void setNavigator(String navigator) {
-        this.navigator = navigator;
+    public void setTodo(String todo) {
+        this.todo = todo;
     }
 
-    public void setRuntimeNudges(String runtimeNudges) {
-        this.runtimeNudges = runtimeNudges;
+    public void setNudges(String nudges) {
+        this.nudges = nudges;
     }
 
     /** 设置 transcript 数据源。压缩策略对窗口的就地修改会自动反映到这里。 */
@@ -109,11 +109,11 @@ public class ContextBuilder {
         if (memories != null && !memories.isBlank()) {
             result.add(UserMessage.from("memories", memories));
         }
-        if (navigator != null && !navigator.isBlank()) {
-            result.add(UserMessage.from("navigator", navigator));
+        if (todo != null && !todo.isBlank()) {
+            result.add(UserMessage.from("todo", todo));
         }
-        if (runtimeNudges != null && !runtimeNudges.isBlank()) {
-            result.add(UserMessage.from("runtime_nudges", runtimeNudges));
+        if (nudges != null && !nudges.isBlank()) {
+            result.add(UserMessage.from("nudges", nudges));
         }
 
         return result;
@@ -163,8 +163,8 @@ public class ContextBuilder {
         if (systemPrompt != null) tokens += estimate(systemPrompt);
         if (summary != null) tokens += estimate(summary);
         if (memories != null) tokens += estimate(memories);
-        if (navigator != null) tokens += estimate(navigator);
-        if (runtimeNudges != null) tokens += estimate(runtimeNudges);
+        if (todo != null) tokens += estimate(todo);
+        if (nudges != null) tokens += estimate(nudges);
         return tokens;
     }
 
