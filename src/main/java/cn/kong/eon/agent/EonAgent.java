@@ -200,9 +200,9 @@ public class EonAgent {
         try {
             logger.turnHeader(rec, state);
 
-            // ── 阶段 1：PreModel Hooks（预算检查、上下文压缩等） ──
+            // ── 阶段 1：准备上下文（跑 PreModel Hooks，再渲染 nudge） ──
             ContextBuilder ctx = buildContext(state);
-            TurnOutcome preModel = firePreModelHooks(state, ctx);
+            TurnOutcome preModel = prepareContext(state, ctx);
             if (preModel instanceof TurnOutcome.Exit exit) {
                 return exit;
             }
@@ -350,6 +350,19 @@ public class EonAgent {
     }
 
     /**
+     * 渲染 nudge 进上下文并清空：渲染即消费，每条提醒只进一次上下文。
+     * 清空必须紧接渲染 —— 之后各阶段（模型调用后、工具执行后）新产的 nudge 属于下一轮；
+     * 若延到本轮末尾统一清，已消费的与新产的混在同一列表里无法区分，会重复渲染或误清。
+     */
+    private void consumeNudges(SessionState state, ContextBuilder ctx) {
+        if (state.getNudges().isEmpty()) {
+            return;
+        }
+        ctx.setNudges(String.join("\n", state.getNudges()));
+        state.getNudges().clear();
+    }
+
+    /**
      * 估算工具 schema 的 token 开销。规格数量 × 单规格均值，缓存后复用。
      * 不能漏掉这一项：9 个内置 + MCP 工具约数千 token，100 轮就是预算的 15%。
      */
@@ -361,11 +374,11 @@ public class EonAgent {
         return cachedToolSchemaTokens;
     }
 
-    /** 校验工具是否存在，不存在则注入格式纠正提示。 */
+    /** 校验工具是否存在，不存在则注入提示要求改用可用工具。 */
     private void validateToolExistence(SessionState state, List<ToolExecutionRequest> requests) {
         for (ToolExecutionRequest req : requests) {
             if (!toolRegistry.contains(req.name())) {
-                state.getNudges().add(String.format(TOOL_NOT_FOUND_NUDGE, req.name()));
+                state.addNudge(String.format(TOOL_NOT_FOUND_NUDGE, req.name()));
             }
         }
     }
@@ -374,8 +387,17 @@ public class EonAgent {
     //  Hook 调度
     // ═══════════════════════════════════════════════════════════════════
 
-    private TurnOutcome firePreModelHooks(SessionState state, ContextBuilder ctx) {
-        return HookDispatcher.dispatchPreModel(preModelHooks, state, ctx, stopStateMachine);
+    /**
+     * 准备上下文：先跑完所有 PreModel Hook，再把累积的 nudge 渲染进 ctx。
+     * 顺序不可调换 —— BudgetHook 自己就产 nudge，必须本轮渲染才能本轮生效。
+     */
+    private TurnOutcome prepareContext(SessionState state, ContextBuilder ctx) {
+        TurnOutcome outcome = HookDispatcher.dispatchPreModel(preModelHooks, state, ctx, stopStateMachine);
+        if (outcome instanceof TurnOutcome.Exit) {
+            return outcome;
+        }
+        consumeNudges(state, ctx);
+        return outcome;
     }
 
     private TurnOutcome firePostModelHooks(SessionState state, LlmResponse response) {

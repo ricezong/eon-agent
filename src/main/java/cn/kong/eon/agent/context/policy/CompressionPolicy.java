@@ -35,14 +35,9 @@ public class CompressionPolicy {
      * @param turnCount 当前轮次序号，用于判定轮数入口
      * @return 本轮结果；未命中档位或无块可处置时 {@link CompressionResult#applied()} 为 false
      */
-    public CompressionResult apply(ContextWindow window,
-                                   ContextMetrics metrics,
-                                   CompressionState state,
-                                   int turnCount) {
-        if (window == null || window.isEmpty()) {
-            return CompressionResult.none(CompressionLevel.NONE);
-        }
+    public CompressionResult apply(ContextWindow window, ContextMetrics metrics, CompressionState state, int turnCount) {
 
+        // 判断压缩档位
         CompressionLevel level = CompressionTrigger.resolve(metrics, turnCount, settings);
         if (!level.enabled()) {
             return CompressionResult.none(level);

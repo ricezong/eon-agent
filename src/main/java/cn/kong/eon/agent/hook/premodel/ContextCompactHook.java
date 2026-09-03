@@ -6,6 +6,8 @@ import cn.kong.eon.agent.context.policy.CompressionPolicy;
 import cn.kong.eon.agent.context.policy.CompressionResult;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
+import cn.kong.eon.agent.hook.StopCategory;
+import cn.kong.eon.agent.hook.StopReason;
 import cn.kong.eon.model.CompressionState;
 import cn.kong.eon.model.SessionState;
 import org.slf4j.Logger;
@@ -38,14 +40,13 @@ public class ContextCompactHook implements Hook.PreModelHook {
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
         ContextWindow window = ctx.getWindow();
         if (window == null || window.isEmpty()) {
-            return HookResult.ok();
+            return HookResult.stop(new StopReason(StopCategory.UNEXPECTED_ERROR, "上下文为空"));
         }
 
         CompressionState cs = state.getCompressionState();
         int blocksBefore = window.size();
 
-        CompressionResult result = policy.apply(
-                window, ctx.metrics(state), cs, state.getTurnCount());
+        CompressionResult result = policy.apply(window, ctx.metrics(state), cs, state.getTurnCount());
 
         if (!result.applied()) {
             return HookResult.ok();

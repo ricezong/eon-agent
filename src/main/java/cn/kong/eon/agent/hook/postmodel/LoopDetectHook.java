@@ -57,7 +57,7 @@ public class LoopDetectHook implements Hook.PostModelHook {
         }
         if (dr.shouldWarn()) {
             log.info("[LoopDetect] 告警 - {}", dr.message());
-            state.getNudges().add(dr.message());
+            state.addNudge(dr.message());
         }
         return HookResult.ok();
     }

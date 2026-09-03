@@ -18,7 +18,7 @@ public class SessionState {
     private int turnCount;
     private TokenUsage usageAccum;
     private CompressionState compressionState;
-    private List<String> nudges;             // 运行时提醒（本轮有效）
+    private List<String> nudges;             // 运行时提醒：跨轮累积，每轮渲染进上下文后清空
     private String lastAssistantText;
     private boolean todoBeenUsed = false;    // 是否调用过 todo_write（激活 Todo）
 
@@ -115,10 +115,6 @@ public class SessionState {
 
     public List<String> getNudges() {
         return nudges;
-    }
-
-    public void setNudges(List<String> nudges) {
-        this.nudges = nudges;
     }
 
     public String getLastAssistantText() {

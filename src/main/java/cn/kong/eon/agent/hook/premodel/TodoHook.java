@@ -53,7 +53,7 @@ public class TodoHook implements Hook.PreModelHook {
         sb.append("</todo>");
 
         ctx.setTodo(sb.toString());
-        log.debug("Todo 已渲染: {} 字符", sb.length());
+        log.debug("[Todo] 已渲染: {} 字符", sb.length());
 
         return HookResult.ok();
     }

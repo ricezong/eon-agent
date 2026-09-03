@@ -53,17 +53,14 @@ public class BudgetHook implements Hook.PreModelHook {
         // 预算耗尽，终止
         if (used >= maxBudget) {
             log.warn("[Budget] 超限 {}% ({}/{}) → 停止", String.format("%.0f", ratio * 100), used, maxBudget);
-            StopReason reason = new StopReason(
-                    StopCategory.BUDGET_EXCEEDED,
-                    "Token 预算超限: " + used + " >= " + maxBudget);
+            StopReason reason = new StopReason(StopCategory.BUDGET_EXCEEDED, "Token 预算超限: " + used + " >= " + maxBudget);
             return HookResult.stop(reason);
         }
 
         // 达到阈值比例，注入收尾提示词
         if (ratio >= budget.getThreshold()) {
             int remainingSteps = config.getLoop().getMaxSteps() - state.getTurnCount();
-            String nudge = String.format(
-                    BUDGET_WARN_NUDGE, used, maxBudget, ratio * 100, Math.max(remainingSteps, 0));
+            String nudge = String.format(BUDGET_WARN_NUDGE, used, maxBudget, ratio * 100, Math.max(remainingSteps, 0));
             state.addNudge(nudge);
             log.info("[Budget] 告警 {}% ({}/{})", String.format("%.0f", ratio * 100), used, maxBudget);
         }

@@ -24,9 +24,7 @@ public final class CompressionTrigger {
      * @param settings  运行参数
      * @return 本轮档位；无需处置时返回 {@link CompressionLevel#NONE}
      */
-    public static CompressionLevel resolve(ContextMetrics metrics,
-                                           int turnCount,
-                                           CompressionSettings settings) {
+    public static CompressionLevel resolve(ContextMetrics metrics, int turnCount, CompressionSettings settings) {
         if (metrics == null) return CompressionLevel.NONE;
 
         double water = metrics.waterLevel();
