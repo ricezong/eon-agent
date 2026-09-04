@@ -213,13 +213,15 @@ public class EonAgent {
             LlmResponse response = llmClient.chat(messages, toolRegistry.getSpecifications());
             state.setLastResponse(response);
             state.getUsageAccum().add(response.usage());
-            state.setLastAssistantText(response.aiMessage().text());
+
+            String thought = response.aiMessage().text() != null ? response.aiMessage().text() : "";
+            state.setLastAssistantText(thought);
             List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
             logger.llmResponse(rec, requests);
 
             // ── 阶段 4：无工具调用 → 任务完成或截断处理 ──
             if (requests == null || requests.isEmpty()) {
-                return handleNoToolCalls(rec, state);
+                return handleNoToolCalls(rec, state, thought);
             }
 
             // ── 阶段 5：PostModel Hooks（循环检测等） ──
@@ -279,7 +281,7 @@ public class EonAgent {
      *   <li>正常 → 任务完成，退出
      * </ul>
      */
-    private TurnOutcome handleNoToolCalls(TurnRecord rec, SessionState state) {
+    private TurnOutcome handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
         if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
             logger.outputTruncated(rec);
             state.addNudge(TRUNCATION_NUDGE);
@@ -288,7 +290,7 @@ public class EonAgent {
         }
 
         finalizer.finalizeAndAppend(state);
-        return new TurnOutcome.Exit(state.getLastAssistantText());
+        return new TurnOutcome.Exit(thought);
     }
 
     // ═══════════════════════════════════════════════════════════════════
