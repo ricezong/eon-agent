@@ -32,7 +32,7 @@ public class ToolRegistry implements ToolSupport {
         this.sanitizer = new ArgumentSanitizer(objectMapper);
     }
 
-    /** 注册本地工具（受白名单过滤）。 */
+    /** 注册本地工具（受白名单过滤，权限以工具注解声明的为准）。 */
     public void register(ToolDescriptor descriptor) {
         if (!whitelist.isEmpty() && !whitelist.contains(descriptor.getName())) {
             log.warn("工具 {} 不在白名单中，跳过注册", descriptor.getName());
@@ -158,6 +158,29 @@ public class ToolRegistry implements ToolSupport {
     public boolean persistsArgs(String name) {
         ToolDescriptor descriptor = tools.get(name);
         return descriptor != null && descriptor.getExecutor().persistsArgs();
+    }
+
+    /** 查询本地工具本次调用参数的持久化位置；MCP 工具与解析失败一律返回 null。 */
+    @Override
+    public String persistedLocation(String name, String argumentsJson) {
+        ToolDescriptor descriptor = tools.get(name);
+        if (descriptor == null) return null;
+        if (!descriptor.getExecutor().persistsArgs()) return null;
+
+        Map<String, Object> args;
+        try {
+            args = objectMapper.readValue(argumentsJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            log.debug("参数 JSON 解析失败，跳过持久化位置提取: {} -> {}", name, e.getMessage());
+            return null;
+        }
+        try {
+            return descriptor.getExecutor().persistedLocation(args);
+        } catch (Exception e) {
+            log.debug("工具 {} 提取持久化位置异常: {}", name, e.getMessage());
+            return null;
+        }
     }
 
     /** 白名单（只读）。 */

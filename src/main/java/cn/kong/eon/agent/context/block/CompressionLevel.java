@@ -5,7 +5,7 @@ package cn.kong.eon.agent.context.block;
  * <p>
  * 档位同时承担两个职责：
  * <ul>
- *   <li>本轮对整个窗口施加的处置力度（由 {@code CompressionTrigger} 判定）</li>
+ *   <li>本轮对整个窗口施加的处置力度（由 {@code CompressionPolicy} 的档位判定逻辑产出）</li>
  *   <li>单个块已被施加过的处置力度（记录在块上，用于判断该块是否还需再处置）</li>
  * </ul>
  * 有序性由 {@link #severity} 表达，高档位包含低档位的动作。
@@ -38,11 +38,6 @@ public enum CompressionLevel {
     /** 本档位是否不低于给定档位。 */
     public boolean atLeast(CompressionLevel other) {
         return other != null && severity >= other.severity;
-    }
-
-    /** 本档位是否严格高于给定档位。 */
-    public boolean above(CompressionLevel other) {
-        return other != null && severity > other.severity;
     }
 
     /** 两个档位中力度较高的一个。用于把块状态单调推向更高档位。 */

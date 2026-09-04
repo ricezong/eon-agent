@@ -39,20 +39,18 @@ public class ContextPipeline {
     /**
      * 消息入站：爆炸为块 → 依次应用规则 → 返回进入上下文的块。
      *
-     * @param turn               入站轮次
      * @param succeededToolCalls 本轮执行成功的工具调用 id（可恢复性的判定依据）
      */
-    public List<ContextBlock> ingest(ChatMessage msg, int turn, Set<String> succeededToolCalls) {
+    public List<ContextBlock> ingest(ChatMessage msg, Set<String> succeededToolCalls) {
         IngestContext ctx = new IngestContext(
                 storeSupport,
                 toolSupport,
                 snipKeepChars,
-                succeededToolCalls != null ? succeededToolCalls : Collections.emptySet(),
-                turn);
+                succeededToolCalls != null ? succeededToolCalls : Collections.emptySet());
 
         String groupId = GROUP_ID_PREFIX + groupSeq.incrementAndGet();
         // 消息分块
-        List<ContextBlock> blocks = BlockProjector.explode(msg, groupId, turn);
+        List<ContextBlock> blocks = BlockProjector.explode(msg, groupId);
         for (ContextBlock block : blocks) {
             for (IngestRule rule : rules) {
                 if (rule.appliesTo(block, ctx)) {

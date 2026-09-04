@@ -37,7 +37,7 @@ public class TurnLogger {
     /** 记录上下文信息：消息数、估算 token、工具数、构成分解。 */
     public void contextInfo(TurnRecord rec, ContextBuilder ctx, List<ChatMessage> messages, SessionState state, int toolCount) {
         rec.context(messages.size(), ctx.estimateTokens(), toolCount);
-        rec.setComposition(ctx.metrics(state).composition());
+        rec.setComposition(ctx.metrics().composition());
     }
 
     /** 记录 LLM 响应中请求的工具列表。 */

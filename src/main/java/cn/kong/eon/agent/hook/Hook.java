@@ -31,7 +31,7 @@ public interface Hook {
 
     /** 阶段 2：模型调用后。解析输出、循环检测。 */
     interface PostModelHook extends Hook {
-        HookResult afterModelCall(SessionState state, LlmResponse response);
+        HookResult afterModelCall(SessionState state);
     }
 
     /** 阶段 3：工具执行前。门禁校验。 */

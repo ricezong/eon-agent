@@ -4,7 +4,6 @@ import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.hook.StopCategory;
 import cn.kong.eon.agent.hook.StopReason;
-import cn.kong.eon.llm.LlmResponse;
 import cn.kong.eon.agent.loop.LoopDetector;
 import cn.kong.eon.model.SessionState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -43,19 +42,19 @@ public class LoopDetectHook implements Hook.PostModelHook {
     }
 
     @Override
-    public HookResult afterModelCall(SessionState state, LlmResponse response) {
+    public HookResult afterModelCall(SessionState state) {
         List<ToolExecutionRequest> requests = state.getPendingToolCalls();
-        if (requests == null || requests.isEmpty()) return HookResult.ok();
+        if (requests == null || requests.isEmpty()) {
+            return HookResult.ok();
+        }
 
         LoopDetector.DetectionResult dr = loopDetector.recordToolCalls(requests);
-        if (dr.shouldStop()) {
+        if (dr.stop()) {
             log.warn("[LoopDetect] 停止 - {}", dr.message());
-            StopReason reason = new StopReason(
-                    StopCategory.LOOP_DETECTED,
-                    dr.message());
+            StopReason reason = new StopReason(StopCategory.LOOP_DETECTED, dr.message());
             return HookResult.stop(reason);
         }
-        if (dr.shouldWarn()) {
+        if (dr.warn()) {
             log.info("[LoopDetect] 告警 - {}", dr.message());
             state.addNudge(dr.message());
         }

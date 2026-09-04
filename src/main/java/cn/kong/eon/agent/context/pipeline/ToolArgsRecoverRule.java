@@ -23,8 +23,19 @@ public class ToolArgsRecoverRule implements IngestRule {
 
     @Override
     public void apply(ContextBlock block, IngestContext ctx) {
-        // 当前具是否会把它的调用参数完整持久化到磁盘。落盘的话 TOOL_ARGS 可以替换为占位符
-        boolean persisted = block.toolName() != null && ctx.toolSupport().persistsArgs(block.toolName());
-        block.setRecoverable(persisted && ctx.succeeded(block.toolCallId()));
+        String toolName = block.toolName();
+        // 当前工具是否会把它的调用参数完整持久化到磁盘。落盘的话 TOOL_ARGS 可以替换为占位符
+        boolean persisted = toolName != null && ctx.toolSupport().persistsArgs(toolName);
+        boolean recoverable = persisted && ctx.succeeded(block.toolCallId());
+        block.setRecoverable(recoverable);
+
+        // recoverable 时同步盖印持久化位置，骨架化时据此生成"去哪里取回"的指引，
+        // 压缩层不再需要猜测参数键名。位置为空则保留通用降级文案。
+        if (recoverable) {
+            String location = ctx.toolSupport().persistedLocation(toolName, block.text());
+            if (location != null) {
+                block.setRefId(location);
+            }
+        }
     }
 }

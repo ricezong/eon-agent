@@ -6,20 +6,22 @@ import java.util.Objects;
  * 上下文内容块。上下文领域模型的最小单位。
  * 与 LangChain4j 的 ChatMessage 的区别：ChatMessage 是传输类型（一条消息可含多块内容），
  * ContextBlock 是领域类型（一块内容 = 一个可独立处置的单元）。两者通过 BlockProjector 双向投射。
- * 块上携带三个决定其如何被处置的属性：{@link Retention}（能否改写）、
- * {@code recoverable}（磁盘上有无副本）、{@link CompressionLevel}（已施加的处置档位）。
+ * <p>
+ * <b>块不声明"自己能不能被压缩"</b>。可压缩性由两件事决定：窗口的位置结构（块是否落在保护区内）
+ * 与块自身的内容特征（有无磁盘副本、文本长度）。全类型一视同仁，不存在按类型硬编码的豁免名单。
+ * 唯一的例外是 {@link #pinned}——最后一条用户输入用它豁免一切处置，保证当前诉求始终可见。
+ * <p>
+ * 块上携带三个处置属性：{@code pinned}（豁免处置）、{@code recoverable}（磁盘上有无副本）、
+ * {@link CompressionLevel}（已施加的处置档位）。
  */
 public final class ContextBlock {
 
     private final String id;
     private final BlockKind kind;
-    private final Retention retention;
     /** 来源消息组 id。同一条 ChatMessage 拆出的块共享 groupId，用于重组回消息 */
     private final String groupId;
     /** 组内序号，重组时恢复原始顺序 */
     private final int ordinal;
-    /** 入站轮次。尾部保护区按轮次判定 */
-    private final int turn;
     /** 工具名（仅 TOOL_ARGS / TOOL_RESULT） */
     private final String toolName;
     /** 工具调用 id（仅 TOOL_ARGS / TOOL_RESULT），用于配对 */
@@ -34,26 +36,27 @@ public final class ContextBlock {
     private boolean recoverable;
     /** 已施加的最高处置档位。档位单调递增，高档位可覆盖低档位的结果。 */
     private CompressionLevel disposedLevel;
+    /** 豁免一切就地改写与删除。仅最后一条用户输入为 true。 */
+    private boolean pinned;
 
     private ContextBlock(Builder b) {
         this.id = Objects.requireNonNull(b.id, "id");
         this.kind = Objects.requireNonNull(b.kind, "kind");
-        this.retention = b.retention != null ? b.retention : Retention.COMPRESSIBLE;
         this.groupId = Objects.requireNonNull(b.groupId, "groupId");
         this.ordinal = b.ordinal;
-        this.turn = b.turn;
         this.toolName = b.toolName;
         this.toolCallId = b.toolCallId;
         this.text = b.text != null ? b.text : "";
         this.originalChars = this.text.length();
         this.disposedLevel = CompressionLevel.NONE;
+        this.pinned = b.pinned;
     }
 
     public static Builder builder() {
         return new Builder();
     }
 
-    // ═══════════════════ 标识 ═══════════════════
+    // ═══════════════════════════════ 标识 ═══════════════════════════════
 
     public String id() {
         return id;
@@ -61,10 +64,6 @@ public final class ContextBlock {
 
     public BlockKind kind() {
         return kind;
-    }
-
-    public Retention retention() {
-        return retention;
     }
 
     public String groupId() {
@@ -75,10 +74,6 @@ public final class ContextBlock {
         return ordinal;
     }
 
-    public int turn() {
-        return turn;
-    }
-
     public String toolName() {
         return toolName;
     }
@@ -87,7 +82,7 @@ public final class ContextBlock {
         return toolCallId;
     }
 
-    // ═══════════════════ 内容 ═══════════════════
+    // ═══════════════════════════════ 内容 ═══════════════════════════════
 
     public String text() {
         return text;
@@ -111,17 +106,12 @@ public final class ContextBlock {
         this.refId = refId;
     }
 
-    /** 入站时的原始字符数 */
+    /** 入站时的原始字符数，仅用于 toString 展示处置效果 */
     public int originalChars() {
         return originalChars;
     }
 
-    /** 相对入站已节省的字符数（含无损替换与有损压缩） */
-    public int savedChars() {
-        return Math.max(0, originalChars - text.length());
-    }
-
-    // ═══════════════════ 处置属性 ═══════════════════
+    // ═══════════════════════════════ 处置属性 ═══════════════════════════════
 
     /** 磁盘上是否存在完整副本。为 true 时清空内容不损失信息。 */
     public boolean recoverable() {
@@ -147,18 +137,36 @@ public final class ContextBlock {
         this.disposedLevel = disposedLevel.higherOf(level);
     }
 
-    // ═══════════════════ 构造 ═══════════════════
+    /**
+     * 是否豁免一切就地改写与删除。仅最后一条用户输入为 true。
+     * <p>
+     * 它是"当前诉求始终可见"这条规则的载体——历史用户输入会被摘要吸收后删除，
+     * 但当前这一条永远留在上下文里。豁免的是<b>诉求语义</b>而非原文：
+     * 输入超长时仍会落盘，块里保留摘要与引用，模型可分批读回后汇总意图。
+     */
+    public boolean isPinned() {
+        return pinned;
+    }
+
+    /**
+     * 设置豁免标记。由 {@code ContextWindow} 在新用户输入入窗时统一转移，外部不应直接调用——
+     * 手工维护容易漏掉"取消上一条的 pin"，那会导致当前诉求反而被删。
+     */
+    public void setPinned(boolean pinned) {
+        this.pinned = pinned;
+    }
+
+    // ═══════════════════════════════ 构造 ═══════════════════════════════
 
     public static final class Builder {
         private String id;
         private BlockKind kind;
-        private Retention retention = Retention.COMPRESSIBLE;
         private String groupId;
         private int ordinal;
-        private int turn;
         private String toolName;
         private String toolCallId;
         private String text;
+        private boolean pinned;
 
         public Builder id(String v) {
             this.id = v;
@@ -170,11 +178,6 @@ public final class ContextBlock {
             return this;
         }
 
-        public Builder retention(Retention v) {
-            this.retention = v;
-            return this;
-        }
-
         public Builder groupId(String v) {
             this.groupId = v;
             return this;
@@ -182,11 +185,6 @@ public final class ContextBlock {
 
         public Builder ordinal(int v) {
             this.ordinal = v;
-            return this;
-        }
-
-        public Builder turn(int v) {
-            this.turn = v;
             return this;
         }
 
@@ -205,6 +203,11 @@ public final class ContextBlock {
             return this;
         }
 
+        public Builder pinned(boolean v) {
+            this.pinned = v;
+            return this;
+        }
+
         public ContextBlock build() {
             return new ContextBlock(this);
         }
@@ -212,9 +215,9 @@ public final class ContextBlock {
 
     @Override
     public String toString() {
-        return "Block{" + kind + "/" + retention
+        return "Block{" + kind
                 + " id=" + id
-                + " turn=" + turn
+                + (pinned ? " [pinned]" : "")
                 + " chars=" + text.length()
                 + (originalChars != text.length() ? " (原 " + originalChars + ")" : "")
                 + (disposedLevel != CompressionLevel.NONE ? " 档位=" + disposedLevel : "")

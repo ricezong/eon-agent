@@ -4,6 +4,7 @@ import cn.kong.eon.agent.context.ContextWindow;
 import cn.kong.eon.agent.context.LlmSupport;
 import cn.kong.eon.agent.context.block.CompressionLevel;
 import cn.kong.eon.agent.context.block.ContextBlock;
+import cn.kong.eon.config.AgentConfig;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -28,25 +29,24 @@ public class ContextSummarizer {
     private final int maxOutputChars;
 
     public ContextSummarizer(LlmSupport llmSupport, String transcriptPath,
-                             int maxInputChars, int maxOutputChars) {
+                             AgentConfig.ContextConfig config) {
         this.llmSupport = llmSupport;
         this.transcriptPath = transcriptPath != null ? transcriptPath : "(transcript 路径不可用)";
-        this.maxInputChars = maxInputChars;
-        this.maxOutputChars = maxOutputChars;
+        this.maxInputChars = config.getSummarizeMaxInputChars();
+        this.maxOutputChars = config.getSummarizeMaxOutputChars();
     }
 
     /**
      * 生成可注入上下文的摘要文本（含 {@code <summary>} 标签）。
      *
      * @param window          上下文窗口，只读
-     * @param cutoffTurn      尾部保护区起始轮次，只摘要此轮次之前的块
+     * @param protectedFrom   保护区起始下标，只摘要此下标之前的块
      * @param existingSummary 上一轮的摘要，用于增量合并；无则为 null
-     * @return 摘要文本；保护区外无可摘要内容时返回 null
+     * @return 摘要文本；保护区之前无可摘要内容时返回 null
      */
-    public String summarize(ContextWindow window, int cutoffTurn, String existingSummary) {
-        List<ContextBlock> removable = collectRemovable(window, cutoffTurn);
+    public String summarize(ContextWindow window, int protectedFrom, String existingSummary) {
+        List<ContextBlock> removable = collectRemovable(window, protectedFrom);
         if (removable.isEmpty()) {
-            log.info("[压缩] Summarize 跳过：尾部保护区外无可摘要内容");
             return null;
         }
 
@@ -57,12 +57,12 @@ public class ContextSummarizer {
         try {
             summary = generateSummary(dialogText, existingSummary);
         } catch (Exception e) {
-            log.error("[压缩] Summarize 失败: {}", e.getMessage());
+            log.error("[Summary] Summarize 失败: {}", e.getMessage());
             summary = null;
         }
 
         if (summary == null || summary.isBlank()) {
-            log.warn("[压缩] 摘要未生成，保留旧摘要并记录降级说明");
+            log.warn("[Summary] 摘要未生成，保留旧摘要并记录降级说明");
             return fallback(existingSummary);
         }
         return "<summary>\n" + summary + "\n</summary>";
@@ -74,13 +74,23 @@ public class ContextSummarizer {
         return "<summary>\n(摘要生成失败，历史对话已裁剪。完整记录: " + transcriptPath + ")\n</summary>";
     }
 
-    /** 收集保护区之外、且允许改写的块。 */
-    private List<ContextBlock> collectRemovable(ContextWindow window, int cutoffTurn) {
+    /**
+     * 收集保护区之前的全部块。
+     * <p>
+     * 历史用户输入同样进入摘要——SUMMARIZE 不是就地改写而是内容转移，先由摘要吸收信息
+     * 再释放原文，诉求改由摘要第 1 段承载。被 pin 的当前用户输入恒在保护区内，不在收集范围。
+     * <p>
+     * 本方法的筛选条件必须与 {@link ContextWindow#removeBefore(int)} 完全一致，
+     * 否则会出现"摘要了没删"（重复摘要）或"删了没摘要"（信息丢失）。
+     */
+    private List<ContextBlock> collectRemovable(ContextWindow window, int protectedFrom) {
         List<ContextBlock> removable = new ArrayList<>();
-        for (ContextBlock block : window.blocks()) {
-            if (block.turn() < cutoffTurn && block.retention().compressible()) {
-                removable.add(block);
-            }
+        List<ContextBlock> blocks = window.blocks();
+        int limit = Math.min(protectedFrom, blocks.size());
+        for (int i = 0; i < limit; i++) {
+            ContextBlock block = blocks.get(i);
+            if (block.isPinned()) continue;
+            removable.add(block);
         }
         return removable;
     }
@@ -93,13 +103,16 @@ public class ContextSummarizer {
         String prompt = """
                 请将以下历史对话压缩为结构化摘要，严格按以下 4 段格式输出：
 
-                1. Primary Request and Intent — 用户的核心诉求（逐条列出）
+                1. User Requests — 诉求清单（按时间顺序，每条一行）
+                   - [已完成] <诉求摘要>
+                   - [进行中] <诉求摘要>
                 2. Key Context and Decisions — 关键上下文、已做的决策、已获取的关键信息
                 3. User Preferences and Updates — 本轮中发现/更新/确认的用户偏好和记忆
                 4. Pending Tasks and Current Work — 未完成任务与当前进展
 
-                注意：用户原始消息已由系统逐字保留在上下文中，第 1 段只需概括意图，
-                不要逐字复述用户原话。
+                关于第 1 段：
+                - 历史诉求的原文已被永久删除，本摘要是后续了解用户诉求的唯一依据，不得省略任何一条。
+                - 用户可能有多个诉求且各自处于不同阶段，逐条列出并标注状态。
 
                 摘要要求：不超过 %d 字符；陈述句；保留关键事实与数字；省略过程性描述。
                 如有旧摘要，请合并旧摘要与新对话生成新版摘要（增量），不要直接拼接。
@@ -119,7 +132,6 @@ public class ContextSummarizer {
 
         String summary = llmSupport.complete(messages);
         if (summary == null || summary.isBlank()) {
-            log.warn("[压缩] LLM 返回空摘要");
             return null;
         }
         return summary.length() > maxOutputChars
@@ -132,7 +144,7 @@ public class ContextSummarizer {
         StringBuilder sb = new StringBuilder();
         for (ContextBlock block : blocks) {
             String line = formatBlock(block);
-            if (line == null || line.isBlank()) continue;
+            if (line.isBlank()) continue;
             sb.append(line).append('\n');
             if (sb.length() >= maxInputChars) {
                 sb.append("... [已截断]\n");
@@ -148,7 +160,7 @@ public class ContextSummarizer {
             case AI_TEXT -> "[助手] " + truncate(block.text(), 1000);
             case TOOL_ARGS -> "[助手调用] " + block.toolName() + "(" + truncate(block.text(), 200) + ")";
             case TOOL_RESULT -> "[工具结果:" + block.toolName() + "] " + resultLine(block);
-            default -> null;
+            case OTHER -> "[其他] " + truncate(block.text(), 1000);
         };
     }
 

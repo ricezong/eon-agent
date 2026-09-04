@@ -45,7 +45,7 @@ public class GateHook implements Hook.PreToolHook {
         for (ToolExecutionRequest req : requests) {
             if (!toolRegistry.isDestructive(req.name())) continue;
 
-            log.warn("[工具门禁] 破坏性工具 '{}' 已批准 | 参数: {} | turn: {}",
+            log.warn("[Gate] 破坏性工具 '{}' 已批准 | 参数: {} | turn: {}",
                     req.name(), req.arguments(), state.getTurnCount());
         }
         return HookResult.ok();

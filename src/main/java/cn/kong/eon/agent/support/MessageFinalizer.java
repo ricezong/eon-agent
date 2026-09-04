@@ -34,20 +34,19 @@ public class MessageFinalizer {
 
         List<ToolExecutionResult> toolResults = state.getLastToolResults();
         Set<String> succeeded = succeededIds(toolResults);
-        int turn = state.getTurnCount();
 
         // 仅当有文本或工具调用时才回填 AiMessage
         if (hasText || hasCalls) {
             AiMessage aiMsg = hasText
                     ? AiMessage.from(assistantText, pendingCalls)
                     : AiMessage.from(pendingCalls);
-            jsonlStore.append(aiMsg, turn, succeeded);
+            jsonlStore.append(aiMsg, succeeded);
         }
 
         if (toolResults != null) {
             for (ToolExecutionResult result : toolResults) {
                 ToolExecutionResultMessage toolResultMsg = ToolExecutionResultMessage.from(result.toolCallId(), result.toolName(), result.content());
-                jsonlStore.append(toolResultMsg, turn, succeeded);
+                jsonlStore.append(toolResultMsg, succeeded);
             }
         }
 

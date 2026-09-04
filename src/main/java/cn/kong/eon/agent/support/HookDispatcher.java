@@ -34,12 +34,12 @@ public class HookDispatcher {
     }
 
     /** 调度 PostModel Hook。stop 后立即返回 Exit。 */
-    public static TurnOutcome dispatchPostModel(List<Hook.PostModelHook> hooks, SessionState state, LlmResponse response, StopStateMachine stopStateMachine) {
+    public static TurnOutcome dispatchPostModel(List<Hook.PostModelHook> hooks, SessionState state, StopStateMachine stopStateMachine) {
         for (Hook.PostModelHook hook : hooks) {
             if (!hook.active(state)) {
                 continue;
             }
-            HookResult result = hook.afterModelCall(state, response);
+            HookResult result = hook.afterModelCall(state);
             if (!result.isStop()) {
                 continue;
             }

@@ -51,7 +51,7 @@ public class CheckpointHook implements Hook.PostToolHook {
                 state.getUsageAccum(),
                 state.getCompressionState()
         );
-        log.info("Checkpoint 已保存: turn={}", state.getTurnCount());
+        log.info("[Checkpoint] 已保存: turn={}", state.getTurnCount());
 
         return HookResult.ok();
     }

@@ -49,18 +49,17 @@ public class JsonlStore {
     /**
      * 追加一条消息：经入站管线处置 → 进入内存窗口 → 写磁盘账本。
      *
-     * @param turn               入站轮次
      * @param succeededToolCalls 本轮执行成功的工具调用 id（可恢复性的判定依据）
      */
-    public synchronized void append(ChatMessage message, int turn, Set<String> succeededToolCalls) {
-        List<ContextBlock> blocks = pipeline.ingest(message, turn, succeededToolCalls);
+    public synchronized void append(ChatMessage message, Set<String> succeededToolCalls) {
+        List<ContextBlock> blocks = pipeline.ingest(message, succeededToolCalls);
         window.addAll(blocks);
         appendToLedger(message);
     }
 
     /** 无工具上下文时的简化重载。 */
     public synchronized void append(ChatMessage message) {
-        append(message, 0, Collections.emptySet());
+        append(message, Collections.emptySet());
     }
 
     /** 获取内存窗口，压缩策略与度量直接作用于它。 */
@@ -80,12 +79,10 @@ public class JsonlStore {
 
     /**
      * 从磁盘账本加载历史消息到内存窗口，历史消息原样恢复不回溯入站处置。
-     * 轮次按用户消息计数恢复：一条用户消息标志新一轮开始，与运行期的轮次定义一致。
      */
     private void loadAll() {
         try {
             List<String> lines = Files.readAllLines(jsonlFile);
-            int turn = 0;
             for (String line : lines) {
                 if (line.isBlank()) {
                     continue;
@@ -94,11 +91,8 @@ public class JsonlStore {
                 if (msg == null) {
                     continue;
                 }
-                if (msg instanceof UserMessage) {
-                    turn++;
-                }
                 // 历史消息原样恢复：入站处置不回溯
-                window.addAll(BlockProjector.explode(msg, "h" + window.size(), turn));
+                window.addAll(BlockProjector.explode(msg, "h" + window.size()));
             }
             if (!lines.isEmpty()) {
                 log.info("从 JSONL 加载 {} 条消息 → {} 个内容块", lines.size(), window.size());

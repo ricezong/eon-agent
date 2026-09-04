@@ -1,9 +1,10 @@
 package cn.kong.eon.agent.hook.premodel;
 
 import cn.kong.eon.agent.context.ContextBuilder;
+import cn.kong.eon.agent.context.ContextMetrics;
 import cn.kong.eon.agent.context.ContextWindow;
+import cn.kong.eon.agent.context.block.CompressionLevel;
 import cn.kong.eon.agent.context.policy.CompressionPolicy;
-import cn.kong.eon.agent.context.policy.CompressionResult;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.hook.StopCategory;
@@ -17,18 +18,18 @@ import org.slf4j.LoggerFactory;
  * 压缩执行点（PreModel, order=100）。每轮调 LLM 前调用
  * {@link CompressionPolicy#apply} 判定并执行一个压缩档位。
  */
-public class ContextCompactHook implements Hook.PreModelHook {
-    private static final Logger log = LoggerFactory.getLogger(ContextCompactHook.class);
+public class CtxCompactHook implements Hook.PreModelHook {
+    private static final Logger log = LoggerFactory.getLogger(CtxCompactHook.class);
 
     private final CompressionPolicy policy;
 
-    public ContextCompactHook(CompressionPolicy policy) {
+    public CtxCompactHook(CompressionPolicy policy) {
         this.policy = policy;
     }
 
     @Override
     public String name() {
-        return "ContextCompact";
+        return "CtxCompact";
     }
 
     @Override
@@ -44,25 +45,17 @@ public class ContextCompactHook implements Hook.PreModelHook {
         }
 
         CompressionState cs = state.getCompressionState();
-        int blocksBefore = window.size();
+        ContextMetrics before = ctx.metrics();
 
-        CompressionResult result = policy.apply(window, ctx.metrics(state), cs, state.getTurnCount());
-
-        if (!result.applied()) {
+        CompressionLevel level = policy.apply(window, before, cs, state.getTurnCount());
+        if (!level.enabled()) {
             return HookResult.ok();
         }
 
         ctx.setSummary(cs.getLastSummary());
 
         // 处置后窗口变了，度量要重算
-        var metricsAfter = ctx.metrics(state);
-        log.info("[上下文] {} | {} -> {} 块 | {} -> {} 字符 (降幅 {}) | 水位 {} | 投影剩余 {} 轮 | 构成 {}",
-                result.describe(),
-                blocksBefore, window.size(),
-                result.charsBefore(), result.charsAfter(), pct(result.reduction()),
-                pct(metricsAfter.waterLevel()),
-                String.format("%.1f", metricsAfter.projectedRemainingTurns()),
-                metricsAfter.composition());
+        log.info("[CtxCompact] {}: 水位 {} -> {}", level, pct(before.waterLevel()), pct(ctx.metrics().waterLevel()));
 
         return HookResult.ok();
     }

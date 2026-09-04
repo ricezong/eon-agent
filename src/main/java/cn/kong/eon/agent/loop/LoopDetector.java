@@ -24,10 +24,7 @@ public class LoopDetector {
     private static final String REPEAT_WARN = "工具 %1$s 已重复调用 %2$d 次，请考虑换参数或换工具";
 
     /** 单工具熔断提示：%1$s=工具名，%2$d=连续失败次数 */
-    private static final String FAILURE_STOP = """
-            工具 %1$s 连续失败 %2$d 次，已熔断。
-            请标记 blocked 或调整计划，不要再调用此工具，其他工具仍可正常使用
-            """;
+    private static final String FAILURE_STOP = "工具 %1$s 连续失败 %2$d 次，已熔断。请标记 blocked 或调整计划，不要再调用此工具，其他工具仍可正常使用";
 
     /** 熔断预警提示：%1$s=工具名，%2$d=已连续失败次数，%3$d=距熔断还差次数 */
     private static final String FAILURE_WARN = """
@@ -195,11 +192,11 @@ public class LoopDetector {
             return new DetectionResult(Level.STOP, msg);
         }
 
-        public boolean shouldStop() {
+        public boolean stop() {
             return level == Level.STOP;
         }
 
-        public boolean shouldWarn() {
+        public boolean warn() {
             return level == Level.WARN;
         }
     }

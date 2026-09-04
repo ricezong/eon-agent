@@ -2,7 +2,6 @@ package cn.kong.eon.agent.context;
 
 import cn.kong.eon.agent.context.block.BlockKind;
 import cn.kong.eon.agent.context.block.ContextBlock;
-import cn.kong.eon.model.SessionState;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -32,8 +31,6 @@ public class ContextBuilder {
     private long toolSchemaTokens;
     private long outputReserveTokens;
     private long contextMaxTokens;
-    private long budgetUsedTokens;
-    private long budgetMaxTokens;
 
     public void setSystemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
@@ -86,11 +83,6 @@ public class ContextBuilder {
         this.contextMaxTokens = tokens;
     }
 
-    public void setBudgetTokens(long used, long max) {
-        this.budgetUsedTokens = used;
-        this.budgetMaxTokens = max;
-    }
-
     /** 组装最终发送给 LLM 的消息列表。 */
     public List<ChatMessage> build() {
         List<ChatMessage> result = new ArrayList<>();
@@ -124,11 +116,13 @@ public class ContextBuilder {
         return transcriptTokens() + anchorTokens() + toolSchemaTokens + outputReserveTokens;
     }
 
-    /** 完整度量：水位、构成分解、预算投影。 */
+    /** 完整度量：水位、构成分解。 */
     public ContextMetrics metrics() {
         Map<BlockKind, Long> byKind = tokensByKind();
         long transcript = 0;
-        for (long v : byKind.values()) transcript += v;
+        for (long v : byKind.values()) {
+            transcript += v;
+        }
 
         return new ContextMetrics(
                 transcript,
@@ -136,8 +130,6 @@ public class ContextBuilder {
                 toolSchemaTokens,
                 outputReserveTokens,
                 contextMaxTokens,
-                budgetUsedTokens,
-                budgetMaxTokens,
                 byKind);
     }
 
@@ -174,13 +166,5 @@ public class ContextBuilder {
             return tokenCountEstimator.estimateTokenCountInText(text);
         }
         return text.length() / 2;
-    }
-
-    /** 便捷入口：从会话状态填充预算口径后取度量。 */
-    public ContextMetrics metrics(SessionState state) {
-        if (state != null) {
-            this.budgetUsedTokens = state.getUsageAccum().getTotalTokens();
-        }
-        return metrics();
     }
 }

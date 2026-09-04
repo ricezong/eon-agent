@@ -30,21 +30,21 @@ public class WebSearchTool implements ToolExecutor {
 
     private static final String SEARCH_URL = "https://qianfan.baidubce.com/v2/ai_search/web_search";
     private static final int TIMEOUT_SECONDS = 30;
-    private static final int DEFAULT_TOP_K = 10;
 
     private final ObjectMapper mapper;
     private final HttpClient httpClient;
     private final String apiKey;
+    /** 以下三项是工具参数的缺省值，由 agent.yaml 的 web_search 配置注入 */
+    private final String searchSource;
+    private final int defaultTopK;
+    private final String defaultRecencyFilter;
 
-    public WebSearchTool(String apiKey, ObjectMapper objectMapper) {
-        this(apiKey, objectMapper, HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(30))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build());
-    }
-
-    public WebSearchTool(String apiKey, ObjectMapper objectMapper, HttpClient httpClient) {
+    public WebSearchTool(String apiKey, String searchSource, int defaultTopK, String defaultRecencyFilter,
+                         ObjectMapper objectMapper, HttpClient httpClient) {
         this.apiKey = apiKey != null ? apiKey : "";
+        this.searchSource = searchSource;
+        this.defaultTopK = defaultTopK;
+        this.defaultRecencyFilter = defaultRecencyFilter;
         this.mapper = objectMapper;
         this.httpClient = httpClient;
     }
@@ -64,8 +64,12 @@ public class WebSearchTool implements ToolExecutor {
         return null;
     }
 
-    public static ToolDescriptor descriptor(String apiKey, ObjectMapper objectMapper, HttpClient httpClient) {
-        return ToolDescriptor.fromAnnotated(new WebSearchTool(apiKey, objectMapper, httpClient), ToolPermission.READONLY);
+    public static ToolDescriptor descriptor(String apiKey, String searchSource, int defaultTopK,
+                                            String defaultRecencyFilter,
+                                            ObjectMapper objectMapper, HttpClient httpClient) {
+        return ToolDescriptor.fromAnnotated(
+                new WebSearchTool(apiKey, searchSource, defaultTopK, defaultRecencyFilter, objectMapper, httpClient),
+                ToolPermission.READONLY);
     }
 
     @Override
@@ -81,10 +85,13 @@ public class WebSearchTool implements ToolExecutor {
 
         int topK = arguments.containsKey("max_results")
                 ? Math.min((Integer) arguments.get("max_results"), 20)
-                : DEFAULT_TOP_K;
+                : defaultTopK;
 
         String siteFilter = (String) arguments.get("site_filter");
         String recencyFilter = (String) arguments.get("recency_filter");
+        if (recencyFilter == null || recencyFilter.isBlank()) {
+            recencyFilter = defaultRecencyFilter;
+        }
 
         try {
             log.info("WebSearch(千帆): query='{}', topK={}, site={}, recency={}",
@@ -109,7 +116,7 @@ public class WebSearchTool implements ToolExecutor {
         msg.put("content", query);
         msg.put("role", "user");
 
-        body.put("search_source", "baidu_search_v2");
+        body.put("search_source", searchSource);
 
         ArrayNode resourceTypeFilter = body.putArray("resource_type_filter");
         ObjectNode webFilter = resourceTypeFilter.addObject();

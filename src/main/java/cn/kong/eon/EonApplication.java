@@ -6,15 +6,13 @@ import cn.kong.eon.agent.context.pipeline.ContextPipeline;
 import cn.kong.eon.agent.context.pipeline.IngestRule;
 import cn.kong.eon.agent.context.pipeline.ToolArgsRecoverRule;
 import cn.kong.eon.agent.context.pipeline.ToolResultFormatRule;
-import cn.kong.eon.agent.context.policy.BlockDisposer;
 import cn.kong.eon.agent.context.policy.CompressionPolicy;
-import cn.kong.eon.agent.context.policy.CompressionSettings;
 import cn.kong.eon.agent.context.policy.ContextSummarizer;
 import cn.kong.eon.agent.hook.postmodel.LoopDetectHook;
 import cn.kong.eon.agent.hook.posttool.CheckpointHook;
 import cn.kong.eon.agent.hook.posttool.FailureBreakerHook;
 import cn.kong.eon.agent.hook.premodel.BudgetHook;
-import cn.kong.eon.agent.hook.premodel.ContextCompactHook;
+import cn.kong.eon.agent.hook.premodel.CtxCompactHook;
 import cn.kong.eon.agent.hook.premodel.TodoHook;
 import cn.kong.eon.agent.hook.pretool.GateHook;
 import cn.kong.eon.config.AgentConfig;
@@ -266,34 +264,21 @@ public class EonApplication {
         var ctxCfg = config.getContext();
         var comp = ctxCfg.getCompression();
 
-        CompressionSettings settings = new CompressionSettings(
-                comp.getSnipWaterLevel(),
-                comp.getPruneWaterLevel(),
-                comp.getSummarizeWaterLevel(),
-                comp.getTurnInterval(),
-                comp.getTurnLevel(),
-                comp.getTailGuardTurns(),
-                ctxCfg.getSnipKeepChars(),
-                comp.getOffloadMinChars(),
-                ctxCfg.getSummarizeMaxInputChars(),
-                ctxCfg.getSummarizeMaxOutputChars());
+        ContextSummarizer summarizer = new ContextSummarizer(llmClient, transcriptPath, ctxCfg);
 
-        BlockDisposer disposer = new BlockDisposer(settings, objectMapper);
-        ContextSummarizer summarizer = new ContextSummarizer(
-                llmClient, transcriptPath,
-                ctxCfg.getSummarizeMaxInputChars(), ctxCfg.getSummarizeMaxOutputChars());
-
-        log.info("压缩策略已装配: 水位 {}/{}/{} | 轮数周期 {} 档位 {} | 尾部保护 {} 轮 | 参数骨架化阈值 {} 字符",
+        log.info("压缩策略已装配: 水位 {}/{}/{} | 轮数周期 {} 档位 {} | 尾部保护 {} 块 | 参数骨架化阈值 {} 字符",
                 comp.getSnipWaterLevel(), comp.getPruneWaterLevel(), comp.getSummarizeWaterLevel(),
                 comp.getTurnInterval(), comp.getTurnLevel(),
-                comp.getTailGuardTurns(), comp.getOffloadMinChars());
+                comp.getTailGuardBlocks(), comp.getOffloadMinChars());
 
-        return new CompressionPolicy(settings, disposer, summarizer);
+        return new CompressionPolicy(ctxCfg, objectMapper, summarizer);
     }
 
     /** 创建工具注册表，注册所有内置工具。 */
     private ToolRegistry createToolRegistry() {
-        ToolRegistry registry = new ToolRegistry(config.getTools().getWhitelist(), objectMapper);
+        ToolRegistry registry = new ToolRegistry(
+                config.getTools().getWhitelist(),
+                objectMapper);
 
         registry.register(ReadFileTool.descriptor());
         registry.register(WriteFileTool.descriptor());
@@ -304,9 +289,15 @@ public class EonApplication {
         registry.register(TodoWriteTool.descriptor(objectMapper));
         registry.register(UpdateMemoryTool.descriptor());
 
-        String searchApiKey = config.getWebSearch().getApiKey();
+        var searchCfg = config.getWebSearch();
+        String searchApiKey = searchCfg.getApiKey();
         if (searchApiKey != null && !searchApiKey.isBlank()) {
-            registry.register(WebSearchTool.descriptor(searchApiKey, objectMapper, httpConfig.getClient()));
+            registry.register(WebSearchTool.descriptor(
+                    searchApiKey,
+                    searchCfg.getSearchSource(),
+                    searchCfg.getTopK(),
+                    searchCfg.getRecencyFilter(),
+                    objectMapper, httpConfig.getClient()));
         } else {
             log.warn("web_search 工具未注册: QIANFAN_API_KEY 未配置");
         }
@@ -361,7 +352,7 @@ public class EonApplication {
         // PreModel Hooks
         agent.addHook(new BudgetHook(config));
         agent.addHook(new TodoHook(todoStore));
-        agent.addHook(new ContextCompactHook(compressionPolicy));
+        agent.addHook(new CtxCompactHook(compressionPolicy));
 
         // PostModel Hooks
         agent.addHook(new LoopDetectHook(loopDetector));

@@ -67,6 +67,13 @@ public class WriteFileTool implements ToolExecutor {
         return true;
     }
 
+    /** 内容落盘位置即调用方指定的 file_path（原始参数值，未经 resolver 解析）。 */
+    @Override
+    public String persistedLocation(Map<String, Object> arguments) {
+        Object path = arguments.get("file_path");
+        return path instanceof String s && !s.isBlank() ? s : null;
+    }
+
     @Tool(name = "write", value = {
             "创建或覆盖文件。当用户需要保存笔记、文档或写入内容到文件时使用此工具。",
             "如果指定路径的文件已存在，会覆盖原文件内容。"

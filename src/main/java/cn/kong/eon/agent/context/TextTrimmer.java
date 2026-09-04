@@ -5,9 +5,6 @@ package cn.kong.eon.agent.context;
  */
 public final class TextTrimmer {
 
-    private TextTrimmer() {
-    }
-
     /**
      * @param keepChars 保留的总字符数，头尾各半
      * @return 截断后的文本；原文未超过保留长度时原样返回

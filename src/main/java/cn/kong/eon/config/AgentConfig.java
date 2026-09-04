@@ -30,7 +30,6 @@ public class AgentConfig {
     private WebSearchConfig webSearch;
     private ModeConfig mode;
     private BudgetConfig budget;
-    private MemoryConfig memory;
 
     /** 从输入流加载配置，执行校验和环境变量解析。 */
     public static AgentConfig load(InputStream yamlStream) {
@@ -75,7 +74,6 @@ public class AgentConfig {
         if (webSearch == null) webSearch = new WebSearchConfig();
         if (mode == null) mode = new ModeConfig();
         if (budget == null) budget = new BudgetConfig();
-        if (memory == null) memory = new MemoryConfig();
     }
 
     /** 对敏感字段（api_key）执行环境变量解析。 */
@@ -157,10 +155,6 @@ public class AgentConfig {
         return budget;
     }
 
-    public MemoryConfig getMemory() {
-        return memory;
-    }
-
     public void setLlm(LlmConfig llm) {
         this.llm = llm;
     }
@@ -205,13 +199,9 @@ public class AgentConfig {
         this.budget = budget;
     }
 
-    public void setMemory(MemoryConfig memory) {
-        this.memory = memory;
-    }
-
     /** 运行模式配置。 */
     public static class ModeConfig {
-        private boolean checkpointEnabled = false;
+        private boolean checkpointEnabled = true;
 
         public boolean isCheckpointEnabled() {
             return checkpointEnabled;
@@ -222,27 +212,14 @@ public class AgentConfig {
         }
     }
 
-    /** 记忆功能配置。 */
-    public static class MemoryConfig {
-        private boolean enabled = true;
-
-        public boolean isEnabled() {
-            return enabled;
-        }
-
-        public void setEnabled(boolean enabled) {
-            this.enabled = enabled;
-        }
-    }
-
     public static class LlmConfig {
-        private String provider = "deepseek";
-        private String baseUrl = "https://api.deepseek.com/v1";
+        private String provider = "mimo";
+        private String baseUrl = "https://api.xiaomimimo.com/v1";
         private String apiKey = "";
-        private String modelName = "deepseek-chat";
-        private double temperature = 0.0;
+        private String modelName = "mimo-v2.5";
+        private double temperature = 0.7;
         private int timeout = 120;
-        private int maxTokens = 4096;
+        private int maxTokens = 12000;
 
         public String getProvider() {
             return provider;
@@ -302,16 +279,16 @@ public class AgentConfig {
     }
 
     public static class ContextConfig {
-        private int maxTokens = 120000;
+        private int maxTokens = 200000;
         private String systemPromptPath = "prompts/system_prompt.md";
-        private int summarizeMaxInputChars = 50000;
-        private int snipKeepChars = 2000;
-        private int summarizeMaxOutputChars = 2000;
+        private int summarizeMaxInputChars = 80000;
+        private int snipKeepChars = 4000;
+        private int summarizeMaxOutputChars = 3000;
         private Compression compression = new Compression();
 
         /**
          * 压缩机制配置。各项含义见
-         * {@link cn.kong.eon.agent.context.policy.CompressionSettings}，取值约束在那里统一校验。
+         * {@link cn.kong.eon.agent.context.policy.CompressionPolicy}，取值约束在那里统一校验。
          */
         public static class Compression {
             /** SNIP 档水位下限 */
@@ -324,8 +301,8 @@ public class AgentConfig {
             private int turnInterval = 7;
             /** 轮数入口命中且水位三档均未命中时执行的档位 */
             private CompressionLevel turnLevel = CompressionLevel.SNIP;
-            /** 尾部保护区轮数：最近这些轮的内容不参与任何档位 */
-            private int tailGuardTurns = 3;
+            /** 尾部保护区块数：从最近一次用户输入向上延伸的块数，此区间不参与任何档位 */
+            private int tailGuardBlocks = 12;
             /** 参数块骨架化的最小字符数，短参数骨架化反而更长 */
             private int offloadMinChars = 2000;
 
@@ -369,12 +346,12 @@ public class AgentConfig {
                 this.turnLevel = v;
             }
 
-            public int getTailGuardTurns() {
-                return tailGuardTurns;
+            public int getTailGuardBlocks() {
+                return tailGuardBlocks;
             }
 
-            public void setTailGuardTurns(int v) {
-                this.tailGuardTurns = v;
+            public void setTailGuardBlocks(int v) {
+                this.tailGuardBlocks = v;
             }
 
             public int getOffloadMinChars() {
@@ -436,7 +413,7 @@ public class AgentConfig {
     }
 
     public static class LoopConfig {
-        private int maxSteps = 30;
+        private int maxSteps = 100;
 
         public int getMaxSteps() {
             return maxSteps;
@@ -449,7 +426,7 @@ public class AgentConfig {
 
     /** 预算配置。max_tokens 为会话累计 token 上限，threshold 为注入收尾提示的阈值比例。 */
     public static class BudgetConfig {
-        private int maxTokens = 500000;
+        private int maxTokens = 2000000;
         private double threshold = 0.75;
 
         public int getMaxTokens() {
@@ -571,11 +548,8 @@ public class AgentConfig {
 
     public static class ToolsConfig {
         private Set<String> whitelist = new LinkedHashSet<>();
-        private Set<String> destructive = new LinkedHashSet<>();
-        private Set<String> readonly = new LinkedHashSet<>();
         private boolean sandboxEnabled = true;
         private int parallelism = 4;
-        private int httpConnectTimeoutSeconds = 30;
         private WebFetch webFetch;
         private Download download;
 
@@ -629,22 +603,6 @@ public class AgentConfig {
             this.whitelist = v;
         }
 
-        public Set<String> getDestructive() {
-            return destructive;
-        }
-
-        public void setDestructive(Set<String> v) {
-            this.destructive = v;
-        }
-
-        public Set<String> getReadonly() {
-            return readonly;
-        }
-
-        public void setReadonly(Set<String> v) {
-            this.readonly = v;
-        }
-
         public boolean isSandboxEnabled() {
             return sandboxEnabled;
         }
@@ -659,14 +617,6 @@ public class AgentConfig {
 
         public void setParallelism(int v) {
             this.parallelism = v;
-        }
-
-        public int getHttpConnectTimeoutSeconds() {
-            return httpConnectTimeoutSeconds;
-        }
-
-        public void setHttpConnectTimeoutSeconds(int v) {
-            this.httpConnectTimeoutSeconds = v;
         }
 
         public WebFetch getWebFetch() {
@@ -693,8 +643,18 @@ public class AgentConfig {
             return servers;
         }
 
+        /**
+         * Jackson 反序列化 {@code Map<String, McpServerConfig>} 时不会把 map 的 key
+         * 注入 value 对象的 key 字段，这里在赋值时补写，
+         * 使 {@link McpServerConfig#getKey()} 能拿到 yaml 中配置的服务名。
+         */
         public void setServers(Map<String, McpServerConfig> v) {
             this.servers = v;
+            if (v != null) {
+                v.forEach((k, s) -> {
+                    if (s != null) s.key = k;
+                });
+            }
         }
 
         public List<McpServerConfig> getEnabledServers() {
@@ -741,11 +701,18 @@ public class AgentConfig {
         }
     }
 
+    /**
+     * web_search 配置。api_key 之外的三项是工具参数的缺省值：
+     * LLM 调用显式传参时以参数为准，未传时回退到这里的配置。
+     */
     public static class WebSearchConfig {
         private String apiKey = "";
+        /** 搜索源，直传千帆 API 的 search_source 字段 */
         private String searchSource = "baidu_search_v2";
+        /** 工具未传 max_results 时的默认返回条数 */
         private int topK = 10;
-        private String recencyFilter = "year";
+        /** 工具未传 recency_filter 时的默认时间过滤，取值 pd/pw/pm/py */
+        private String recencyFilter = "py";
 
         public String getApiKey() {
             return apiKey;

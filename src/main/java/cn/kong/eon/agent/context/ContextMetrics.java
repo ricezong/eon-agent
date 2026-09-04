@@ -6,8 +6,8 @@ import java.util.EnumMap;
 import java.util.Map;
 
 /**
- * 上下文度量。水位、预算投影、构成分解。
- * 被档位判定（取水位）与 ContextCompactHook（日志输出）消费。
+ * 上下文度量。水位与构成分解。
+ * 水位被档位判定消费，构成分解被 TurnLogger 的每轮日志消费。
  */
 public final class ContextMetrics {
 
@@ -16,22 +16,17 @@ public final class ContextMetrics {
     private final long toolSchemaTokens;
     private final long outputReserveTokens;
     private final long contextMaxTokens;
-    private final long budgetUsedTokens;
-    private final long budgetMaxTokens;
     private final Map<BlockKind, Long> tokensByKind;
 
     public ContextMetrics(long transcriptTokens, long anchorTokens,
                           long toolSchemaTokens, long outputReserveTokens,
                           long contextMaxTokens,
-                          long budgetUsedTokens, long budgetMaxTokens,
                           Map<BlockKind, Long> tokensByKind) {
         this.transcriptTokens = transcriptTokens;
         this.anchorTokens = anchorTokens;
         this.toolSchemaTokens = toolSchemaTokens;
         this.outputReserveTokens = outputReserveTokens;
         this.contextMaxTokens = contextMaxTokens;
-        this.budgetUsedTokens = budgetUsedTokens;
-        this.budgetMaxTokens = budgetMaxTokens;
         Map<BlockKind, Long> map = new EnumMap<>(BlockKind.class);
         if (tokensByKind != null) map.putAll(tokensByKind);
         this.tokensByKind = map;
@@ -43,24 +38,9 @@ public final class ContextMetrics {
         return Math.min(1.0, (double) sentTokens() / contextMaxTokens);
     }
 
-    /** 单轮真实发送 token 数 */
+    /** 单轮真实发送 token 数。 */
     public long sentTokens() {
         return transcriptTokens + anchorTokens + toolSchemaTokens + outputReserveTokens;
-    }
-
-    public long budgetRemainingTokens() {
-        return Math.max(0, budgetMaxTokens - budgetUsedTokens);
-    }
-
-    /** 预算投影：按当前单轮成本，剩余预算还能支撑多少轮。 */
-    public double projectedRemainingTurns() {
-        long perTurn = sentTokens();
-        if (perTurn <= 0) return Double.MAX_VALUE;
-        return (double) budgetRemainingTokens() / perTurn;
-    }
-
-    public Map<BlockKind, Long> tokensByKind() {
-        return tokensByKind;
     }
 
     /** 构成分解的可读形式，例如 {@code TOOL_ARGS 72% | TOOL_RESULT 26% | AI_TEXT 2%}。 */
@@ -80,13 +60,5 @@ public final class ContextMetrics {
                             .append('%');
                 });
         return sb.toString();
-    }
-
-    @Override
-    public String toString() {
-        return String.format(
-                "ContextMetrics{水位=%.1f%% 发送=%,d/%,d 预算投影剩余=%.1f轮 构成=%s}",
-                waterLevel() * 100, sentTokens(), contextMaxTokens,
-                projectedRemainingTurns(), composition());
     }
 }

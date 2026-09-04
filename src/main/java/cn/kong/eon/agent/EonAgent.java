@@ -73,10 +73,7 @@ public class EonAgent {
     private static final long TOOL_SCHEMA_TOKENS_ESTIMATE = 220;
 
     /** 截断提示 nudge：finishReason=length 时注入，无动态参数 */
-    private static final String TRUNCATION_NUDGE = """
-            上一轮输出因长度限制被截断，工具调用未完成。
-            请重新调用工具，如果内容过长请分多次写入。
-            """;
+    private static final String TRUNCATION_NUDGE = "上一轮输出因长度限制被截断，工具调用未完成。请重新调用工具，如果内容过长请分多次写入。";
 
     /** 工具不存在提示 nudge 模板：%s=工具名 */
     private static final String TOOL_NOT_FOUND_NUDGE = "工具 %s 不存在，请使用可用工具。";
@@ -216,21 +213,19 @@ public class EonAgent {
             LlmResponse response = llmClient.chat(messages, toolRegistry.getSpecifications());
             state.setLastResponse(response);
             state.getUsageAccum().add(response.usage());
-
-            String thought = response.aiMessage().text() != null ? response.aiMessage().text() : "";
-            state.setLastAssistantText(thought);
+            state.setLastAssistantText(response.aiMessage().text());
             List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
             logger.llmResponse(rec, requests);
 
             // ── 阶段 4：无工具调用 → 任务完成或截断处理 ──
             if (requests == null || requests.isEmpty()) {
-                return handleNoToolCalls(rec, state, thought);
+                return handleNoToolCalls(rec, state);
             }
 
             // ── 阶段 5：PostModel Hooks（循环检测等） ──
             validateToolExistence(state, requests);
             state.setPendingToolCalls(requests);
-            TurnOutcome postModel = firePostModelHooks(state, response);
+            TurnOutcome postModel = firePostModelHooks(state);
             if (postModel instanceof TurnOutcome.Exit exit) {
                 return exit;
             }
@@ -284,7 +279,7 @@ public class EonAgent {
      *   <li>正常 → 任务完成，退出
      * </ul>
      */
-    private TurnOutcome handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
+    private TurnOutcome handleNoToolCalls(TurnRecord rec, SessionState state) {
         if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
             logger.outputTruncated(rec);
             state.addNudge(TRUNCATION_NUDGE);
@@ -293,7 +288,7 @@ public class EonAgent {
         }
 
         finalizer.finalizeAndAppend(state);
-        return new TurnOutcome.Exit(thought);
+        return new TurnOutcome.Exit(state.getLastAssistantText());
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -333,7 +328,7 @@ public class EonAgent {
     //  上下文构建
     // ═══════════════════════════════════════════════════════════════════
 
-    /** 构建 ContextBuilder：设置系统提示、摘要、记忆、窗口、预算口径。 */
+    /** 构建 ContextBuilder：设置系统提示、摘要、记忆、窗口、上下文容量口径。 */
     private ContextBuilder buildContext(SessionState state) {
         ContextBuilder ctx = new ContextBuilder();
         ctx.setTokenCountEstimator(tokenCountEstimator);
@@ -345,7 +340,6 @@ public class EonAgent {
         ctx.setToolSchemaTokens(estimateToolSchemaTokens());
         ctx.setOutputReserveTokens(config.getLlm().getMaxTokens());
         ctx.setContextMaxTokens(config.getContext().getMaxTokens());
-        ctx.setBudgetTokens(state.getUsageAccum().getTotalTokens(), config.getBudget().getMaxTokens());
         return ctx;
     }
 
@@ -400,8 +394,8 @@ public class EonAgent {
         return outcome;
     }
 
-    private TurnOutcome firePostModelHooks(SessionState state, LlmResponse response) {
-        return HookDispatcher.dispatchPostModel(postModelHooks, state, response, stopStateMachine);
+    private TurnOutcome firePostModelHooks(SessionState state) {
+        return HookDispatcher.dispatchPostModel(postModelHooks, state, stopStateMachine);
     }
 
     private TurnOutcome firePreToolHooks(SessionState state, List<ToolExecutionRequest> requests) {

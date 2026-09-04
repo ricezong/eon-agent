@@ -54,7 +54,6 @@ public class SessionState {
     public void beginRun(String userInput) {
         this.userInput = userInput;
         this.turnCount = 0;
-        this.compressionState.setLastTurnCompressed(0);
         this.nudges.clear();
         this.lastAssistantText = null;
         this.pendingToolCalls = new ArrayList<>();

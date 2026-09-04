@@ -9,11 +9,12 @@ llm:
   max_tokens: 12000                       # 单次响应最大输出 token 数
 
 # 百度千帆 AI Search（web_search 工具使用）
+# 以下几项是工具参数的缺省值：LLM 调用显式传参时以参数为准，未传时回退到这里
 web_search:
   api_key: "${QIANFAN_API_KEY}"           # 从环境变量读取
-  search_source: "baidu_search_v2"        # 搜索源
-  top_k: 10                               # 返回结果数
-  recency_filter: "year"                  # 时间过滤：day/week/month/year
+  search_source: "baidu_search_v2"        # 搜索源，直传千帆 API
+  top_k: 10                               # 工具未传 max_results 时的默认返回条数
+  recency_filter: "py"                    # 工具未传 recency_filter 时的默认过滤：pd/pw/pm/py
 
 mode:
   checkpoint_enabled: true                # 启用 Checkpoint 崩溃恢复
@@ -31,7 +32,7 @@ context:
     summarize_water_level: 0.92            # 水位 ≥92%（~184K）：LLM 摘要后删除原文
     turn_interval: 7                      # 轮次序号为此值整数倍、且水位三档均未命中时的周期对账点
     turn_level: SNIP                      # 轮数入口命中时执行的档位（只允许 SNIP / PRUNE）
-    tail_guard_turns: 3                   # 尾部保护区：最近 3 轮的任何内容都不参与压缩
+    tail_guard_blocks: 12                 # 尾部保护区：从最近一次用户输入向上延伸 12 个块，此区间不参与任何档位压缩
     offload_min_chars: 2000               # 工具参数 >2000 字符才骨架化；短参数替换后反而更长
 
 # 会话级 Token 预算（控制整个会话累计消耗）
@@ -69,13 +70,6 @@ tools:
     - "web_fetch"
     - "AskQuestion"
     - "web_search"
-  destructive:                            # 破坏性工具（当前无）
-  readonly:                               # 只读工具
-    - "read_file"
-    - "list_dir"
-    - "web_search"
-    - "web_fetch"
-    - "AskQuestion"
   sandbox_enabled: true                   # 路径沙箱开关
   parallelism: 4                          # 并行工具执行线程数
   web_fetch:
@@ -84,9 +78,6 @@ tools:
     cache_max_entries: 64                 # LRU 缓存上限
   download:
     max_file_size_mb: 100                 # 下载文件大小上限（MB）
-
-memory:
-  enabled: true                           # 跨会话记忆开关
 
 # MCP 服务配置
 mcp:

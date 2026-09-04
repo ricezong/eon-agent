@@ -160,7 +160,7 @@ public class ToolExecutionHandler {
                 log.info("[ToolExecutionHandler] Todo 已激活: todo_write 被调用");
             }
             var snapResult = loopDetector.recordTodoSnapshot(toolContext.todoStore().getAll().toString());
-            if (snapResult.shouldWarn()) {
+            if (snapResult.warn()) {
                 state.addNudge(snapResult.message());
             }
         }
