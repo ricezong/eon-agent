@@ -24,7 +24,7 @@ context:
   system_prompt_path: "prompts/system_prompt.md"  # 系统提示词路径
   summarize_max_input_chars: 80000        # 摘要输入上限
   snip_keep_chars: 4000                   # Snip 头尾保留字符数（头2000+尾2000）
-  summarize_max_output_chars: 3000        # 摘要输出上限（200K 窗口允许更长摘要）
+  summarize_max_output_chars: 30000        # 摘要输出上限（200K 窗口允许更长摘要）
   # 压缩机制：每轮判定一个档位，水位三档优先，轮数周期兜底。
   compression:
     snip_water_level: 0.65                # 水位 ≥65%（~130K）：头尾截断旧工具结果

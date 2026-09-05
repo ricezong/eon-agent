@@ -283,7 +283,7 @@ public class AgentConfig {
         private String systemPromptPath = "prompts/system_prompt.md";
         private int summarizeMaxInputChars = 80000;
         private int snipKeepChars = 4000;
-        private int summarizeMaxOutputChars = 3000;
+        private int summarizeMaxOutputChars = 30000;
         private Compression compression = new Compression();
 
         /**
