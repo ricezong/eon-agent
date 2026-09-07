@@ -34,7 +34,8 @@ public class ContextSummarizer {
     }
 
     /**
-     * 生成可注入上下文的摘要文本。
+     * 生成摘要。返回 null 表示保护区之前无可摘要内容；否则返回摘要文本。
+     * 分段摘要中某段失败时跳过该段继续下一段；全部段失败才用兜底提示。
      */
     public String summarize(ContextWindow window, int protectedFrom, String existingSummary) {
         List<ContextBlock> removable = collectRemovable(window, protectedFrom);
@@ -44,22 +45,29 @@ public class ContextSummarizer {
 
         List<String> segments = segment(removable);
         String summary = existingSummary;
+        boolean anySuccess = false;
 
         for (int i = 0; i < segments.size(); i++) {
             String merged = generateSummary(segments.get(i), summary, i + 1, segments.size());
             if (merged == null || merged.isBlank()) {
-                log.warn("[Summary] 第 {}/{} 段摘要未生成，保留已有摘要并记录降级说明", i + 1, segments.size());
-                return fallback(summary);
+                log.warn("[Summary] 第 {}/{} 段摘要失败，跳过", i + 1, segments.size());
+                continue;
             }
             summary = merged;
+            anySuccess = true;
+        }
+
+        if (!anySuccess) {
+            log.warn("[Summary] 全部 {} 段摘要均失败，使用兜底摘要", segments.size());
+            return fallback(summary);
         }
         return summary;
     }
 
-    /** 摘要生成失败时的兜底文案。 */
+    /** 全部段落失败时的兜底提示。 */
     private String fallback(String existingSummary) {
         if (existingSummary != null && !existingSummary.isBlank()) return existingSummary;
-        return "(摘要生成失败，历史对话已裁剪。完整记录: " + transcriptPath + ")";
+        return "[摘要失败] 历史对话摘要生成失败，完整对话记录: " + transcriptPath;
     }
 
     /**
@@ -155,16 +163,12 @@ public class ContextSummarizer {
                 SystemMessage.from("你是一个对话摘要生成器。请严格按指令生成摘要。"),
                 UserMessage.from(prompt));
 
-        String summary;
         try {
-            summary = llmSupport.complete(messages);
+            String summary = llmSupport.complete(messages);
+            return (summary != null && !summary.isBlank()) ? summary : null;
         } catch (Exception e) {
             log.error("[Summary] Summarize 失败: {}", e.getMessage());
             return null;
         }
-        if (summary == null || summary.isBlank()) {
-            return null;
-        }
-        return summary;
     }
 }
