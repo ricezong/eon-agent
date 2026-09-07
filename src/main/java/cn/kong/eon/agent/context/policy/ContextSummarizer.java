@@ -1,6 +1,5 @@
 package cn.kong.eon.agent.context.policy;
 
-import cn.kong.eon.agent.context.ContextTags;
 import cn.kong.eon.agent.context.ContextWindow;
 import cn.kong.eon.agent.context.LlmSupport;
 import cn.kong.eon.agent.context.block.ContextBlock;
@@ -105,7 +104,7 @@ public class ContextSummarizer {
         StringBuilder buf = new StringBuilder();
 
         for (ContextBlock block : blocks) {
-            String line = formatBlock(block);
+            String line = block.text();
             if (line.isBlank()) continue;
 
             if (line.length() > maxInputChars) {
@@ -128,16 +127,6 @@ public class ContextSummarizer {
         return segments;
     }
 
-    /**
-     * 块 → 一行对话文本：直接复用渲染层的输出，摘要看到的形态与模型实际看到的完全一致。
-     * <p>
-     * 这里不再二次截断：进到 SUMMARIZE 的块已经过 SNIP/PRUNE 的就地处置，
-     * 剩下的长度就是它该有的长度；再砍一刀只会砍掉摘要唯一能依据的内容。
-     * 长度问题交给 {@link #segment} 按段切分解决。
-     */
-    private String formatBlock(ContextBlock block) {
-        return ContextTags.render(block);
-    }
 
     // ═══════════════════ LLM 调用 ═══════════════════
 

@@ -1,6 +1,5 @@
 package cn.kong.eon.agent.context.block;
 
-import cn.kong.eon.agent.context.ContextTags;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -121,14 +120,11 @@ public final class BlockProjector {
                 List<ToolExecutionRequest> requests = new ArrayList<>();
                 for (ContextBlock block : group) {
                     if (block.kind() == BlockKind.AI_TEXT) {
-                        String rendered = ContextTags.render(block);
-                        text = (text == null) ? rendered : text + "\n" + rendered;
+                        text = (text == null) ? block.text() : text + "\n" + block.text();
                     } else if (block.kind() == BlockKind.TOOL_ARGS) {
                         requests.add(ToolExecutionRequest.builder()
                                 .id(block.toolCallId())
                                 .name(block.toolName())
-                                // 唯一不渲染的块：arguments 会原样回传模型并接受格式校验，
-                                // 包上标签就不是合法 JSON，供应商会直接拒收整个请求
                                 .arguments(block.text())
                                 .build());
                     }

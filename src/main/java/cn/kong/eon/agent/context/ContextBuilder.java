@@ -36,22 +36,18 @@ public class ContextBuilder {
         this.systemPrompt = systemPrompt;
     }
 
-    /** 设置摘要正文。标签由本类在组装时统一添加，这里只收内容。 */
     public void setSummary(String summary) {
         this.summary = summary;
     }
 
-    /** 设置记忆内容。标签由本类在组装时统一添加，这里只收内容。 */
     public void setMemories(String memories) {
         this.memories = memories;
     }
 
-    /** 设置任务列表内容。标签由本类在组装时统一添加，这里只收内容。 */
     public void setTodo(String todo) {
         this.todo = todo;
     }
 
-    /** 设置提醒内容。标签由本类在组装时统一添加，这里只收内容。 */
     public void setNudges(String nudges) {
         this.nudges = nudges;
     }
@@ -94,34 +90,25 @@ public class ContextBuilder {
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             result.add(SystemMessage.from(systemPrompt));
         }
-        String summarySection = section(ContextTags.SUMMARY, summary);
-        if (summarySection != null) {
-            result.add(SystemMessage.from(summarySection));
+        if (summary != null && !summary.isBlank()) {
+            result.add(SystemMessage.from(summary));
         }
         List<ChatMessage> transcript = getTranscript();
         if (!transcript.isEmpty()) {
             result.addAll(transcript);
         }
         // Memories 排在 Transcript 之后，避免被压缩算法截断
-        String memoriesSection = section(ContextTags.MEMORIES, memories);
-        if (memoriesSection != null) {
-            result.add(UserMessage.from(ContextTags.MEMORIES, memoriesSection));
+        if (memories != null && !memories.isBlank()) {
+            result.add(UserMessage.from("memories", memories));
         }
-        String todoSection = section(ContextTags.TODO, todo);
-        if (todoSection != null) {
-            result.add(UserMessage.from(ContextTags.TODO, todoSection));
+        if (todo != null && !todo.isBlank()) {
+            result.add(UserMessage.from("todo", todo));
         }
-        String nudgesSection = section(ContextTags.NUDGES, nudges);
-        if (nudgesSection != null) {
-            result.add(UserMessage.from(ContextTags.NUDGES, nudgesSection));
+        if (nudges != null && !nudges.isBlank()) {
+            result.add(UserMessage.from("nudges", nudges));
         }
 
         return result;
-    }
-
-    /** 注入段：空内容返回 null（不加空标签），非空则套上段级标签。 */
-    private static String section(String tag, String content) {
-        return (content == null || content.isBlank()) ? null : ContextTags.wrap(tag, content);
     }
 
     /** 本轮真实发送 token 数 = transcript + 锚点层 + 工具 schema + 输出预留。 */
@@ -166,10 +153,10 @@ public class ContextBuilder {
     private long anchorTokens() {
         long tokens = 0;
         if (systemPrompt != null) tokens += estimate(systemPrompt);
-        tokens += estimate(section(ContextTags.SUMMARY, summary));
-        tokens += estimate(section(ContextTags.MEMORIES, memories));
-        tokens += estimate(section(ContextTags.TODO, todo));
-        tokens += estimate(section(ContextTags.NUDGES, nudges));
+        if (summary != null) tokens += estimate(summary);
+        if (memories != null) tokens += estimate(memories);
+        if (todo != null) tokens += estimate(todo);
+        if (nudges != null) tokens += estimate(nudges);
         return tokens;
     }
 
