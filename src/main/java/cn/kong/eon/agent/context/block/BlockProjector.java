@@ -96,7 +96,7 @@ public final class BlockProjector {
         ContextBlock first = group.get(0);
         switch (first.kind()) {
             case USER_INPUT -> {
-                return UserMessage.from(joinText(group));
+                return UserMessage.from(wrap("user_input", joinText(group)));
             }
             case TOOL_RESULT -> {
                 return ToolExecutionResultMessage.from(
@@ -139,6 +139,11 @@ public final class BlockProjector {
             sb.append(block.text());
         }
         return sb.toString();
+    }
+
+    /** 用 XML 标签包裹内容。 */
+    private static String wrap(String label, String content) {
+        return "<" + label + ">\n" + content + "\n</" + label + ">";
     }
 
     /** 块 id 组内分隔符 */

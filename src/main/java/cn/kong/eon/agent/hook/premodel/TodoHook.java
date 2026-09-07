@@ -41,7 +41,7 @@ public class TodoHook implements Hook.PreModelHook {
 
     @Override
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
-        // 只交内容：<todo> 标签由 ContextBuilder 统一添加
+        // 渲染 Todo 列表到上下文
         StringBuilder sb = new StringBuilder();
         List<TodoItem> todos = todoStore.getAll();
         if (todos.isEmpty()) {

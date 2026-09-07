@@ -47,11 +47,11 @@ public class CompressionPolicy {
                 return CompressionLevel.NONE;
             }
             state.setLastSummary(summary);
-            int keepFrom = window.removeBefore(protectedFrom);
-            // 删除块会切断 tool_use / tool_result 配对，由窗口自动修复
+            window.removeBefore(protectedFrom);
+            // 修复配对后再取水位线：repairPairing 可能丢弃首块（孤立 TOOL_RESULT）
             window.repairPairing();
-            // 摘要与水位线成对更新：摘要覆盖 #0~keepFrom-1，账本保留 #keepFrom~，拼起来内容完整。
-            // 窗口被清空时 keepFrom=-1，保留旧水位线——回放偏多与旧摘要重复，重复无害。
+            int keepFrom = window.firstSurvivorSeq();
+            // 摘要覆盖 #0~keepFrom-1，账本保留 #keepFrom~；窗口清空时 keepFrom=-1 保留旧水位线
             if (keepFrom >= 0) {
                 state.setKeepFromMessage(keepFrom);
             }
@@ -126,10 +126,10 @@ public class CompressionPolicy {
     }
 
     /**
-     * 工具结果的替换文本。磁盘有副本且不低于 PRUNE 时清空，否则头尾截断。
+     * 工具结果的替换文本。已落盘且不低于 PRUNE 时清空，否则头尾截断。
      */
     private String resultReplacement(ContextBlock block, CompressionLevel level) {
-        if (level.atLeast(CompressionLevel.PRUNE) && block.recoverable()) {
+        if (level.atLeast(CompressionLevel.PRUNE) && block.spilled()) {
             return clearedPlaceholder();
         }
         return headTailPlaceholder(block, config.getSnipKeepChars());

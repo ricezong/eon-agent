@@ -2,10 +2,7 @@ package cn.kong.eon;
 
 import cn.kong.eon.agent.EonAgent;
 import cn.kong.eon.agent.context.ContentCompressor;
-import cn.kong.eon.agent.context.pipeline.ArtifactSpillRule;
 import cn.kong.eon.agent.context.pipeline.ContextPipeline;
-import cn.kong.eon.agent.context.pipeline.IngestRule;
-import cn.kong.eon.agent.context.pipeline.ToolResultStatusRule;
 import cn.kong.eon.agent.context.policy.CompressionPolicy;
 import cn.kong.eon.agent.context.policy.ContextSummarizer;
 import cn.kong.eon.agent.hook.postmodel.LoopDetectHook;
@@ -326,17 +323,13 @@ public class EonApplication {
     //  上下文架构装配
     // ═══════════════════════════════════════════════════════════════════
 
-    /** 创建入站管线：大结果落盘 + 结果状态标记。 */
+    /** 创建入站管线：大结果落盘。 */
     private ContextPipeline createContextPipeline() {
         var ctx = config.getContext();
-        List<IngestRule> rules = new ArrayList<>();
-        rules.add(new ArtifactSpillRule(compressor));
-        rules.add(new ToolResultStatusRule());
+        log.info("入站管线已装配 (落盘阈值 {} 字符, 保留 {} 字符)",
+                ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
 
-        log.info("入站管线已装配: {} 条规则 (落盘阈值 {} 字符, 保留 {} 字符)",
-                rules.size(), ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
-
-        return new ContextPipeline(rules, artifactStore,
+        return new ContextPipeline(compressor, artifactStore,
                 ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
     }
 

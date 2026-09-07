@@ -55,7 +55,8 @@ public class ContextWindow {
     /**
      * 删除保护区之前的全部块。调用方必须先完成摘要写入。
      *
-     * @return 第一个幸存块的消息序号；窗口被清空时返回 -1
+     * @return 删除后、配对修复前的首块消息序号；窗口清空返回 -1。
+     *         该值可能被 {@link #repairPairing()} 改变，水位线应以修复后的 {@link #firstSurvivorSeq()} 为准。
      */
     public int removeBefore(int protectedFrom) {
         int removeCount = Math.min(protectedFrom, blocks.size());
@@ -68,11 +69,18 @@ public class ContextWindow {
     }
 
     /**
+     * 窗口首块的消息序号；窗口为空返回 -1。水位线须在 {@link #repairPairing()} 之后取此值。
+     */
+    public int firstSurvivorSeq() {
+        return blocks.isEmpty() ? -1 : blocks.get(0).messageSeq();
+    }
+
+    /**
      * 修复 tool_use/tool_result 配对：丢弃孤立结果块，为缺失结果的调用块补合成结果。
-     * 压缩删除后必须调用。
+     * 压缩删除后必须调用，可能丢弃首块（孤立 TOOL_RESULT）。
      */
     public void repairPairing() {
-        // 第一遍：收集全部调用块的工具调用 ID
+        // 收集所有调用块的工具调用 ID
         Set<String> callIds = new HashSet<>();
         for (ContextBlock block : blocks) {
             if (block.kind() == BlockKind.TOOL_ARGS && block.toolCallId() != null) {
@@ -80,43 +88,24 @@ public class ContextWindow {
             }
         }
 
-        // 第二遍：逐块过滤，产出配对完好的块序列
+        // 逐块过滤：丢弃孤立结果（对应调用块已不在窗口），为缺失结果的调用补合成结果
         List<ContextBlock> repaired = new ArrayList<>(blocks.size() + 4);
-        Set<String> seenCallIds = new HashSet<>();
         Set<String> seenResultIds = new HashSet<>();
 
         for (ContextBlock block : blocks) {
             if (block.kind() == BlockKind.TOOL_RESULT) {
                 String callId = block.toolCallId();
-                // 丢弃条件（满足任一）：
-                //   callId 为 null        —— 没有 ID，无从配对
-                //   callIds 不含 callId   —— 对应的调用块已不在窗口（孤立结果）
-                //   seenResultIds 已含    —— 这个调用的结果已收过一份，当前是重复
-                if (callId == null || !callIds.contains(callId) || seenResultIds.contains(callId)) {
+                // 丢弃孤立结果：callId 为空或对应的调用块已不在窗口
+                if (callId == null || !callIds.contains(callId)) {
                     continue;
                 }
                 seenResultIds.add(callId);
-                repaired.add(block);
-            } else if (block.kind() == BlockKind.TOOL_ARGS) {
-                String callId = block.toolCallId();
-                // 丢弃条件：seenCallIds 已含 —— 同一 ID 的调用块已收过一份，当前是重复
-                if (callId != null && seenCallIds.contains(callId)) {
-                    continue;
-                }
-                if (callId != null) seenCallIds.add(callId);
-                repaired.add(block);
-            } else {
-                // 用户输入、AI 文本等，不参与配对，直接保留
-                repaired.add(block);
             }
-        }
-
-        // 第三遍：为缺结果的调用块补合成结果
-        List<ContextBlock> withSynthetics = new ArrayList<>(repaired.size() + 4);
-        for (ContextBlock block : repaired) {
-            withSynthetics.add(block);
-            if (block.kind() == BlockKind.TOOL_ARGS && block.toolCallId() != null && !seenResultIds.contains(block.toolCallId())) {
-                withSynthetics.add(ContextBlock.builder()
+            repaired.add(block);
+            // 为缺结果的调用块补合成结果
+            if (block.kind() == BlockKind.TOOL_ARGS && block.toolCallId() != null
+                    && !seenResultIds.contains(block.toolCallId())) {
+                repaired.add(ContextBlock.builder()
                         .id(block.id() + SYNTHETIC_ID_SUFFIX)
                         .kind(BlockKind.TOOL_RESULT)
                         .groupId(block.groupId() + SYNTHETIC_GROUP_SUFFIX + block.toolCallId())
@@ -130,6 +119,6 @@ public class ContextWindow {
         }
 
         blocks.clear();
-        blocks.addAll(withSynthetics);
+        blocks.addAll(repaired);
     }
 }

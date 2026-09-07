@@ -17,8 +17,10 @@ public final class ContextMetrics {
     private final long contextMaxTokens;
     private final Map<BlockKind, Long> tokensByKind;
 
-    public ContextMetrics(long transcriptTokens, long anchorTokens,
-                          long toolSchemaTokens, long outputReserveTokens,
+    public ContextMetrics(long transcriptTokens,
+                          long anchorTokens,
+                          long toolSchemaTokens,
+                          long outputReserveTokens,
                           long contextMaxTokens,
                           Map<BlockKind, Long> tokensByKind) {
         this.transcriptTokens = transcriptTokens;

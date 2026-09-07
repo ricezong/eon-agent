@@ -87,7 +87,7 @@ public class ContextSummarizer {
             if (line.isBlank()) continue;
 
             if (line.length() > maxInputChars) {
-                if (buf.length() > 0) {
+                if (!buf.isEmpty()) {
                     segments.add(buf.toString());
                     buf.setLength(0);
                 }
@@ -102,7 +102,7 @@ public class ContextSummarizer {
             }
             buf.append(line).append('\n');
         }
-        if (buf.length() > 0) segments.add(buf.toString());
+        if (!buf.isEmpty()) segments.add(buf.toString());
         return segments;
     }
 
@@ -165,8 +165,6 @@ public class ContextSummarizer {
         if (summary == null || summary.isBlank()) {
             return null;
         }
-        return summary.length() > maxOutputChars
-                ? summary.substring(0, maxOutputChars) + "..."
-                : summary;
+        return summary;
     }
 }

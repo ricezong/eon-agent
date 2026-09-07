@@ -24,12 +24,8 @@ public final class ContextBlock {
     private final int originalChars;
 
     private String text;
-    /** 落盘 artifact 引用 id */
-    private String refId;
-    /** 工具是否执行成功（仅 TOOL_RESULT） */
-    private Boolean success;
-    /** 磁盘上是否存在完整副本。 */
-    private boolean recoverable;
+    /** 内容已落盘，可安全清空。 */
+    private boolean spilled;
     /** 已施加的最高处置档位 */
     private CompressionLevel disposedLevel;
 
@@ -96,38 +92,20 @@ public final class ContextBlock {
         return text.length();
     }
 
-    /** 落盘 artifact 引用 id。 */
-    public String refId() {
-        return refId;
-    }
-
-    public void setRefId(String refId) {
-        this.refId = refId;
-    }
-
     /** 入站时的原始字符数 */
     public int originalChars() {
         return originalChars;
     }
 
-    /** 工具是否执行成功（仅 TOOL_RESULT 有值）。 */
-    public Boolean success() {
-        return success;
-    }
-
-    public void setSuccess(boolean success) {
-        this.success = success;
-    }
-
     // ═══════════════════════════════ 处置属性 ═══════════════════════════════
 
-    /** 磁盘上是否存在完整副本。 */
-    public boolean recoverable() {
-        return recoverable;
+    /** 内容已落盘，可安全清空。 */
+    public boolean spilled() {
+        return spilled;
     }
 
-    public void setRecoverable(boolean recoverable) {
-        this.recoverable = recoverable;
+    public void setSpilled(boolean spilled) {
+        this.spilled = spilled;
     }
 
     /** 已施加的最高处置档位。 */

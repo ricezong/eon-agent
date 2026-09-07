@@ -1,10 +1,9 @@
 package cn.kong.eon.agent.support;
 
-import cn.kong.eon.agent.context.ContextBuilder;
+import cn.kong.eon.agent.context.ContextMetrics;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
-import dev.langchain4j.data.message.ChatMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,9 +34,9 @@ public class TurnLogger {
     }
 
     /** 记录上下文信息：消息数、估算 token、工具数、构成分解。 */
-    public void contextInfo(TurnRecord rec, ContextBuilder ctx, List<ChatMessage> messages, SessionState state, int toolCount) {
-        rec.context(messages.size(), ctx.estimateTokens(), toolCount);
-        rec.setComposition(ctx.metrics().composition());
+    public void contextInfo(TurnRecord rec, ContextMetrics metrics, int msgCount, int toolCount) {
+        rec.context(msgCount, metrics.sentTokens(), toolCount);
+        rec.setComposition(metrics.composition());
     }
 
     /** 记录 LLM 响应中请求的工具列表。 */

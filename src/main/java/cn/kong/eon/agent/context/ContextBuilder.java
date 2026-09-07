@@ -14,7 +14,7 @@ import java.util.Map;
 
 /**
  * 上下文构建器。分层组装发送给 LLM 的 messages：
- * System → Summary → Transcript → Memories → Todo → Nudges。
+ * System → Memories → Summary → Transcript → Todo → Nudges。
  */
 public class ContextBuilder {
 
@@ -52,9 +52,8 @@ public class ContextBuilder {
     }
 
     /** 设置 transcript 数据源。 */
-    public ContextBuilder setWindow(ContextWindow window) {
+    public void setWindow(ContextWindow window) {
         this.window = window;
-        return this;
     }
 
     public ContextWindow getWindow() {
@@ -89,30 +88,29 @@ public class ContextBuilder {
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             result.add(SystemMessage.from(systemPrompt));
         }
+        if (memories != null && !memories.isBlank()) {
+            result.add(UserMessage.from("memories", wrap("memories", memories)));
+        }
         if (summary != null && !summary.isBlank()) {
-            result.add(SystemMessage.from(summary));
+            result.add(UserMessage.from("summary", wrap("summary", summary)));
         }
         List<ChatMessage> transcript = getTranscript();
         if (!transcript.isEmpty()) {
             result.addAll(transcript);
         }
-        // Memories 排在 Transcript 之后，避免被压缩算法截断
-        if (memories != null && !memories.isBlank()) {
-            result.add(UserMessage.from("memories", memories));
-        }
         if (todo != null && !todo.isBlank()) {
-            result.add(UserMessage.from("todo", todo));
+            result.add(UserMessage.from("todo", wrap("todo", todo)));
         }
         if (nudges != null && !nudges.isBlank()) {
-            result.add(UserMessage.from("nudges", nudges));
+            result.add(UserMessage.from("nudges", wrap("nudges", nudges)));
         }
 
         return result;
     }
 
-    /** 本轮真实发送 token 数。 */
-    public long estimateTokens() {
-        return transcriptTokens() + anchorTokens() + toolSchemaTokens + outputReserveTokens;
+    /** 用 XML 标签包裹内容。 */
+    private static String wrap(String label, String content) {
+        return "<" + label + ">\n" + content + "\n</" + label + ">";
     }
 
     /** 完整度量。 */
@@ -141,12 +139,6 @@ public class ContextBuilder {
             byKind.merge(block.kind(), tokens, Long::sum);
         }
         return byKind;
-    }
-
-    private long transcriptTokens() {
-        long total = 0;
-        for (long v : tokensByKind().values()) total += v;
-        return total;
     }
 
     private long anchorTokens() {

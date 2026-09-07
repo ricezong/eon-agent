@@ -1,6 +1,7 @@
 package cn.kong.eon.agent;
 
 import cn.kong.eon.agent.context.ContextBuilder;
+import cn.kong.eon.agent.context.ContextMetrics;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.loop.LoopDetector;
 import cn.kong.eon.agent.support.TurnOutcome;
@@ -195,7 +196,8 @@ public class EonAgent {
             // ── 阶段 2：构建 messages ──
             List<ChatMessage> messages = ctx.build();
             state.setCurrentMessages(messages);
-            logger.contextInfo(rec, ctx, messages, state, toolRegistry.getAllToolNames().size());
+            ContextMetrics metrics = ctx.metrics();
+            logger.contextInfo(rec, metrics, messages.size(), toolRegistry.getAllToolNames().size());
 
             // ── 阶段 3：调用 LLM ──
             LlmResponse response = llmClient.chat(messages, toolRegistry.getSpecifications());
@@ -301,7 +303,7 @@ public class EonAgent {
     /** 初始化运行：记录日志、写入用户输入到 JSONL。 */
     private void initRun(SessionState state) {
         logger.agentStart(state);
-        // 只记原文：<user_query> 标签由渲染层在投射时统一添加
+        // 写入用户输入到 JSONL
         jsonlStore.append(UserMessage.from(state.getUserInput()));
     }
 

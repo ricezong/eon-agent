@@ -124,7 +124,7 @@ public class JsonlStore {
         public String name;           // UserMessage 的 name 属性
         public String toolCallId;
         public String toolName;
-        /** 工具结果是否执行成功（仅 tool 行），回放时据此还原块上的执行状态 */
+        /** 工具结果是否执行成功（仅 tool 行），回放时据此还原格式化中的执行状态 */
         public Boolean success;
         public List<ToolCallRef> toolCalls;
 
