@@ -12,7 +12,6 @@ import java.util.Set;
 
 /**
  * 入站管线。所有内容进入上下文的唯一关卡。
- * 规则按列表声明顺序执行。
  */
 public class ContextPipeline {
 
@@ -33,9 +32,6 @@ public class ContextPipeline {
 
     /**
      * 消息入站：爆炸为块 → 依次应用规则 → 返回进入上下文的块。
-     *
-     * @param succeededToolCalls 本轮执行成功的工具调用 id（结果外壳展示执行状态的依据）
-     * @param messageSeq         消息在 JSONL 账本中的序号，回放与常规入站同源发放
      */
     public List<ContextBlock> ingest(ChatMessage msg, Set<String> succeededToolCalls, int messageSeq) {
         IngestContext ctx = new IngestContext(

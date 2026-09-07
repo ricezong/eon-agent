@@ -3,7 +3,7 @@ package cn.kong.eon.tool;
 import java.util.*;
 
 /**
- * CLI 模式的交互回调实现。通过 stdin 向用户展示问题并读取答案。
+ * CLI 交互回调。通过 stdin 向用户展示问题并读取答案。
  */
 public class CliInteractionCallback implements InteractionCallback {
 
@@ -18,9 +18,7 @@ public class CliInteractionCallback implements InteractionCallback {
         return scanner;
     }
 
-    /**
-     * 在终端逐个展示问题，读取用户输入的选项编号或 optionId，返回答案映射。
-     */
+    /** 在终端逐个展示问题，读取用户输入，返回答案映射。 */
     @Override
     @SuppressWarnings("unchecked")
     public Map<String, String> askQuestions(List<Map<String, Object>> questions, String title) {
@@ -74,10 +72,7 @@ public class CliInteractionCallback implements InteractionCallback {
         return answers;
     }
 
-    /**
-     * 解析用户输入的选项编号，返回对应的 optionId 列表。
-     * 支持纯数字编号（1,2,3）或直接输入 optionId。
-     */
+    /** 解析用户输入的选项编号或 optionId，返回对应的 id 列表。 */
     @SuppressWarnings("unchecked")
     private List<String> parseSelection(String input, List<Map<String, Object>> options) {
         List<String> result = new ArrayList<>();

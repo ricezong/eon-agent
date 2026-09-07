@@ -12,15 +12,11 @@ public interface ToolExecutor {
 
     /**
      * 执行工具。
-     *
      * @param arguments 模型传入的参数
      */
     ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context);
 
-    /**
-     * 释放工具持有的资源。默认空操作，由持有资源的工具覆写。
-     * 在会话销毁时由 ToolRegistry.closeAll() 统一调用。
-     */
+    /** 释放工具持有的资源，会话销毁时由 ToolRegistry.closeAll() 统一调用。 */
     default void close() {
     }
 }

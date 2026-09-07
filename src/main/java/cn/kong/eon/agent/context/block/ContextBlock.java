@@ -3,42 +3,34 @@ package cn.kong.eon.agent.context.block;
 import java.util.Objects;
 
 /**
- * 上下文内容块。上下文领域模型的最小单位。
- * 与 LangChain4j 的 ChatMessage 的区别：ChatMessage 是传输类型（一条消息可含多块内容），
- * ContextBlock 是领域类型（一块内容 = 一个可独立处置的单元）。两者通过 BlockProjector 双向投射。
- * <p>
- * <b>块不声明"自己能不能被压缩"</b>。可压缩性由两件事决定：窗口的位置结构（块是否落在保护区内）
- * 与块自身的内容特征（有无磁盘副本、文本长度）。全类型一视同仁，不存在按类型硬编码的豁免名单。
- * <p>
- * 块上携带两个处置属性：{@code recoverable}（磁盘上有无副本）与
- * {@link CompressionLevel}（已施加的处置档位）。{@code messageSeq} 记录来源消息在账本中的序号，
- * 会话恢复据此定位回放起点。
+ * 上下文内容块。通过 BlockProjector 与 ChatMessage 双向投射。
+ * 可压缩性由窗口位置和块内容特征决定，不按类型硬编码豁免。
  */
 public final class ContextBlock {
 
     private final String id;
     private final BlockKind kind;
-    /** 来源消息组 id。同一条 ChatMessage 拆出的块共享 groupId，用于重组回消息 */
+    /** 来源消息组 id */
     private final String groupId;
-    /** 组内序号，重组时恢复原始顺序 */
+    /** 组内序号 */
     private final int ordinal;
-    /** 来源消息在 JSONL 账本中的序号，会话恢复的回放水位线据此计算 */
+    /** 来源消息在 JSONL 账本中的序号 */
     private final int messageSeq;
     /** 工具名（仅 TOOL_ARGS / TOOL_RESULT） */
     private final String toolName;
-    /** 工具调用 id（仅 TOOL_ARGS / TOOL_RESULT），用于配对 */
+    /** 工具调用 id，用于配对 */
     private final String toolCallId;
-    /** 入站时的原文长度：结果外壳据此提示"共 N 字符"，toString 据此展示处置效果 */
+    /** 入站时的原文长度 */
     private final int originalChars;
 
     private String text;
-    /** 落盘 artifact 引用 id。非空表示磁盘上有完整副本 */
+    /** 落盘 artifact 引用 id */
     private String refId;
-    /** 工具是否执行成功（仅 TOOL_RESULT，入站时由本轮执行结果标记） */
+    /** 工具是否执行成功（仅 TOOL_RESULT） */
     private Boolean success;
-    /** 磁盘上是否存在完整副本。为 true 时清空内容不损失信息。 */
+    /** 磁盘上是否存在完整副本。 */
     private boolean recoverable;
-    /** 已施加的最高处置档位。档位单调递增，高档位可覆盖低档位的结果。 */
+    /** 已施加的最高处置档位 */
     private CompressionLevel disposedLevel;
 
     private ContextBlock(Builder b) {
@@ -95,7 +87,7 @@ public final class ContextBlock {
         return text;
     }
 
-    /** 原地改写内容。压缩处置通过它作用到块上。 */
+    /** 原地改写内容。 */
     public void setText(String newText) {
         this.text = newText != null ? newText : "";
     }
@@ -104,7 +96,7 @@ public final class ContextBlock {
         return text.length();
     }
 
-    /** 落盘 artifact 引用 id。非空即表示磁盘上存在完整副本。 */
+    /** 落盘 artifact 引用 id。 */
     public String refId() {
         return refId;
     }
@@ -113,7 +105,7 @@ public final class ContextBlock {
         this.refId = refId;
     }
 
-    /** 入站时的原始字符数：渲染时的截断属性与 toString 的处置效果展示都读它 */
+    /** 入站时的原始字符数 */
     public int originalChars() {
         return originalChars;
     }
@@ -129,7 +121,7 @@ public final class ContextBlock {
 
     // ═══════════════════════════════ 处置属性 ═══════════════════════════════
 
-    /** 磁盘上是否存在完整副本。为 true 时清空内容不损失信息。 */
+    /** 磁盘上是否存在完整副本。 */
     public boolean recoverable() {
         return recoverable;
     }
@@ -138,7 +130,7 @@ public final class ContextBlock {
         this.recoverable = recoverable;
     }
 
-    /** 已施加的最高处置档位，未处置过为 {@link CompressionLevel#NONE}。 */
+    /** 已施加的最高处置档位。 */
     public CompressionLevel disposedLevel() {
         return disposedLevel;
     }
@@ -148,7 +140,7 @@ public final class ContextBlock {
         return disposedLevel.atLeast(level);
     }
 
-    /** 记录已施加的档位，取历史与本次中的较高者，保证单调不回落。 */
+    /** 记录已施加的档位，取较高者，保证单调不回落。 */
     public void markDisposed(CompressionLevel level) {
         this.disposedLevel = disposedLevel.higherOf(level);
     }

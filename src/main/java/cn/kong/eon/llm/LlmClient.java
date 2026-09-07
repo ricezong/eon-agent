@@ -18,7 +18,7 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * LLM 客户端封装。基于 LangChain4j OpenAiChatModel，支持指数退避重试。
+ * LLM 客户端封装。基于 LangChain4j OpenAiChatModel，含指数退避重试。
  */
 public class LlmClient implements LlmSupport {
     private static final Logger log = LoggerFactory.getLogger(LlmClient.class);
@@ -45,7 +45,7 @@ public class LlmClient implements LlmSupport {
                 llmConfig.getProvider(), llmConfig.getModelName(), llmConfig.getBaseUrl());
     }
 
-    /** 调用 LLM，带指数退避重试。不可重试异常立即失败。 */
+    /** 调用 LLM，含指数退避重试，不可重试异常立即失败。 */
     public LlmResponse chat(List<ChatMessage> messages, List<ToolSpecification> tools) {
         int attempt = 0;
         Exception lastException = null;
@@ -80,7 +80,7 @@ public class LlmClient implements LlmSupport {
                 return LlmResponse.of(aiMessage, usage, finishReason);
 
             } catch (NonRetriableException e) {
-                // 不可重试异常（401 认证失败 / 400 请求格式错误等），立即失败
+                // 不可重试异常（认证失败、请求格式错误等），立即失败
                 log.error("LLM 调用失败（不可重试）: {} - {}", e.getClass().getSimpleName(), e.getMessage());
                 throw new LlmStalledException("LLM 调用失败（不可重试）: " + e.getMessage());
             } catch (Exception e) {
@@ -105,14 +105,14 @@ public class LlmClient implements LlmSupport {
         throw new LlmStalledException("LLM 调用连续失败 " + retryConfig.getAttempts() + " 次，模型不可用");
     }
 
-    /** 无工具调用，返回模型文本回复。失败语义见 {@link LlmSupport#complete}。 */
+    /** 无工具调用，返回模型文本回复。 */
     @Override
     public String complete(List<ChatMessage> messages) {
         LlmResponse response = chat(messages, null);
         return response.aiMessage() != null ? response.aiMessage().text() : null;
     }
 
-    /** 计算指数退避延迟，含随机抖动。 */
+    /** 指数退避延迟，含随机抖动。 */
     private long calculateDelay(int attempt) {
         long base = (long) (retryConfig.getMinDelayMs() * Math.pow(2, attempt - 1));
         long jitter = (long) (base * retryConfig.getJitter() * (Math.random() - 0.5) * 2);

@@ -15,8 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
- * AskQuestion 工具：向用户收集结构化多选答案。
- * 通过 {@link InteractionCallback} 暂停 Agent，等待用户提交答案后恢复。
+ * AskQuestion 工具：向用户收集结构化多选答案。通过交互回调暂停 Agent，等待用户恢复。
  */
 public class AskQuestionTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(AskQuestionTool.class);

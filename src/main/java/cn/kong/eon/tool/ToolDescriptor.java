@@ -46,10 +46,7 @@ public class ToolDescriptor {
         return executor;
     }
 
-    /**
-     * 从 @Tool 注解方法自动构建 ToolDescriptor。
-     * 使用 LangChain4j 的 ToolSpecifications 扫描注解方法生成 ToolSpecification。
-     */
+    /** 从 @Tool 注解方法自动构建 ToolDescriptor。 */
     public static ToolDescriptor fromAnnotated(ToolExecutor executor, ToolPermission permission) {
         List<ToolSpecification> specs = ToolSpecifications.toolSpecificationsFrom(executor);
         if (specs.isEmpty()) {

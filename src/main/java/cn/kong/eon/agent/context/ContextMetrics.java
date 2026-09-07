@@ -6,8 +6,7 @@ import java.util.EnumMap;
 import java.util.Map;
 
 /**
- * 上下文度量。水位与构成分解。
- * 水位被档位判定消费，构成分解被 TurnLogger 的每轮日志消费。
+ * 上下文度量：水位与构成分解。
  */
 public final class ContextMetrics {
 
@@ -32,7 +31,7 @@ public final class ContextMetrics {
         this.tokensByKind = map;
     }
 
-    /** 上下文水位：本轮真实要发送的量占窗口的比例。 */
+    /** 上下文水位。 */
     public double waterLevel() {
         if (contextMaxTokens <= 0) return 0.0;
         return Math.min(1.0, (double) sentTokens() / contextMaxTokens);
@@ -43,7 +42,7 @@ public final class ContextMetrics {
         return transcriptTokens + anchorTokens + toolSchemaTokens + outputReserveTokens;
     }
 
-    /** 构成分解的可读形式，例如 {@code TOOL_ARGS 72% | TOOL_RESULT 26% | AI_TEXT 2%}。 */
+    /** 构成分解的可读形式。 */
     public String composition() {
         final long total = tokensByKind.values().stream().mapToLong(Long::longValue).sum();
         if (total == 0) return "(空)";

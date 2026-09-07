@@ -57,8 +57,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Eon Agent 启动类。负责配置加载、组件初始化、MCP 连接、工具注册、
- * 上下文架构装配和 Hook 注册，提供交互式 CLI 循环。
+ * Agent 启动类。负责配置加载、组件初始化、工具注册、上下文架构装配和 Hook 注册。
  */
 public class EonApplication {
 
@@ -66,14 +65,14 @@ public class EonApplication {
 
     private static final String CONFIG_PATH = "config/agent.yaml";
     private static final String DEFAULT_WORKDIR = ".";
-    /** 恢复选择器关键字：取最近活跃的会话。 */
+    /** 取最近活跃会话的选择器关键字。 */
     private static final String SELECTOR_LAST = "last";
-    /** /history 默认展示的块数。 */
+    /** /history 默认展示块数。 */
     private static final int DEFAULT_HISTORY_LINES = 20;
 
     private final AgentConfig config;
     private final ObjectMapper objectMapper;
-    /** 内容压缩。入站落盘的头尾摘要与压缩处置共用同一份实现。 */
+    /** 内容压缩器。 */
     private final ContentCompressor compressor;
     private final LlmClient llmClient;
     private final ToolRegistry toolRegistry;
@@ -90,16 +89,16 @@ public class EonApplication {
     private final EonAgent agent;
     private final String workDir;
     private final String transcriptPath;
-    /** 会话注册表：历史会话的发现与定位，加载链路入口。 */
+    /** 会话注册表。 */
     private final SessionRegistry sessionRegistry;
-    /** 本次恢复的会话摘要；新会话为 null。 */
+    /** 恢复的会话摘要，新会话为 null。 */
     private final SessionSummary resumedSession;
-    /** 会话级状态，跨多次用户输入保留预算/压缩等累积状态。 */
+    /** 会话级状态。 */
     private final SessionState sessionState;
-    /** CLI 交互回调，共享 Scanner。 */
+    /** CLI 交互回调。 */
     private final CliInteractionCallback cliInteractionCallback;
 
-    /** MCP 客户端列表，用于生命周期管理。 */
+    /** MCP 客户端列表。 */
     private final java.util.List<McpClientManager> mcpClients = new java.util.ArrayList<>();
 
     public EonApplication() {
@@ -112,14 +111,13 @@ public class EonApplication {
 
     /**
      * @param workDir        工作目录
-     * @param resumeSelector 恢复选择器：null/空表示新会话；{@code last} 表示最近活跃会话；
-     *                       其余按完整会话 id 或唯一前缀匹配
+     * @param resumeSelector 恢复选择器：null/空=新会话；"last"=最近活跃；其余=id 或前缀匹配
      */
     public EonApplication(String workDir, String resumeSelector) {
         this(workDir, resumeSelector, null);
     }
 
-    /** CLI 内切换会话时复用同一个 Scanner，避免重复包裹 System.in 丢缓冲数据。 */
+    /** 切换会话时复用同一个 Scanner。 */
     EonApplication(String workDir, String resumeSelector, java.util.Scanner sharedScanner) {
         this.workDir = workDir != null ? workDir : DEFAULT_WORKDIR;
         this.objectMapper = createObjectMapper();
@@ -217,9 +215,8 @@ public class EonApplication {
     }
 
     /**
-     * 从快照恢复会话级状态。累计 token 与 todo 无条件恢复；
-     * 摘要与回放水位线只在 RESUME 模式下恢复——LOAD 模式意味着快照这两项不自洽，
-     * 照搬会让"摘要已覆盖 #0~keepFrom-1、账本保留 #keepFrom~"这个前提落空。
+     * 从快照恢复会话状态。累计 token 与 todo 无条件恢复；
+     * 摘要与回放水位线只在 RESUME 模式下恢复，LOAD 模式下快照不自洽不能照搬。
      */
     private void restore(SessionSnapshot cp, RestoreMode mode) {
         if (cp.getUsageAccum() != null) {
@@ -235,8 +232,7 @@ public class EonApplication {
     }
 
     /**
-     * 解析恢复选择器：null/空表示新会话；{@code last} 取最近活跃会话；
-     * 其余按完整 id 或唯一前缀匹配，未命中或歧义直接报错。
+     * 解析恢复选择器：null/空=新会话；"last"=最近活跃；其余=id 或前缀匹配。
      */
     private SessionSummary resolveResumed(String selector) {
         if (selector == null || selector.isBlank()) return null;
@@ -250,9 +246,7 @@ public class EonApplication {
     }
 
 
-    /**
-     * 运行一轮对话，同一会话内复用会话级状态。
-     */
+    /** 运行一轮对话。 */
     public String run(String userInput) {
         if (userInput == null || userInput.isBlank()) {
             return "输入不能为空。";
@@ -272,7 +266,7 @@ public class EonApplication {
         return output;
     }
 
-    /** 关闭应用，释放 MCP 连接等资源。 */
+    /** 关闭应用，释放资源。 */
     public void shutdown() {
         log.info("正在关闭 EonApplication...");
         agent.shutdown();
@@ -282,7 +276,7 @@ public class EonApplication {
         log.info("EonApplication 已关闭。");
     }
 
-    /** 创建 ObjectMapper，注册 JavaTime 模块。 */
+    /** 创建 ObjectMapper。 */
     private ObjectMapper createObjectMapper() {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
@@ -290,7 +284,7 @@ public class EonApplication {
         return mapper;
     }
 
-    /** 加载系统提示词，优先从 classpath 加载，回退到文件系统。 */
+    /** 加载系统提示词，优先 classpath，回退文件系统。 */
     private String loadSystemPrompt(String path) {
         try (InputStream is = getClass().getClassLoader().getResourceAsStream(path)) {
             if (is != null) {
@@ -311,7 +305,7 @@ public class EonApplication {
         return "";
     }
 
-    /** 解析并创建存储根目录。 */
+    /** 创建存储根目录。 */
     private Path resolveSessionBaseDir() {
         Path base = Path.of(config.getStorage().getBaseDir()).toAbsolutePath();
         try {
@@ -322,7 +316,7 @@ public class EonApplication {
         return base;
     }
 
-    /** 生成会话 ID，包含时间戳和随机后缀。 */
+    /** 生成会话 ID。 */
     private String generateSessionId() {
         return SessionRegistry.SESSION_ID_PREFIX + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
                 + "_" + UUID.randomUUID().toString().substring(0, 6);
@@ -332,11 +326,7 @@ public class EonApplication {
     //  上下文架构装配
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * 创建入站管线。只做落盘：ArtifactSpill 把超阈值的工具结果完整写入 artifact，
-     * 块里换成头尾摘要 + 引用；ToolResultFormat 给结果套格式化外壳。
-     * 压缩（截断/清空/裁剪/摘要）是另一套机制，不在这里出现。
-     */
+    /** 创建入站管线：大结果落盘 + 结果状态标记。 */
     private ContextPipeline createContextPipeline() {
         var ctx = config.getContext();
         List<IngestRule> rules = new ArrayList<>();
@@ -350,7 +340,7 @@ public class EonApplication {
                 ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
     }
 
-    /** 创建压缩策略：档位判定 + 块处置 + 摘要生成。 */
+    /** 创建压缩策略。 */
     private CompressionPolicy createCompressionPolicy() {
         var ctxCfg = config.getContext();
         var comp = ctxCfg.getCompression();
@@ -365,7 +355,7 @@ public class EonApplication {
         return new CompressionPolicy(ctxCfg, compressor, summarizer);
     }
 
-    /** 创建工具注册表，注册所有内置工具。 */
+    /** 创建工具注册表并注册内置工具。 */
     private ToolRegistry createToolRegistry() {
         ToolRegistry registry = new ToolRegistry(
                 config.getTools().getWhitelist(),
@@ -409,7 +399,7 @@ public class EonApplication {
         return registry;
     }
 
-    /** 连接所有已启用的 MCP 服务并注册其工具。 */
+    /** 连接已启用的 MCP 服务并注册工具。 */
     private void connectMcpServers() {
         var mcpConfig = config.getMcp();
         if (mcpConfig == null || mcpConfig.getServers() == null) return;
@@ -438,7 +428,7 @@ public class EonApplication {
         }
     }
 
-    /** 注册所有 Hook 到 Agent。 */
+    /** 注册所有 Hook。 */
     private void registerHooks() {
         // PreModel Hooks
         agent.addHook(new BudgetHook(config));
@@ -496,7 +486,7 @@ public class EonApplication {
         runCliLoop(app);
     }
 
-    /** 交互式 CLI 循环，支持 /exit、/tools、/sessions、/resume、/new、/history、/delete、/help 命令。 */
+    /** 交互式 CLI 循环。 */
     private static void runCliLoop(EonApplication app) {
         java.util.Scanner scanner = app.cliInteractionCallback.getScanner();
 
@@ -583,11 +573,7 @@ public class EonApplication {
         app.shutdown();
     }
 
-    /**
-     * 切换会话：关掉旧应用后重建（复用同一个 Scanner）。
-     *
-     * @param selector 恢复选择器，null 表示新起一个会话
-     */
+    /** 切换会话：关掉旧应用后重建。 */
     private static EonApplication switchSession(EonApplication old, java.util.Scanner scanner, String selector) {
         try {
             old.shutdown();
@@ -600,10 +586,7 @@ public class EonApplication {
     }
 
     /**
-     * 把 CLI 参数解析为会话 id：纯数字视为 {@code /sessions} 列表的序号，
-     * 其余（含 {@code last}）原样交给注册表按 id 或前缀匹配。
-     *
-     * @return 解析结果；序号越界或列表为空时返回 null，表示已提示过错误
+     * 解析 CLI 参数为会话 id：纯数字视为列表序号，其余原样交给注册表匹配。
      */
     private static String resolveSelector(EonApplication app, String token) {
         if (!token.matches("\\d+")) return token;
@@ -625,7 +608,7 @@ public class EonApplication {
         }
     }
 
-    /** 列出历史会话：序号 / 标题 / 最后活跃 / 消息数 / 恢复能力 / 摘要预览，按最后活跃时间倒序。 */
+    /** 列出历史会话。 */
     private static void printSessions(EonApplication app) {
         var sessions = app.sessionRegistry.list();
         System.out.println();
@@ -647,7 +630,7 @@ public class EonApplication {
         System.out.println();
     }
 
-    /** 展示当前上下文窗口里的内容——即恢复后模型实际能看到的历史，取最近 n 块。 */
+    /** 展示当前上下文窗口最近 n 块。 */
     private static void printHistory(EonApplication app, int n) {
         var blocks = app.jsonlStore.window().blocks();
         System.out.println();
@@ -669,7 +652,7 @@ public class EonApplication {
         System.out.println();
     }
 
-    /** 相对时间：1 小时内按分钟、1 天内按小时、7 天内按天，更早显示日期。 */
+    /** 相对时间格式化。 */
     private static String relativeTime(Instant at) {
         long minutes = Duration.between(at, Instant.now()).toMinutes();
         if (minutes < 1) return "刚刚";

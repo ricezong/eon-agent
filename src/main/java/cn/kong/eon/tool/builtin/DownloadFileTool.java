@@ -23,7 +23,7 @@ import java.time.Duration;
 import java.util.Map;
 
 /**
- * download_file 工具：从 URL 下载文件到本地文件系统。流式写入，支持大文件。
+ * download_file 工具：从 URL 下载文件到本地，流式写入，支持大文件。
  */
 public class DownloadFileTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(DownloadFileTool.class);

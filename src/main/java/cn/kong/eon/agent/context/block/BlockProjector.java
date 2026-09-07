@@ -12,14 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 投射层：ChatMessage ⇄ List&lt;ContextBlock&gt; 双向转换。
- * 爆炸（explode）：UserMessage → [USER_INPUT]，
- * AiMessage(text, reqs) → [AI_TEXT, TOOL_ARGS × N]，ToolExecutionResultMessage → [TOOL_RESULT]。
- * 组装（assemble）是逆操作：按 groupId 归并，组内按 ordinal 排序。
- * <p>
- * <b>这里只做一件事：划分可独立处置的内容单元</b>。不判定可压缩性（全类型一视同仁），
- * 不标记轮次（保护区分界由窗口的位置结构决定）。"磁盘上有没有副本"只由入站管线的
- * ArtifactSpillRule 在落盘成功时标记。
+ * 投射层：ChatMessage ⇄ ContextBlock 双向转换。
  */
 public final class BlockProjector {
 
@@ -28,9 +21,6 @@ public final class BlockProjector {
 
     /**
      * 把一条消息爆炸为若干内容块。
-     *
-     * @param messageSeq 消息在 JSONL 账本中的序号，由唯一知道账本长度的 JsonlStore 发放；
-     *                   同一条消息的所有块共享它，groupId 也由它派生，保证回放后与账本对得上号
      */
     public static List<ContextBlock> explode(ChatMessage msg, int messageSeq) {
         String groupId = "g" + messageSeq;
@@ -83,8 +73,7 @@ public final class BlockProjector {
     }
 
     /**
-     * 把块序列组装回消息序列（逆操作）。
-     * 按 groupId 首次出现顺序归并，组内按 ordinal 升序还原。
+     * 把块序列组装回消息序列。按 groupId 归并，组内按 ordinal 排序。
      */
     public static List<ChatMessage> assemble(List<ContextBlock> blocks) {
         Map<String, List<ContextBlock>> groups = new LinkedHashMap<>();
@@ -130,7 +119,7 @@ public final class BlockProjector {
                     }
                 }
                 if (!requests.isEmpty()) {
-                    // 处置后的 arguments 必须仍是严格合法的 JSON，否则供应商会拒收整个请求
+                    // 处置后的 arguments 必须是合法 JSON
                     return (text != null && !text.isBlank())
                             ? AiMessage.from(text, requests)
                             : AiMessage.from(requests);
@@ -152,7 +141,7 @@ public final class BlockProjector {
         return sb.toString();
     }
 
-    /** 块 id 的组内分隔符，id = groupId + 分隔符 + ordinal */
+    /** 块 id 组内分隔符 */
     private static final String ID_SEPARATOR = "#";
 
     private static ContextBlock.Builder base(BlockKind kind, String groupId, int ordinal, int messageSeq) {

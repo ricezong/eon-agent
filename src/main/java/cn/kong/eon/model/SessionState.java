@@ -18,11 +18,11 @@ public class SessionState {
     private int turnCount;
     private TokenUsage usageAccum;
     private CompressionState compressionState;
-    private List<String> nudges;             // 运行时提醒：跨轮累积，每轮渲染进上下文后清空
+    private List<String> nudges;             // 跨轮累积的运行时提醒，渲染进上下文后清空
     private String lastAssistantText;
-    private boolean todoBeenUsed = false;    // 是否调用过 todo_write（激活 Todo）
+    private boolean todoBeenUsed = false;    // 是否调用过 todo_write
 
-    // 运行时临时字段
+    // 运行时临时字段（不持久化）
     private transient List<ChatMessage> currentMessages;
     private transient LlmResponse lastResponse;
     private transient List<ToolExecutionRequest> pendingToolCalls;
@@ -38,7 +38,7 @@ public class SessionState {
         this.lastToolResults = new ArrayList<>();
     }
 
-    /** 创建新的会话状态。 */
+    /** 创建新会话状态。 */
     public static SessionState create(String sessionId, String userOriginalInput) {
         SessionState s = new SessionState();
         s.sessionId = sessionId;
@@ -47,9 +47,7 @@ public class SessionState {
     }
 
     /**
-     * 同一会话内开始一次新的用户输入（复用本状态）。
-     * 重置任务级状态（用户输入、轮数、运行时提醒与临时消息字段），
-     * 保留会话级状态（token 累计、压缩状态、todo 使用标记）。
+     * 同一会话内开始新的用户输入。重置任务级状态，保留会话级状态（token 累计、压缩状态、todo 标记）。
      */
     public void beginRun(String userInput) {
         this.userInput = userInput;
@@ -62,7 +60,7 @@ public class SessionState {
         this.lastResponse = null;
     }
 
-    /** 递增轮次计数。 */
+    /** 递增轮次。 */
     public void incrementTurn() {
         this.turnCount++;
     }

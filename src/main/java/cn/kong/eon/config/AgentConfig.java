@@ -11,8 +11,7 @@ import java.io.InputStream;
 import java.util.*;
 
 /**
- * Agent 配置加载器。从 agent.yaml 加载配置，使用 Jackson YAML POJO 绑定。
- * 采用 snake_case 自动映射到驼峰属性，构造完成后不可变。
+ * Agent 配置加载器。从 agent.yaml 加载，Jackson YAML POJO 绑定，snake_case 映射驼峰。
  * 支持 {@code ${VAR}} / {@code ${VAR:-default}} 环境变量引用。
  */
 public class AgentConfig {
@@ -31,7 +30,7 @@ public class AgentConfig {
     private ModeConfig mode;
     private BudgetConfig budget;
 
-    /** 从输入流加载配置，执行校验和环境变量解析。 */
+    /** 从输入流加载配置：反序列化 → 校验 → 环境变量解析。 */
     public static AgentConfig load(InputStream yamlStream) {
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
                 .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
@@ -60,7 +59,7 @@ public class AgentConfig {
         }
     }
 
-    /** 启动期校验：为缺失的配置节点提供默认值。 */
+    /** 为缺失的配置节点填充默认值。 */
     private void validate() {
         if (llm == null) llm = new LlmConfig();
         if (context == null) context = new ContextConfig();
@@ -76,7 +75,7 @@ public class AgentConfig {
         if (budget == null) budget = new BudgetConfig();
     }
 
-    /** 对敏感字段（api_key）执行环境变量解析。 */
+    /** 对敏感字段（api_key）解析环境变量引用。 */
     private void resolveEnvVars() {
         if (llm != null) {
             llm.apiKey = resolveEnv(llm.apiKey);
@@ -86,7 +85,7 @@ public class AgentConfig {
         }
     }
 
-    /** 解析环境变量引用，支持 ${VAR} 和 ${VAR:-default} 两种形式。 */
+    /** 解析 ${VAR} 和 ${VAR:-default} 两种形式的环境变量引用。 */
     static String resolveEnv(String value) {
         if (value == null) return "";
         if (!value.startsWith("${") || !value.endsWith("}")) return value;
@@ -147,7 +146,7 @@ public class AgentConfig {
         return webSearch;
     }
 
-    /** 是否启用会话快照（todo_write 成功时落盘 session.json）。 */
+    /** 是否启用会话快照。 */
     public boolean isSnapshotEnabled() {
         return mode != null && mode.snapshotEnabled;
     }
@@ -291,10 +290,7 @@ public class AgentConfig {
         private int spillKeepChars = 8000;
         private Compression compression = new Compression();
 
-        /**
-         * 压缩机制配置。各项含义见
-         * {@link cn.kong.eon.agent.context.policy.CompressionPolicy}，取值约束在那里统一校验。
-         */
+        /** 压缩机制配置，各项含义见 CompressionPolicy。 */
         public static class Compression {
             /** SNIP 档水位下限 */
             private double snipWaterLevel = 0.65;
@@ -445,7 +441,7 @@ public class AgentConfig {
         }
     }
 
-    /** 预算配置。max_tokens 为会话累计 token 上限，threshold 为注入收尾提示的阈值比例。 */
+    /** 预算配置：max_tokens 为会话累计上限，threshold 为注入收尾提示的阈值比例。 */
     public static class BudgetConfig {
         private int maxTokens = 2000000;
         private double threshold = 0.75;
@@ -664,11 +660,7 @@ public class AgentConfig {
             return servers;
         }
 
-        /**
-         * Jackson 反序列化 {@code Map<String, McpServerConfig>} 时不会把 map 的 key
-         * 注入 value 对象的 key 字段，这里在赋值时补写，
-         * 使 {@link McpServerConfig#getKey()} 能拿到 yaml 中配置的服务名。
-         */
+        /** Jackson 反序列化时不把 map key 注入 value 的 key 字段，这里补写。 */
         public void setServers(Map<String, McpServerConfig> v) {
             this.servers = v;
             if (v != null) {
@@ -722,10 +714,7 @@ public class AgentConfig {
         }
     }
 
-    /**
-     * web_search 配置。api_key 之外的三项是工具参数的缺省值：
-     * LLM 调用显式传参时以参数为准，未传时回退到这里的配置。
-     */
+    /** web_search 配置。除 api_key 外的三项是工具参数缺省值，LLM 显式传参时以参数为准。 */
     public static class WebSearchConfig {
         private String apiKey = "";
         /** 搜索源，直传千帆 API 的 search_source 字段 */

@@ -34,7 +34,7 @@ public class WebSearchTool implements ToolExecutor {
     private final ObjectMapper mapper;
     private final HttpClient httpClient;
     private final String apiKey;
-    /** 以下三项是工具参数的缺省值，由 agent.yaml 的 web_search 配置注入 */
+    /** 以下三项是工具参数缺省值，由 agent.yaml 的 web_search 配置注入 */
     private final String searchSource;
     private final int defaultTopK;
     private final String defaultRecencyFilter;

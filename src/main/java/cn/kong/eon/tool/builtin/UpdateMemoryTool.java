@@ -17,7 +17,7 @@ import java.util.Map;
 
 /**
  * update_memory 工具：创建/更新/删除跨会话记忆。
- * 语义约束：反驳→delete（而非 update）；补充→update；任务性信息禁止入库；未明确要求不 create。
+ * 语义：反驳→delete，补充→update，任务性信息禁止入库，未明确要求不 create。
  */
 public class UpdateMemoryTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(UpdateMemoryTool.class);

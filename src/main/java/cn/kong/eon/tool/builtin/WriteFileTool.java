@@ -18,8 +18,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * write 工具：写入文件到本地文件系统。
- * 如果文件已存在会覆盖原内容。
+ * write 工具：写入文件到本地，已存在则覆盖。
  */
 public class WriteFileTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(WriteFileTool.class);

@@ -16,7 +16,6 @@ import java.util.UUID;
 
 /**
  * 跨会话记忆存储。记忆文件存储在 {storage.base_dir}/memories/ 下，跨会话共享。
- * 支持增删改查、注入渲染和引用替换。
  */
 public class MemoryStore {
     private static final Logger log = LoggerFactory.getLogger(MemoryStore.class);
@@ -34,7 +33,7 @@ public class MemoryStore {
         }
     }
 
-    /** 记忆条目，包含 id、标题、内容和时间戳。 */
+    /** 记忆条目。 */
     public static class MemoryItem {
         public String id;
         public String title;
@@ -111,7 +110,7 @@ public class MemoryStore {
         return items;
     }
 
-    /** 渲染全部记忆为注入文本。{@code <memories>} 标签由 ContextBuilder 统一添加。 */
+    /** 渲染全部记忆为注入文本。 */
     public String renderForInjection() {
         List<MemoryItem> items = loadAll();
         if (items.isEmpty()) return "";
@@ -165,7 +164,7 @@ public class MemoryStore {
         }
     }
 
-    /** 截断字符串到指定长度并添加省略号。 */
+    /** 截断字符串到指定长度。 */
     private String truncate(String s, int max) {
         if (s == null) return "";
         return s.length() <= max ? s : s.substring(0, max) + "...";

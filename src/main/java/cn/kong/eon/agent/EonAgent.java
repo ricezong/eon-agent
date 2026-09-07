@@ -31,23 +31,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Agent 统一引擎。
- * <p>
- * 核心循环流程（每轮 Turn）：
- * <pre>
- *   1. PreModel Hooks  → 预算检查、上下文压缩等
- *   2. 构建 messages   → System + Summary + Transcript + Memories + Nudges
- *   3. 调用 LLM        → 获取思考文本和工具调用请求
- *   4. PostModel Hooks → 循环检测等
- *   5. Extension Loop  → PreTool → 执行工具 → PostTool
- *   6. 回填消息        → AI 消息 + 工具结果写入 JSONL
- * </pre>
- * 无工具调用时任务完成；Hook 触发 stop 或步数超限时终止退出。
+ * Agent 核心引擎。每轮执行：PreModel → 构建上下文 → 调用 LLM → PostModel →
+ * 工具执行(PreTool→Execute→PostTool) → 回填消息。无工具调用时任务完成。
  */
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
 
-    // ── 核心依赖 ──
+    // ── 核心依赖
     private final AgentConfig config;
     private final LlmClient llmClient;
     private final ToolRegistry toolRegistry;
@@ -56,29 +46,29 @@ public class EonAgent {
     private final ToolContext toolContext;
     private final TokenCountEstimator tokenCountEstimator;
 
-    // ── 协作组件 ──
+    // ── 协作组件
     private final TurnLogger logger;
     private final ToolExecutionHandler toolHandler;
     private final StopStateMachine stopStateMachine;
     private final MessageFinalizer finalizer;
 
-    // ── Hook 列表（按阶段分组） ──
+    // ── Hook 列表（按阶段分组）
     private final List<Hook.PreModelHook> preModelHooks = new ArrayList<>();
     private final List<Hook.PostModelHook> postModelHooks = new ArrayList<>();
     private final List<Hook.PreToolHook> preToolHooks = new ArrayList<>();
     private final List<Hook.PostToolHook> postToolHooks = new ArrayList<>();
     private int totalHookCount = 0;
 
-    /** 单个工具 schema 的 token 估算均值（名称 + 描述 + 参数定义） */
+    /** 单个工具 schema token 估算均值 */
     private static final long TOOL_SCHEMA_TOKENS_ESTIMATE = 220;
 
-    /** 截断提示 nudge：finishReason=length 时注入，无动态参数 */
+    /** 截断提示 nudge */
     private static final String TRUNCATION_NUDGE = "上一轮输出因长度限制被截断，工具调用未完成。请重新调用工具，如果内容过长请分多次写入。";
 
-    /** 工具不存在提示 nudge 模板：%s=工具名 */
+    /** 工具不存在提示 nudge 模板 */
     private static final String TOOL_NOT_FOUND_NUDGE = "工具 %s 不存在，请使用可用工具。";
 
-    /** 缓存的工具 schema token 开销；-1 表示未计算 */
+    /** 缓存的工具 schema token 开销 */
     private long cachedToolSchemaTokens = -1;
 
     // ═══════════════════════════════════════════════════════════════════
@@ -120,8 +110,7 @@ public class EonAgent {
     }
 
     /**
-     * 注册 Hook。一个 Hook 只属于一个阶段（PreModel/PostModel/PreTool/PostTool），
-     * 注册后自动按 order 排序。
+     * 注册 Hook，自动按 order 排序。
      */
     public void addHook(Hook hook) {
         if (hook instanceof Hook.PreModelHook h) {
@@ -144,12 +133,12 @@ public class EonAgent {
         log.debug("Hook 已注册: {}", hook.name());
     }
 
-    /** 已注册的 Hook 总数。 */
+    /** 已注册 Hook 总数。 */
     public int getHookCount() {
         return totalHookCount;
     }
 
-    /** 关闭 Agent，释放线程池和工具资源。 */
+    /** 关闭 Agent。 */
     public void shutdown() {
         toolHandler.shutdown();
         toolRegistry.closeAll();
@@ -160,7 +149,7 @@ public class EonAgent {
     //  主循环
     // ═══════════════════════════════════════════════════════════════════
 
-    /** 运行 Agent 主循环，返回最终输出文本。 */
+    /** 运行主循环，返回最终输出文本。 */
     public String run(SessionState state) {
         initRun(state);
 
@@ -189,8 +178,7 @@ public class EonAgent {
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * 执行单个 Turn。try-finally 确保 finalize + flush 一定被执行。
-     * 返回 {@link TurnOutcome}：Continue 继续循环，Exit 退出并携带输出。
+     * 执行单个 Turn。返回 Continue 继续循环，Exit 退出并携带输出。
      */
     private TurnOutcome executeTurn(SessionState state) {
         TurnRecord rec = logger.newRecord();
@@ -250,7 +238,7 @@ public class EonAgent {
         }
     }
 
-    /** Extension Loop：PreTool → 执行工具 → PostTool。 */
+    /** Extension Loop：PreTool → 执行 → PostTool。 */
     private TurnOutcome executeExtensionLoop(TurnRecord rec, SessionState state,
                                              List<ToolExecutionRequest> requests) {
         // PreTool Hooks
@@ -275,11 +263,7 @@ public class EonAgent {
     }
 
     /**
-     * 处理无工具调用的情况：
-     * <ul>
-     *   <li>finishReason=length → 输出被截断，注入格式纠正提示，继续循环
-     *   <li>正常 → 任务完成，退出
-     * </ul>
+     * 处理无工具调用：finishReason=length 时注入截断提示继续循环，否则任务完成退出。
      */
     private TurnOutcome handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
         if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
@@ -297,14 +281,14 @@ public class EonAgent {
     //  退出处理
     // ═══════════════════════════════════════════════════════════════════
 
-    /** 统一退出处理：渲染记忆引用 → 记录完成日志 → 返回输出。 */
+    /** 退出处理：渲染记忆引用 → 记录日志 → 返回输出。 */
     private String completeExit(SessionState state, String rawOutput) {
         String output = renderMemoryReferences(rawOutput);
         logger.agentComplete(state);
         return output;
     }
 
-    /** 将 [[memory:xxx]] 引用替换为标题。 */
+    /** 将 [[memory:xxx]] 引用替换为记忆标题。 */
     private String renderMemoryReferences(String text) {
         if (text == null || text.isEmpty()) return text;
         return toolContext.memoryStore().renderReferences(text);
@@ -314,7 +298,7 @@ public class EonAgent {
     //  初始化
     // ═══════════════════════════════════════════════════════════════════
 
-    /** 初始化运行：记录启动日志、写入用户输入到 JSONL。 */
+    /** 初始化运行：记录日志、写入用户输入到 JSONL。 */
     private void initRun(SessionState state) {
         logger.agentStart(state);
         // 只记原文：<user_query> 标签由渲染层在投射时统一添加
@@ -330,7 +314,7 @@ public class EonAgent {
     //  上下文构建
     // ═══════════════════════════════════════════════════════════════════
 
-    /** 构建 ContextBuilder：设置系统提示、摘要、记忆、窗口、上下文容量口径。 */
+    /** 构建 ContextBuilder。 */
     private ContextBuilder buildContext(SessionState state) {
         ContextBuilder ctx = new ContextBuilder();
         ctx.setTokenCountEstimator(tokenCountEstimator);
@@ -346,9 +330,7 @@ public class EonAgent {
     }
 
     /**
-     * 渲染 nudge 进上下文并清空：渲染即消费，每条提醒只进一次上下文。
-     * 清空必须紧接渲染 —— 之后各阶段（模型调用后、工具执行后）新产的 nudge 属于下一轮；
-     * 若延到本轮末尾统一清，已消费的与新产的混在同一列表里无法区分，会重复渲染或误清。
+     * 渲染 nudge 进上下文并清空。渲染即消费，每条只进一次上下文。
      */
     private void consumeNudges(SessionState state, ContextBuilder ctx) {
         if (state.getNudges().isEmpty()) {
@@ -359,8 +341,7 @@ public class EonAgent {
     }
 
     /**
-     * 估算工具 schema 的 token 开销。规格数量 × 单规格均值，缓存后复用。
-     * 不能漏掉这一项：9 个内置 + MCP 工具约数千 token，100 轮就是预算的 15%。
+     * 估算工具 schema 的 token 开销，缓存后复用。
      */
     private long estimateToolSchemaTokens() {
         if (cachedToolSchemaTokens < 0) {
@@ -370,7 +351,7 @@ public class EonAgent {
         return cachedToolSchemaTokens;
     }
 
-    /** 校验工具是否存在，不存在则注入提示要求改用可用工具。 */
+    /** 校验工具是否存在，不存在则注入提示。 */
     private void validateToolExistence(SessionState state, List<ToolExecutionRequest> requests) {
         for (ToolExecutionRequest req : requests) {
             if (!toolRegistry.contains(req.name())) {
@@ -384,8 +365,7 @@ public class EonAgent {
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * 准备上下文：先跑完所有 PreModel Hook，再把累积的 nudge 渲染进 ctx。
-     * 顺序不可调换 —— BudgetHook 自己就产 nudge，必须本轮渲染才能本轮生效。
+     * 准备上下文：先跑 PreModel Hook，再渲染 nudge。顺序不可调换。
      */
     private TurnOutcome prepareContext(SessionState state, ContextBuilder ctx) {
         TurnOutcome outcome = HookDispatcher.dispatchPreModel(preModelHooks, state, ctx, stopStateMachine);

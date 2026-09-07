@@ -19,12 +19,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * JSONL 消息存储。维护两层结构：磁盘 append-only 审计账本（永不修改）
- * 和内存 {@link ContextWindow} 上下文视图（可被入站管线与压缩策略改写）。
- * 磁盘记录消息原文，内存窗口记录入站处置后的形态。
- * <p>
- * 消息序号（messageSeq）由本类发放——它是唯一知道账本长度的地方，
- * 回放与常规入站由此共用同一套序号，会话恢复的回放水位线才能对得上号。
+ * JSONL 消息存储。磁盘 append-only 账本（永不修改）+ 内存 ContextWindow 上下文视图（可改写）。
+ * 消息序号由本类发放（唯一知道账本长度的地方），回放与常规入站共用序号。
  */
 public class JsonlStore {
     private static final Logger log = LoggerFactory.getLogger(JsonlStore.class);
@@ -51,9 +47,7 @@ public class JsonlStore {
     }
 
     /**
-     * 追加一条消息：经入站管线处置 → 进入内存窗口 → 写磁盘账本。
-     *
-     * @param succeededToolCalls 本轮执行成功的工具调用 id（结果外壳展示执行状态的依据）
+     * 追加消息：入站管线处置 → 内存窗口 → 磁盘账本。
      */
     public synchronized void append(ChatMessage message, Set<String> succeededToolCalls) {
         List<ContextBlock> blocks = pipeline.ingest(message, succeededToolCalls, messageCount);
@@ -67,12 +61,12 @@ public class JsonlStore {
         append(message, Collections.emptySet());
     }
 
-    /** 获取内存窗口，压缩策略与度量直接作用于它。 */
+    /** 获取内存窗口。 */
     public ContextWindow window() {
         return window;
     }
 
-    /** 追加一条 JSON 到磁盘账本。 */
+    /** 追加 JSON 到磁盘账本。 */
     private void appendToLedger(ChatMessage message, Set<String> succeededToolCalls) {
         try {
             SerializedMessage sm = SerializedMessage.from(message);
@@ -87,8 +81,8 @@ public class JsonlStore {
     }
 
     /**
-     * 从磁盘账本回放消息到内存窗口：走与常规入站相同的管线（大结果照样落盘、状态照样还原），
-     * 压缩水位线之前的消息已进摘要，不再回放。
+     * 从磁盘账本回放消息到内存窗口，走与常规入站相同的管线。
+     * 水位线之前的消息已进摘要，不再回放。
      */
     private void loadAll(int fromSeq) {
         try {
@@ -123,16 +117,14 @@ public class JsonlStore {
         }
     }
 
-    /**
-     * JSONL 序列化中间结构。
-     */
+    /** JSONL 序列化中间结构。 */
     public static class SerializedMessage {
         public String type;       // 消息类型：system/user/ai/tool
         public String content;
         public String name;           // UserMessage 的 name 属性
         public String toolCallId;
         public String toolName;
-        /** 工具结果是否执行成功（仅 tool 行）。回放时据此还原块上的执行状态 */
+        /** 工具结果是否执行成功（仅 tool 行），回放时据此还原块上的执行状态 */
         public Boolean success;
         public List<ToolCallRef> toolCalls;
 

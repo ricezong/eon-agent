@@ -10,8 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Todo 存储。进程内存 Map，随会话快照落盘。
- * 支持全量替换、按 id 合并和单一焦点校验。
+ * Todo 存储。进程内存 Map，随会话快照落盘。支持全量替换、按 id 合并和单一焦点校验。
  */
 public class TodoStore {
     private static final Logger log = LoggerFactory.getLogger(TodoStore.class);
@@ -19,9 +18,7 @@ public class TodoStore {
     private final Map<String, TodoItem> todos = new ConcurrentHashMap<>();
     private final AtomicInteger idCounter = new AtomicInteger(0);
 
-    /**
-     * 全量替换 Todo 列表，清空后重新填充。
-     */
+    /** 全量替换 Todo 列表。 */
     public synchronized List<TodoItem> replaceAll(List<TodoItem> newTodos, int currentTurn) {
         todos.clear();
         for (TodoItem t : newTodos) {
@@ -35,9 +32,7 @@ public class TodoStore {
         return getAll();
     }
 
-    /**
-     * 按 id 合并 Todo 列表。已存在 id 更新内容/状态，新 id 追加。
-     */
+    /** 按 id 合并：已存在 id 更新内容/状态，新 id 追加。 */
     public synchronized List<TodoItem> mergeById(List<TodoItem> newTodos, int currentTurn) {
         for (TodoItem t : newTodos) {
             if (t.getId() == null || t.getId().isBlank()) {
@@ -70,7 +65,7 @@ public class TodoStore {
         return todos.stream().filter(t -> t.getStatus() == status).count();
     }
 
-    /** 格式化 Todo 进度统计行，如 "2/5 完成 (1 进行中, 2 待办, 0 阻塞)"。 */
+    /** 格式化 Todo 进度统计行。 */
     public static String formatProgress(List<TodoItem> todos) {
         if (todos == null || todos.isEmpty()) return "";
         return countByStatus(todos, TodoStatus.COMPLETED) + "/" + todos.size()

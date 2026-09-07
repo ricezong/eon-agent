@@ -18,8 +18,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * read_file 工具：读取本地文件内容，返回原始文本。
- * 支持 offset/limit 分段读取。
+ * read_file 工具：读取本地文件内容，支持 offset/limit 分段读取。
  */
 public class ReadFileTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(ReadFileTool.class);
@@ -38,8 +37,7 @@ public class ReadFileTool implements ToolExecutor {
         Integer offset = arguments.containsKey("offset") ? (Integer) arguments.get("offset") : null;
         Integer limit = arguments.containsKey("limit") ? (Integer) arguments.get("limit") : null;
 
-        // artifact:// 引用：从 ArtifactStore 读取完整内容后分页返回（与普通文件一致），
-        // 避免全文一次性进入上下文再次触发外置落盘
+        // artifact:// 引用：从 ArtifactStore 读取后分页返回，避免全文一次性进入上下文
         if (targetFile.startsWith(ARTIFACT_PREFIX)) {
             String refId = targetFile.substring(ARTIFACT_PREFIX.length()).trim();
             String content = context.artifactStore().readContent(refId);
@@ -76,9 +74,7 @@ public class ReadFileTool implements ToolExecutor {
     }
 
     /**
-     * 统一的行分页：offset 从 1 开始，limit 上限为 DEFAULT_LIMIT。
-     * 截断时附带页脚提示，引导调用方继续分页读取，
-     * 避免大内容一次性进入上下文再次触发外置落盘。
+     * 行分页：offset 从 1 开始，limit 上限 DEFAULT_LIMIT。截断时附带页脚提示。
      */
     private ToolOutcome paginate(String content, Integer offset, Integer limit) {
         String[] lines = content.split("\n", -1);

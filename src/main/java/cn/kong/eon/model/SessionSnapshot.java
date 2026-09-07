@@ -5,11 +5,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
- * 会话快照。同一会话内覆盖写（session.json），恢复时整体读回。
- * <p>
- * 只存恢复链路真正消费的三项：todo 列表、累计 token、压缩状态。
- * 会话 id 已由所在目录名表达、写入时刻已由文件 mtime 表达，不再重复落盘。
- * 压缩状态内的摘要与回放水位线必须成对一致，恢复流程据此定位账本回放起点。
+ * 会话快照。同一会话内覆盖写，恢复时整体读回。
+ * 只存恢复链路消费的三项：todo 列表、累计 token、压缩状态。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class SessionSnapshot {

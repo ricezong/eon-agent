@@ -15,7 +15,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * MCP 客户端管理器。负责连接 MCP 服务、获取工具列表、执行工具调用。
+ * MCP 客户端管理器。连接 MCP 服务、获取工具列表、执行工具调用。
  */
 public class McpClientManager {
     private static final Logger log = LoggerFactory.getLogger(McpClientManager.class);

@@ -11,14 +11,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Artifact 存储。将大文本工具结果落盘，上下文只保留引用。
- * 实现 {@link StoreSupport} 接口供入站管线调用。
- * <p>
- * refId 与文件名由消息序号确定性派生（{@code art_m00042_<source>.txt}）：
- * 一条消息至多产生一个工具结果块，序号即唯一键。不使用运行期计数器——
- * 计数器跨进程不连续，会话恢复的回放会从 0 重新编号，与磁盘上已有文件
- * 同名不同内容地错位覆盖。确定性命名下，回放与常规写入共用同一路径，
- * 重复落盘退化为同名同内容的幂等覆盖。
+ * Artifact 存储。大文本工具结果落盘，上下文只保留引用。
+ * refId 与文件名由消息序号确定性派生（art_m00042_source.txt），
+ * 回放与常规写入共用路径，重复落盘为幂等覆盖。
  */
 public class ArtifactStore implements StoreSupport {
     private static final Logger log = LoggerFactory.getLogger(ArtifactStore.class);
@@ -52,10 +47,7 @@ public class ArtifactStore implements StoreSupport {
     }
 
     /**
-     * 读取 artifact 全文。
-     * <p>
-     * 路径按 refId 在目录里反查（文件名带上来源工具后缀），不依赖运行期内存映射——
-     * 恢复会话时窗口里只剩摘要，摘要中的 artifact 引用指向的是本轮未落盘过的文件。
+     * 读取 artifact 全文。路径按 refId 在目录反查，不依赖运行期内存映射。
      */
     public String readContent(String refId) {
         Path filePath = resolve(refId);
@@ -68,7 +60,7 @@ public class ArtifactStore implements StoreSupport {
         }
     }
 
-    /** 按 refId 前缀在 artifact 目录里定位文件（文件名 = refId_来源工具.txt）。 */
+    /** 按 refId 前缀在 artifact 目录里定位文件。 */
     private Path resolve(String refId) {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(artifactDir, refId + "_*.txt")) {
             for (Path p : stream) return p;

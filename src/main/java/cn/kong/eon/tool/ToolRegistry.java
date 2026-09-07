@@ -30,7 +30,7 @@ public class ToolRegistry {
         this.sanitizer = new ArgumentSanitizer(objectMapper);
     }
 
-    /** 注册本地工具（受白名单过滤，权限以工具注解声明的为准）。 */
+    /** 注册本地工具（受白名单过滤）。 */
     public void register(ToolDescriptor descriptor) {
         if (!whitelist.isEmpty() && !whitelist.contains(descriptor.getName())) {
             log.warn("工具 {} 不在白名单中，跳过注册", descriptor.getName());
@@ -41,8 +41,7 @@ public class ToolRegistry {
     }
 
     /**
-     * 注册 MCP 工具。MCP 工具不受本地白名单限制。
-     *
+     * 注册 MCP 工具。不受本地白名单限制。
      * @return 实际注册的工具数量
      */
     public int registerMcpTools(McpClientManager mcpManager, String permission) {

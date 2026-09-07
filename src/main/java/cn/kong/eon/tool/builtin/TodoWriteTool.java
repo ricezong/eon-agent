@@ -20,8 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * todo_write 工具：创建和管理结构化任务列表。
- * merge=true 按 id 合并，merge=false 全量替换。
+ * todo_write 工具：创建和管理结构化任务列表。merge=true 按 id 合并，false 全量替换。
  */
 public class TodoWriteTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(TodoWriteTool.class);

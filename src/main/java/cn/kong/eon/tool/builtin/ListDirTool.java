@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 /**
- * list_dir 工具：列出目录内容。不显示隐藏文件（以 . 开头）。
+ * list_dir 工具：列出目录内容，不显示隐藏文件。
  */
 public class ListDirTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(ListDirTool.class);

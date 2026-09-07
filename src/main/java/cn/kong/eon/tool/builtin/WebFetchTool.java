@@ -20,8 +20,7 @@ import java.time.Duration;
 import java.util.*;
 
 /**
- * web_fetch 工具：批量抓取 URL 内容并转为 markdown。
- * 保持原始协议，不升级或降级。内容过大时截断。包含 LRU 缓存（可配置 TTL 和容量）。
+ * web_fetch 工具：批量抓取 URL 内容并转为 markdown。内容过大时截断，含 LRU 缓存。
  */
 public class WebFetchTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(WebFetchTool.class);
@@ -36,7 +35,7 @@ public class WebFetchTool implements ToolExecutor {
 
     private final FlexmarkHtmlConverter htmlConverter = FlexmarkHtmlConverter.builder().build();
 
-    /** LRU 缓存：URL → (内容, 时间戳)，带容量上限和 TTL 过期。 */
+    /** LRU 缓存：URL → (内容, 时间戳)。 */
     private final Map<String, CacheEntry> cache;
 
     /** 默认构造，生产环境通过 descriptor(int, long, int, HttpClient) 传入配置。 */

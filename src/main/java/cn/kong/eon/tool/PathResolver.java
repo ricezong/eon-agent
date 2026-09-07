@@ -3,9 +3,7 @@ package cn.kong.eon.tool;
 import java.nio.file.Path;
 
 /**
- * 路径解析器。统一处理相对路径/绝对路径解析和沙箱校验。
- * 相对路径基于 workspace 解析；绝对路径直接使用（沙箱开启时仍需在工作区内）；
- * 禁止 {@code ..} 穿越逃逸。
+ * 路径解析器。相对路径基于 workspace 解析，绝对路径直接使用；沙箱开启时须在工作区内；禁止 .. 穿越。
  */
 public class PathResolver {
 
@@ -19,9 +17,6 @@ public class PathResolver {
 
     /**
      * 解析路径为绝对路径。
-     *
-     * @param rawPath 用户传入的路径（相对或绝对）
-     * @return 解析后的绝对路径
      * @throws IllegalArgumentException 路径穿越沙箱边界时抛出
      */
     public Path resolve(String rawPath) {

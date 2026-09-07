@@ -20,16 +20,9 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * 会话注册表：负责会话的**发现与定位**，是加载链路的入口。
- * <p>
- * 数据源全部是磁盘上已有的产物，本类不参与写入链路（软删除标记除外）：
- * <ul>
- *   <li>最后活跃时间 = 账本 {@code transcript.jsonl} 的修改时间——append 必然刷新它，
- *       等价于"最后一条消息写入的时刻"，据此按时间倒序回答"哪个是上一次"；</li>
- *   <li>标题 = 账本前若干行里第一条用户消息，本地推导，不额外调用模型；</li>
- *   <li>消息数 / 有无快照 / 摘要预览，供列表展示与恢复决策参考。</li>
- * </ul>
- * 会话量级在十几到几十，直接全目录扫描即可，不引入索引文件或数据库。
+ * 会话注册表：发现与定位会话，加载链路入口。
+ * 数据源全部是磁盘产物（不参与写入，软删除标记除外）：
+ * 最后活跃时间取账本 mtime，标题取首条用户消息，消息数/快照/摘要预览供列表展示。
  */
 public class SessionRegistry {
 
@@ -40,7 +33,7 @@ public class SessionRegistry {
     private static final String TRANSCRIPT = "transcript.jsonl";
     /** 会话快照文件名，有无快照决定能否 RESUME。 */
     private static final String SNAPSHOT = "session.json";
-    /** 软删除名单，记录已删除但仍留在磁盘上的会话 id。 */
+    /** 软删除名单。 */
     private static final String DELETED_FILE = "deleted.json";
 
     private static final int TITLE_SCAN_LINES = 10;
@@ -48,8 +41,7 @@ public class SessionRegistry {
     private static final int PREVIEW_MAX_CHARS = 50;
 
     /**
-     * 会话列表项。{@code title} 与 {@code lastActivityAt} 恒非空——
-     * 前者取不到时回退为会话 id，后者回退为目录修改时间，保证列表可排序、可展示。
+     * 会话列表项。title 与 lastActivityAt 恒非空（取不到时回退）。
      */
     public record SessionSummary(
             String sessionId,
@@ -68,9 +60,7 @@ public class SessionRegistry {
         this.mapper = mapper;
     }
 
-    /**
-     * 列出未删除的会话，按最后活跃时间倒序——首个元素即"上一次"。
-     */
+    /** 列出未删除的会话，按最后活跃时间倒序。 */
     public List<SessionSummary> list() {
         Set<String> deleted = readDeleted();
         try (Stream<Path> stream = Files.list(baseDir)) {
@@ -88,17 +78,14 @@ public class SessionRegistry {
         }
     }
 
-    /**
-     * 最近活跃的会话。没有历史会话时返回 empty——调用方据此决定是报错还是新起会话。
-     */
+    /** 最近活跃的会话，没有时返回 empty。 */
     public Optional<SessionSummary> last() {
         List<SessionSummary> all = list();
         return all.isEmpty() ? Optional.empty() : Optional.of(all.get(0));
     }
 
     /**
-     * 按完整 id 定位，或按唯一前缀定位。
-     *
+     * 按完整 id 或唯一前缀定位会话。
      * @return 命中且唯一时返回该会话；未命中或前缀歧义时返回 empty
      */
     public Optional<SessionSummary> find(String idOrPrefix) {
@@ -117,7 +104,7 @@ public class SessionRegistry {
     }
 
     /**
-     * 软删除：把会话 id 记入 {@code deleted.json}，列表与 {@link #last()} 均会过滤它。
+     * 软删除：把会话 id 记入 deleted.json，列表与 last() 均会过滤它。
      * 账本与快照仍留在磁盘上，手工删掉该条记录即可恢复。
      */
     public void delete(String sessionId) {
@@ -156,8 +143,7 @@ public class SessionRegistry {
 
     /**
      * 账本前若干行里的第一条用户消息。
-     * 早期版本的账本由写入方把 {@code <user_query>} 拼进内容，此处剥掉历史数据里的这层标签；
-     * 现在的账本只记原文（标签在渲染时添加），走不到剥离分支。
+     * 早期版本账本里拼了 <user_query> 标签，此处兼容剥离；现在的账本只记原文。
      */
     private String deriveTitle(Path transcript) {
         if (!Files.exists(transcript)) return null;

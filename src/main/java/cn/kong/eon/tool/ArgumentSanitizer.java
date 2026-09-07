@@ -11,8 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 参数类型清洗器。根据工具 Schema 声明的类型，对 LLM 返回的参数做统一类型转换。
- * 解决 LLM 不按 Schema 传参的问题（如声明 array 实际传 JSON 字符串）。
+ * 参数类型清洗器。根据工具 Schema 声明的类型，对 LLM 返回的参数做类型转换。
  */
 public class ArgumentSanitizer {
     private static final Logger log = LoggerFactory.getLogger(ArgumentSanitizer.class);
@@ -23,7 +22,7 @@ public class ArgumentSanitizer {
         this.mapper = objectMapper;
     }
 
-    /** 根据工具 Schema 清洗参数，返回清洗后的新 Map（不修改原 Map）。 */
+    /** 根据 Schema 清洗参数，返回新 Map（不修改原 Map）。 */
     public Map<String, Object> sanitize(ToolSpecification spec, Map<String, Object> args) {
         if (args == null || args.isEmpty()) return args;
         if (spec == null || spec.parameters() == null) return args;
@@ -67,7 +66,7 @@ public class ArgumentSanitizer {
         return raw;
     }
 
-    /** 转 List：如果 raw 是 String 且能解析为 JSON 数组，则转换。 */
+    /** 转 List：String 能解析为 JSON 数组则转换。 */
     private Object toArray(Object raw) {
         if (raw instanceof List<?>) return raw;
         if (raw instanceof String s) {
@@ -80,7 +79,7 @@ public class ArgumentSanitizer {
         return raw;
     }
 
-    /** 转 Boolean：如果 raw 是 String "true"/"false"（不区分大小写），则转换。 */
+    /** 转 Boolean：String "true"/"false"（不区分大小写）则转换。 */
     private Object toBoolean(Object raw) {
         if (raw instanceof Boolean) return raw;
         if (raw instanceof String s) {
@@ -91,7 +90,7 @@ public class ArgumentSanitizer {
         return raw;
     }
 
-    /** 转 Integer：如果 raw 是 String 且是纯数字，则转换。 */
+    /** 转 Integer：String 是纯数字则转换。 */
     private Object toInteger(Object raw) {
         if (raw instanceof Integer) return raw;
         if (raw instanceof Number n) return n.intValue();
@@ -104,7 +103,7 @@ public class ArgumentSanitizer {
         return raw;
     }
 
-    /** 转 Double：如果 raw 是 String 且是数字，则转换。 */
+    /** 转 Double：String 是数字则转换。 */
     private Object toNumber(Object raw) {
         if (raw instanceof Double) return raw;
         if (raw instanceof Number n) return n.doubleValue();

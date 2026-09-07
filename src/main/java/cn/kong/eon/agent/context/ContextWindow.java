@@ -11,16 +11,12 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 上下文窗口。块序列的一等持有者。
- * 职责：持有有序块列表、按位置划定尾部保护区、维护 tool_use/tool_result 配对不变式。
- * <p>
- * <b>保护区按位置下标划定</b>：窗口末尾固定 N 个块不参与任何档位的处置。
- * 不锚定在用户消息位置——当前任务正在产出的内容（往往几十上百个块）恰恰最占空间，
- * 锚在最后一条用户输入上会让它们全部免压，可压缩区间几乎不增长。
+ * 上下文窗口。持有有序块列表，负责尾部保护区与 tool_use/tool_result 配对不变式。
+ * 保护区按位置下标划定：窗口末尾 N 个块不参与任何档位的处置。
  */
 public class ContextWindow {
 
-    /** 合成结果块的 id / groupId 后缀，用于与真实块区分 */
+    /** 合成结果块的 id 后缀 */
     private static final String SYNTHETIC_ID_SUFFIX = "#synthetic";
     private static final String SYNTHETIC_GROUP_SUFFIX = "#syn-";
 
@@ -50,21 +46,16 @@ public class ContextWindow {
     }
 
     /**
-     * 保护区起始下标：窗口末尾 tailGuardBlocks 个块不参与任何档位的处置。
-     *
-     * @param tailGuardBlocks 从末尾向前保护的块数
+     * 保护区起始下标。
      */
     public int protectedFrom(int tailGuardBlocks) {
         return Math.max(0, blocks.size() - tailGuardBlocks);
     }
 
     /**
-     * 删除保护区之前的全部块（下标 &lt; protectedFrom）。
-     * <p>
-     * 保留策略不做类型区分——用户消息同样删除，其诉求由摘要承载。
-     * 调用方必须先完成摘要写入，否则删除即永久丢失。
+     * 删除保护区之前的全部块。调用方必须先完成摘要写入。
      *
-     * @return 第一个幸存块的消息序号（恢复时的回放起点）；窗口被清空时返回 -1
+     * @return 第一个幸存块的消息序号；窗口被清空时返回 -1
      */
     public int removeBefore(int protectedFrom) {
         int removeCount = Math.min(protectedFrom, blocks.size());
@@ -77,22 +68,11 @@ public class ContextWindow {
     }
 
     /**
-     * 修复 tool_use / tool_result 配对：丢弃孤立的结果块，为缺失结果的调用块补合成结果。
-     * 删除块会切断配对，LLM API 对此零容忍，所以这是窗口的结构不变式。
-     * <p>
-     * 压缩删除（{@link #removeBefore}）之后必须调用，重建被删块破坏的配对。
-     * <p>
-     * 三遍扫描：
-     * <ol>
-     *   <li>预扫描：收集所有调用块的工具调用 ID，作为结果块合法性的判定基准</li>
-     *   <li>过滤：剔除无效块并登记幸存者，产出干净的块序列</li>
-     *   <li>补齐：给没有结果的调用块插入合成结果，紧跟其所属调用块</li>
-     * </ol>
+     * 修复 tool_use/tool_result 配对：丢弃孤立结果块，为缺失结果的调用块补合成结果。
+     * 压缩删除后必须调用。
      */
     public void repairPairing() {
-        // 第一遍：预扫描全部调用块的工具调用 ID。
-        // 结果块是否合法取决于"是否存在对应的调用块"，与两者在序列中的先后无关，
-        // 所以必须先收集完整集合，不能在过滤时边走边判。
+        // 第一遍：收集全部调用块的工具调用 ID
         Set<String> callIds = new HashSet<>();
         for (ContextBlock block : blocks) {
             if (block.kind() == BlockKind.TOOL_ARGS && block.toolCallId() != null) {
@@ -100,9 +80,7 @@ public class ContextWindow {
             }
         }
 
-        // 第二遍：逐块过滤，产出配对完好的块序列。
-        // 两个登记簿记录各自幸存过的调用 ID：判重靠它们，
-        // 第三遍判断"哪些调用还缺结果"也靠 seenResultIds。
+        // 第二遍：逐块过滤，产出配对完好的块序列
         List<ContextBlock> repaired = new ArrayList<>(blocks.size() + 4);
         Set<String> seenCallIds = new HashSet<>();
         Set<String> seenResultIds = new HashSet<>();
@@ -133,8 +111,7 @@ public class ContextWindow {
             }
         }
 
-        // 第三遍：为没有幸存结果的调用块补合成结果，紧跟该调用块插入，
-        // 保证组装消息时每个调用块都有配对的结果块。
+        // 第三遍：为缺结果的调用块补合成结果
         List<ContextBlock> withSynthetics = new ArrayList<>(repaired.size() + 4);
         for (ContextBlock block : repaired) {
             withSynthetics.add(block);

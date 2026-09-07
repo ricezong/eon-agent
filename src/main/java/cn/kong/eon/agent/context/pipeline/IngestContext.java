@@ -7,8 +7,6 @@ import java.util.Set;
 
 /**
  * 入站管线的执行上下文。规则通过它访问落盘存储与本轮的执行结果。
- * <p>
- * 上下文里没有轮次——块不记录自己属于哪一轮，保护区的分界由窗口按位置下标计算。
  */
 public final class IngestContext {
 

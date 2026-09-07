@@ -13,9 +13,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 上下文构建器。分层组装发送给 LLM 的 messages。
- * 物理顺序：System Prompt → Summary → Transcript → Memories → TODO → Nudges。
- * Transcript 部分以 {@link ContextWindow}（内容块序列）为数据源，只在 {@link #build()} 时投射回消息类型。
+ * 上下文构建器。分层组装发送给 LLM 的 messages：
+ * System → Summary → Transcript → Memories → Todo → Nudges。
  */
 public class ContextBuilder {
 
@@ -27,7 +26,7 @@ public class ContextBuilder {
     private ContextWindow window;
     private TokenCountEstimator tokenCountEstimator;
 
-    // 度量口径：工具 schema 与输出预留是每轮真实发送但过去完全不计入的量
+    // 度量口径
     private long toolSchemaTokens;
     private long outputReserveTokens;
     private long contextMaxTokens;
@@ -52,7 +51,7 @@ public class ContextBuilder {
         this.nudges = nudges;
     }
 
-    /** 设置 transcript 数据源。压缩策略对窗口的就地修改会自动反映到这里。 */
+    /** 设置 transcript 数据源。 */
     public ContextBuilder setWindow(ContextWindow window) {
         this.window = window;
         return this;
@@ -62,7 +61,7 @@ public class ContextBuilder {
         return window;
     }
 
-    /** transcript 的消息视图（由块组装而来）。 */
+    /** transcript 的消息视图。 */
     public List<ChatMessage> getTranscript() {
         return window != null ? window.toMessages() : List.of();
     }
@@ -111,12 +110,12 @@ public class ContextBuilder {
         return result;
     }
 
-    /** 本轮真实发送 token 数 = transcript + 锚点层 + 工具 schema + 输出预留。 */
+    /** 本轮真实发送 token 数。 */
     public long estimateTokens() {
         return transcriptTokens() + anchorTokens() + toolSchemaTokens + outputReserveTokens;
     }
 
-    /** 完整度量：水位、构成分解。 */
+    /** 完整度量。 */
     public ContextMetrics metrics() {
         Map<BlockKind, Long> byKind = tokensByKind();
         long transcript = 0;

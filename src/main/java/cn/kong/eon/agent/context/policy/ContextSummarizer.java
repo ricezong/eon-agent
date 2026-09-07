@@ -14,14 +14,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 摘要生成器。对尾部保护区之外的块生成结构化摘要，供 SUMMARIZE 档在删除原文前保住信息。
- * <p>
- * 只负责生成文本，不改动窗口也不改动压缩状态——"先摘要后删除"的顺序由
- * {@link CompressionPolicy} 编排，保证原文在摘要生成成功之后才被移除。
- * <p>
- * <b>内容超长时分段摘要，不硬截断</b>：待摘要内容按 {@code summarizeMaxInputChars} 切段，
- * 逐段调用 LLM 并与已有摘要增量合并（第 N 段的输出作为第 N+1 段的旧摘要）。
- * 硬截断会静默丢掉尾部信息，而丢掉的往往是最近、最相关的部分。
+ * 摘要生成器。对保护区之外的块生成结构化摘要，供 SUMMARIZE 档在删除原文前保住信息。
+ * 内容超长时分段摘要，不硬截断。
  */
 public class ContextSummarizer {
     private static final Logger log = LoggerFactory.getLogger(ContextSummarizer.class);
@@ -40,12 +34,7 @@ public class ContextSummarizer {
     }
 
     /**
-     * 生成可注入上下文的摘要文本（含 {@code <summary>} 标签）。
-     *
-     * @param window          上下文窗口，只读
-     * @param protectedFrom   保护区起始下标，只摘要此下标之前的块
-     * @param existingSummary 上一轮的摘要，用于增量合并；无则为 null
-     * @return 摘要文本；保护区之前无可摘要内容时返回 null
+     * 生成可注入上下文的摘要文本。
      */
     public String summarize(ContextWindow window, int protectedFrom, String existingSummary) {
         List<ContextBlock> removable = collectRemovable(window, protectedFrom);
@@ -67,21 +56,14 @@ public class ContextSummarizer {
         return summary;
     }
 
-    /** 摘要生成失败时的兜底文案：有旧摘要就沿用，没有则记一条指向完整记录的降级说明。 */
+    /** 摘要生成失败时的兜底文案。 */
     private String fallback(String existingSummary) {
         if (existingSummary != null && !existingSummary.isBlank()) return existingSummary;
         return "(摘要生成失败，历史对话已裁剪。完整记录: " + transcriptPath + ")";
     }
 
     /**
-     * 收集保护区之前的全部块。
-     * <p>
-     * 历史用户输入同样进入摘要——SUMMARIZE 不是就地改写而是内容转移，先由摘要吸收信息
-     * 再释放原文。删除后上下文里第一条不再是用户手动输入的原文，用户诉求改由
-     * 摘要第 1 段<b>逐条原样</b>承载。
-     * <p>
-     * 本方法的筛选条件必须与 {@link ContextWindow#removeBefore(int)} 完全一致，
-     * 否则会出现"摘要了没删"（重复摘要）或"删了没摘要"（信息丢失）。
+     * 收集保护区之前的全部块。筛选条件必须与 removeBefore 一致。
      */
     private List<ContextBlock> collectRemovable(ContextWindow window, int protectedFrom) {
         List<ContextBlock> removable = new ArrayList<>();
@@ -95,10 +77,7 @@ public class ContextSummarizer {
 
     // ═══════════════════ 分段 ═══════════════════
 
-    /**
-     * 按段预算把待摘要块切成若干段。整块能放下就整块打包，
-     * 单个块自己就超预算时按字符切开——宁可多调用一次 LLM，也不静默丢尾部内容。
-     */
+    /** 按段预算把待摘要块切成若干段。 */
     private List<String> segment(List<ContextBlock> blocks) {
         List<String> segments = new ArrayList<>();
         StringBuilder buf = new StringBuilder();
@@ -132,12 +111,6 @@ public class ContextSummarizer {
 
     /**
      * 调用 LLM 把一段对话增量合并进已有摘要。
-     *
-     * @param segmentText     本段对话
-     * @param existingSummary 已有摘要（本轮前几段的产出与上轮摘要合并后的结果），无则为 null
-     * @param index           本段序号，从 1 起
-     * @param total           总段数
-     * @return 合并后的摘要正文（不含 {@code <summary>} 标签）；失败返回 null
      */
     private String generateSummary(String segmentText, String existingSummary, int index, int total) {
         String existingSection = (existingSummary != null && !existingSummary.isBlank())

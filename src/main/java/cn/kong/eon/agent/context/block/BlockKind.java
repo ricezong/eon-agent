@@ -1,19 +1,17 @@
 package cn.kong.eon.agent.context.block;
 
 /**
- * 内容块类型。上下文的最小语义单位不是"消息"，而是"消息里的内容块"。
- * 一条 AiMessage 会被拆成 1 个 AI_TEXT 块 + N 个 TOOL_ARGS 块；
- * 一条 ToolExecutionResultMessage 是 1 个 TOOL_RESULT 块。
+ * 内容块类型。一条 AiMessage 拆成 AI_TEXT + TOOL_ARGS，ToolResult 为 TOOL_RESULT。
  */
 public enum BlockKind {
 
-    /** 用户输入。逐字保留，摘要会丢失措辞与隐含意图 */
+    /** 用户输入 */
     USER_INPUT,
 
-    /** 模型输出的正文（推理链、结论） */
+    /** 模型输出的正文 */
     AI_TEXT,
 
-    /** 模型输出的工具调用参数块。write 类工具会把整份文件内容塞在这里 */
+    /** 模型输出的工具调用参数块 */
     TOOL_ARGS,
 
     /** 工具执行结果 */

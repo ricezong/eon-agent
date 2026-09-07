@@ -17,11 +17,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 会话快照存储。快照的落盘与读回，单个 session.json 覆盖写。
- * <p>
- * 保存时机由调用方（SessionSnapshotHook，todo_write 成功后）决定；快照内容永远整体一致——
- * 摘要与压缩水位线同取自一份 CompressionState，恢复时摘要覆盖 #0~keepFrom-1、
- * 账本保留 #keepFrom~，拼起来内容完整。
+ * 会话快照存储。快照落盘与读回，单个 session.json 覆盖写。
+ * 摘要与压缩水位线同取自一份 CompressionState，恢复时拼起来内容完整。
  */
 public class SessionSnapshotStore {
     private static final Logger log = LoggerFactory.getLogger(SessionSnapshotStore.class);
@@ -36,7 +33,7 @@ public class SessionSnapshotStore {
     }
 
     /**
-     * 保存会话快照。写临时文件后原子替换，避免崩溃留下半截 JSON。
+     * 保存快照。写临时文件后原子替换，避免崩溃留下半截 JSON。
      */
     public void save(List<TodoItem> todoSnapshot,
                      TokenUsage usageAccum,
@@ -63,9 +60,7 @@ public class SessionSnapshotStore {
     }
 
     /**
-     * 读回会话快照。
-     *
-     * @return 快照；文件不存在或损坏时返回 null，调用方按无快照处理（全量回放）
+     * 读回快照。文件不存在或损坏时返回 null，调用方按无快照处理（全量回放）。
      */
     public SessionSnapshot load() {
         if (!Files.exists(file)) {
