@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Todo 存储。进程内存 Map，随 Checkpoint 落盘。
+ * Todo 存储。进程内存 Map，随会话快照落盘。
  * 支持全量替换、按 id 合并和单一焦点校验。
  */
 public class TodoStore {

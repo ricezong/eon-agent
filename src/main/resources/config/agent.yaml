@@ -17,23 +17,26 @@ web_search:
   recency_filter: "py"                    # 工具未传 recency_filter 时的默认过滤：pd/pw/pm/py
 
 mode:
-  checkpoint_enabled: true                # 启用 Checkpoint 崩溃恢复
+  snapshot_enabled: true                  # 启用会话快照（todo_write 成功时落盘 session.json）
 
 context:
   max_tokens: 200000                      # 上下文窗口大小（200K）
   system_prompt_path: "prompts/system_prompt.md"  # 系统提示词路径
-  summarize_max_input_chars: 80000        # 摘要输入上限
-  snip_keep_chars: 4000                   # Snip 头尾保留字符数（头2000+尾2000）
+  summarize_max_input_chars: 80000        # 摘要单段输入上限（待摘要内容超出则切段，逐段增量合并，不硬截断）
+  snip_keep_chars: 4000                   # SNIP 档头尾保留字符数（头 2000 + 尾 2000）
   summarize_max_output_chars: 30000        # 摘要输出上限（200K 窗口允许更长摘要）
+  # 大文件落盘（入站阶段，与下面的水位压缩是两套独立机制）
+  spill_threshold_chars: 12000            # 工具结果超过此长度才落盘
+  spill_keep_chars: 8000                  # 落盘后块里保留的头尾摘要长度
   # 压缩机制：每轮判定一个档位，水位三档优先，轮数周期兜底。
   compression:
     snip_water_level: 0.65                # 水位 ≥65%（~130K）：头尾截断旧工具结果
-    prune_water_level: 0.80               # 水位 ≥80%（~160K）：有磁盘副本的块清空为占位符，无副本的退化为头尾截断；工具参数在此档骨架化
+    prune_water_level: 0.80               # 水位 ≥80%（~160K）：有磁盘副本的块清空为占位符，无副本的退化为头尾截断；工具参数在此档裁剪长字段
     summarize_water_level: 0.92            # 水位 ≥92%（~184K）：LLM 摘要后删除原文
     turn_interval: 7                      # 轮次序号为此值整数倍、且水位三档均未命中时的周期对账点
     turn_level: SNIP                      # 轮数入口命中时执行的档位（只允许 SNIP / PRUNE）
-    tail_guard_blocks: 12                 # 尾部保护区：从最近一次用户输入向上延伸 12 个块，此区间不参与任何档位压缩
-    offload_min_chars: 2000               # 工具参数 >2000 字符才骨架化；短参数替换后反而更长
+    tail_guard_blocks: 12                 # 尾部保护区：窗口末尾 12 个块不参与任何档位
+    args_prune_min_chars: 2000            # 工具参数 >2000 字符才裁剪；短参数替换后反而更长
 
 # 会话级 Token 预算（控制整个会话累计消耗）
 budget:

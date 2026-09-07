@@ -119,7 +119,7 @@ public class ReadFileTool implements ToolExecutor {
             "且同样支持 offset/limit 分页；内容较大时请分段读取，不要期望一次拿到全部。"
     })
     public String readFile(
-            @P(name = "target_file", description = "要读取的文件路径（相对于工作目录，可直接传文件名），或 artifact://art_xxx 形式的引用。") String target_file,
+            @P(name = "target_file", description = "要读取的文件路径（相对于工作目录，可直接传文件名），或 artifact://art_m00042 形式的引用。") String target_file,
             @P(name = "offset", description = "从第几行开始读取（从 1 开始计数）。不指定则从头读取。", required = false) Integer offset,
             @P(name = "limit", description = "最多读取多少行。不指定则按默认上限读取。", required = false) Integer limit
     ) {

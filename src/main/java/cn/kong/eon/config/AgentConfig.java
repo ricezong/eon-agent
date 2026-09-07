@@ -147,8 +147,9 @@ public class AgentConfig {
         return webSearch;
     }
 
-    public boolean isCheckpointEnabled() {
-        return mode != null && mode.checkpointEnabled;
+    /** 是否启用会话快照（todo_write 成功时落盘 session.json）。 */
+    public boolean isSnapshotEnabled() {
+        return mode != null && mode.snapshotEnabled;
     }
 
     public BudgetConfig getBudget() {
@@ -201,14 +202,14 @@ public class AgentConfig {
 
     /** 运行模式配置。 */
     public static class ModeConfig {
-        private boolean checkpointEnabled = true;
+        private boolean snapshotEnabled = true;
 
-        public boolean isCheckpointEnabled() {
-            return checkpointEnabled;
+        public boolean isSnapshotEnabled() {
+            return snapshotEnabled;
         }
 
-        public void setCheckpointEnabled(boolean checkpointEnabled) {
-            this.checkpointEnabled = checkpointEnabled;
+        public void setSnapshotEnabled(boolean snapshotEnabled) {
+            this.snapshotEnabled = snapshotEnabled;
         }
     }
 
@@ -284,6 +285,10 @@ public class AgentConfig {
         private int summarizeMaxInputChars = 80000;
         private int snipKeepChars = 4000;
         private int summarizeMaxOutputChars = 30000;
+        /** 工具结果超过此长度才落盘 */
+        private int spillThresholdChars = 12000;
+        /** 落盘后块里保留的头尾摘要长度 */
+        private int spillKeepChars = 8000;
         private Compression compression = new Compression();
 
         /**
@@ -301,10 +306,10 @@ public class AgentConfig {
             private int turnInterval = 7;
             /** 轮数入口命中且水位三档均未命中时执行的档位 */
             private CompressionLevel turnLevel = CompressionLevel.SNIP;
-            /** 尾部保护区块数：从最近一次用户输入向上延伸的块数，此区间不参与任何档位 */
+            /** 尾部保护区块数：窗口末尾这些块不参与任何档位 */
             private int tailGuardBlocks = 12;
-            /** 参数块骨架化的最小字符数，短参数骨架化反而更长 */
-            private int offloadMinChars = 2000;
+            /** 参数块字段裁剪的最小字符数，短参数裁剪后反而更长 */
+            private int argsPruneMinChars = 2000;
 
             public double getSnipWaterLevel() {
                 return snipWaterLevel;
@@ -354,12 +359,12 @@ public class AgentConfig {
                 this.tailGuardBlocks = v;
             }
 
-            public int getOffloadMinChars() {
-                return offloadMinChars;
+            public int getArgsPruneMinChars() {
+                return argsPruneMinChars;
             }
 
-            public void setOffloadMinChars(int v) {
-                this.offloadMinChars = v;
+            public void setArgsPruneMinChars(int v) {
+                this.argsPruneMinChars = v;
             }
         }
 
@@ -401,6 +406,22 @@ public class AgentConfig {
 
         public void setSummarizeMaxOutputChars(int v) {
             this.summarizeMaxOutputChars = v;
+        }
+
+        public int getSpillThresholdChars() {
+            return spillThresholdChars;
+        }
+
+        public void setSpillThresholdChars(int v) {
+            this.spillThresholdChars = v;
+        }
+
+        public int getSpillKeepChars() {
+            return spillKeepChars;
+        }
+
+        public void setSpillKeepChars(int v) {
+            this.spillKeepChars = v;
         }
 
         public Compression getCompression() {

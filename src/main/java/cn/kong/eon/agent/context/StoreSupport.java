@@ -8,6 +8,9 @@ import cn.kong.eon.model.ArtifactRef;
  */
 public interface StoreSupport {
 
-    /** 保存完整内容，返回引用。 */
-    ArtifactRef save(String source, String content, String summary);
+    /**
+     * 保存完整内容，返回引用。refId 由 messageSeq 确定性派生——
+     * 同一消息重复入站（会话恢复的回放）落到同一文件，幂等。
+     */
+    ArtifactRef save(String source, String content, int messageSeq);
 }

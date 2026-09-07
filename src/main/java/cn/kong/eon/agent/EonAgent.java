@@ -317,8 +317,8 @@ public class EonAgent {
     /** 初始化运行：记录启动日志、写入用户输入到 JSONL。 */
     private void initRun(SessionState state) {
         logger.agentStart(state);
-        String tagged = "<user_query>\n" + state.getUserInput() + "\n</user_query>";
-        jsonlStore.append(UserMessage.from(tagged));
+        // 只记原文：<user_query> 标签由渲染层在投射时统一添加
+        jsonlStore.append(UserMessage.from(state.getUserInput()));
     }
 
     /** 输出 Turn 日志。 */

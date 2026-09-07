@@ -1,6 +1,5 @@
 package cn.kong.eon.tool;
 
-import cn.kong.eon.agent.context.ToolSupport;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.mcp.McpClientManager;
@@ -13,9 +12,8 @@ import java.util.*;
 
 /**
  * 工具注册表。统一管理本地工具和 MCP 工具的元数据与执行。
- * 同时实现 {@link ToolSupport}，向上下文层暴露参数落盘查询。
  */
-public class ToolRegistry implements ToolSupport {
+public class ToolRegistry {
     private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
 
     private final Map<String, ToolDescriptor> tools = new LinkedHashMap<>();
@@ -151,36 +149,6 @@ public class ToolRegistry implements ToolSupport {
     public boolean isDestructive(String name) {
         ToolPermission perm = getPermission(name);
         return perm == ToolPermission.DESTRUCTIVE;
-    }
-
-    /** 本地工具是否会把调用参数完整落盘。MCP 工具一律视为否。 */
-    @Override
-    public boolean persistsArgs(String name) {
-        ToolDescriptor descriptor = tools.get(name);
-        return descriptor != null && descriptor.getExecutor().persistsArgs();
-    }
-
-    /** 查询本地工具本次调用参数的持久化位置；MCP 工具与解析失败一律返回 null。 */
-    @Override
-    public String persistedLocation(String name, String argumentsJson) {
-        ToolDescriptor descriptor = tools.get(name);
-        if (descriptor == null) return null;
-        if (!descriptor.getExecutor().persistsArgs()) return null;
-
-        Map<String, Object> args;
-        try {
-            args = objectMapper.readValue(argumentsJson,
-                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
-        } catch (Exception e) {
-            log.debug("参数 JSON 解析失败，跳过持久化位置提取: {} -> {}", name, e.getMessage());
-            return null;
-        }
-        try {
-            return descriptor.getExecutor().persistedLocation(args);
-        } catch (Exception e) {
-            log.debug("工具 {} 提取持久化位置异常: {}", name, e.getMessage());
-            return null;
-        }
     }
 
     /** 白名单（只读）。 */

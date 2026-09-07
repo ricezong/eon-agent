@@ -108,9 +108,6 @@ public class SessionState {
         return compressionState;
     }
 
-    public void setCompressionState(CompressionState compressionState) {
-        this.compressionState = compressionState;
-    }
 
     public List<String> getNudges() {
         return nudges;

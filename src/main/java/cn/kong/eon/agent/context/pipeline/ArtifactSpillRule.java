@@ -1,30 +1,38 @@
 package cn.kong.eon.agent.context.pipeline;
 
-import cn.kong.eon.agent.context.TextTrimmer;
+import cn.kong.eon.agent.context.ContentCompressor;
+import cn.kong.eon.agent.context.block.BlockKind;
 import cn.kong.eon.agent.context.block.ContextBlock;
 import cn.kong.eon.model.ArtifactRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 大载荷落盘（入站规则）。
- * 原文超过阈值时完整落盘为 artifact，块里只留头尾摘要 + 引用。
+ * 大载荷落盘（入站规则）。工具结果超过阈值时完整写入 artifact，块里只留头尾摘要 + 引用。
  * 落盘成功后该块即视为可恢复，后续档位清空其内容不损失信息。
  * 落盘不可用时保留原文，块按不可恢复处理。
  * <p>
- * <b>不区分块类型</b>——工具结果、模型长输出、用户粘贴的文件一视同仁，
- * 判定只看字符数。被 pin 的块（当前用户输入）用高得多的阈值：它是当前诉求的唯一载体，
- * 落盘是最后手段而非常规优化。
+ * <b>只作用于工具结果</b>：模型正文与用户输入不是"工具产生的外部数据"，
+ * 它们的长度是上下文自身的组成部分，交给水位压缩按水位处置，不在这里提前卸载。
+ * 工具参数同样不落盘——全项目只有 write 会产生大参数，而 write 本身就把内容写进了目标文件，
+ * 磁盘上已有副本；参数的缩减是 PRUNE 档的裁剪逻辑（{@link ContentCompressor#skeleton}）。
+ * <p>
+ * <b>这里不做压缩</b>：落盘是"把内容搬到磁盘上以保证不丢"，与三档水位压缩是两套机制。
+ * 块文本换成摘要只是落盘的固有动作（原文已进磁盘，窗口里没必要再留一份全量），
+ * 不盖档位标记——后续水位压缩该截断照样截断、该清空照样清空。
+ * <p>
+ * <b>refId 由消息序号派生</b>：会话恢复的回放走同一条入站路径，同一消息再次命中本规则时
+ * 落到同一个文件（同名同内容幂等覆盖），无需区分回放与常规写入，也不会与磁盘上已有
+ * artifact 错位。见 {@code ArtifactStore}。
  */
 public class ArtifactSpillRule implements IngestRule {
     private static final Logger log = LoggerFactory.getLogger(ArtifactSpillRule.class);
 
-    /** 落盘摘要长度相对 SNIP 档保留量的倍数：摘要比后续 SNIP 档保留得多，形成递进压缩。 */
-    private static final int SUMMARY_MULTIPLIER = 2;
-    /** 普通块的落盘阈值倍数。 */
-    private static final int SPILL_MULTIPLIER = 3;
-    /** 被 pin 块的落盘阈值倍数。当前诉求宁可多占 token 也要保持可读。 */
-    private static final int PINNED_SPILL_MULTIPLIER = 10;
+    private final ContentCompressor compressor;
+
+    public ArtifactSpillRule(ContentCompressor compressor) {
+        this.compressor = compressor;
+    }
 
     @Override
     public String name() {
@@ -33,43 +41,24 @@ public class ArtifactSpillRule implements IngestRule {
 
     @Override
     public boolean appliesTo(ContextBlock block, IngestContext ctx) {
-        return block.chars() > threshold(block, ctx);
+        return block.kind() == BlockKind.TOOL_RESULT
+                && block.chars() > ctx.spillThresholdChars();
     }
 
     @Override
     public void apply(ContextBlock block, IngestContext ctx) {
         String raw = block.text();
-        String summary = TextTrimmer.headTail(raw, ctx.snipKeepChars() * SUMMARY_MULTIPLIER);
+        String summary = compressor.headTail(raw, ctx.spillKeepChars());
 
-        String owner = block.toolName() != null
-                ? block.toolName()
-                : block.kind().name().toLowerCase();
-        ArtifactRef ref = ctx.storeSupport().save(owner, raw, summary);
+        ArtifactRef ref = ctx.storeSupport().save(block.toolName(), raw, block.messageSeq());
         if (ref == null) {
-            log.warn("[入站] artifact 落盘不可用，{} 保留原文入窗", owner);
+            log.warn("[入站] artifact 落盘不可用，{} 保留原文入窗", block.toolName());
+            block.setText(raw);
             return;
         }
-
-        block.setText(block.isPinned() ? pinnedSpillText(raw, summary, ref.getRefId()) : summary);
-        block.setRefId(ref.getRefId());
+        block.setRefId(ref.refId());
         block.setRecoverable(true);
-        log.info("[入站] {} 落盘: {} ({} -> {} 字符)",
-                owner, ref.getRefId(), raw.length(), block.chars());
-    }
-
-    /** 本块的落盘阈值。 */
-    private static int threshold(ContextBlock block, IngestContext ctx) {
-        int multiplier = block.isPinned() ? PINNED_SPILL_MULTIPLIER : SPILL_MULTIPLIER;
-        return ctx.snipKeepChars() * multiplier;
-    }
-
-    /**
-     * 被 pin 块落盘后的文本。指令内嵌在块里而非写在系统提示词中——
-     * 只有真正遇到超长输入时才需要这条指令，常驻提示词纯属浪费。
-     */
-    private static String pinnedSpillText(String raw, String summary, String refId) {
-        return "[用户输入过长（" + raw.length() + " 字符），完整内容已保存至 artifact://" + refId + "。\n"
-                + "请先用 read_file 分批读取完整内容，再汇总用户意图后开始工作。]\n"
-                + summary;
+        block.setText(summary);
+        log.info("[入站] {} 落盘: {} ({} -> {} 字符)", block.toolName(), block.refId(), raw.length(), block.chars());
     }
 }

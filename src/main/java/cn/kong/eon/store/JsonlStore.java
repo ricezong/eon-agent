@@ -1,9 +1,8 @@
 package cn.kong.eon.store;
 
 import cn.kong.eon.agent.context.ContextWindow;
-import cn.kong.eon.agent.context.block.BlockProjector;
-import cn.kong.eon.agent.context.block.ContextBlock;
 import cn.kong.eon.agent.context.pipeline.ContextPipeline;
+import cn.kong.eon.agent.context.block.ContextBlock;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
@@ -22,7 +21,10 @@ import java.util.Set;
 /**
  * JSONL 消息存储。维护两层结构：磁盘 append-only 审计账本（永不修改）
  * 和内存 {@link ContextWindow} 上下文视图（可被入站管线与压缩策略改写）。
- * 磁盘记录入站处置后的形态，与内存窗口保持一致。
+ * 磁盘记录消息原文，内存窗口记录入站处置后的形态。
+ * <p>
+ * 消息序号（messageSeq）由本类发放——它是唯一知道账本长度的地方，
+ * 回放与常规入站由此共用同一套序号，会话恢复的回放水位线才能对得上号。
  */
 public class JsonlStore {
     private static final Logger log = LoggerFactory.getLogger(JsonlStore.class);
@@ -31,15 +33,17 @@ public class JsonlStore {
     private final ObjectMapper mapper;
     private final ContextWindow window = new ContextWindow();
     private final ContextPipeline pipeline;
+    /** 下一条消息的序号，等于账本当前行数 */
+    private int messageCount = 0;
 
-    public JsonlStore(Path jsonlFile, ObjectMapper objectMapper, ContextPipeline pipeline) {
+    public JsonlStore(Path jsonlFile, ObjectMapper objectMapper, ContextPipeline pipeline, int replayFrom) {
         this.jsonlFile = jsonlFile;
         this.mapper = objectMapper;
         this.pipeline = pipeline;
         try {
             Files.createDirectories(jsonlFile.getParent());
             if (Files.exists(jsonlFile)) {
-                loadAll();
+                loadAll(replayFrom);
             }
         } catch (IOException e) {
             throw new RuntimeException("JSONL 存储初始化失败: " + jsonlFile, e);
@@ -49,12 +53,13 @@ public class JsonlStore {
     /**
      * 追加一条消息：经入站管线处置 → 进入内存窗口 → 写磁盘账本。
      *
-     * @param succeededToolCalls 本轮执行成功的工具调用 id（可恢复性的判定依据）
+     * @param succeededToolCalls 本轮执行成功的工具调用 id（结果外壳展示执行状态的依据）
      */
     public synchronized void append(ChatMessage message, Set<String> succeededToolCalls) {
-        List<ContextBlock> blocks = pipeline.ingest(message, succeededToolCalls);
+        List<ContextBlock> blocks = pipeline.ingest(message, succeededToolCalls, messageCount);
         window.addAll(blocks);
-        appendToLedger(message);
+        appendToLedger(message, succeededToolCalls);
+        messageCount++;
     }
 
     /** 无工具上下文时的简化重载。 */
@@ -68,59 +73,53 @@ public class JsonlStore {
     }
 
     /** 追加一条 JSON 到磁盘账本。 */
-    private void appendToLedger(ChatMessage message) {
-        String json = serialize(message);
+    private void appendToLedger(ChatMessage message, Set<String> succeededToolCalls) {
         try {
-            Files.writeString(jsonlFile, json + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            SerializedMessage sm = SerializedMessage.from(message);
+            if (message instanceof ToolExecutionResultMessage m) {
+                sm.success = succeededToolCalls.contains(m.id());
+            }
+            Files.writeString(jsonlFile, mapper.writeValueAsString(sm) + "\n",
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
             log.error("JSONL 追加失败: {}", e.getMessage(), e);
         }
     }
 
     /**
-     * 从磁盘账本加载历史消息到内存窗口，历史消息原样恢复不回溯入站处置。
+     * 从磁盘账本回放消息到内存窗口：走与常规入站相同的管线（大结果照样落盘、状态照样还原），
+     * 压缩水位线之前的消息已进摘要，不再回放。
      */
-    private void loadAll() {
+    private void loadAll(int fromSeq) {
         try {
             List<String> lines = Files.readAllLines(jsonlFile);
-            for (String line : lines) {
+            int replayed = 0;
+            for (int i = fromSeq; i < lines.size(); i++) {
+                String line = lines.get(i);
                 if (line.isBlank()) {
                     continue;
                 }
-                ChatMessage msg = deserialize(line);
-                if (msg == null) {
+                SerializedMessage sm;
+                ChatMessage msg;
+                try {
+                    sm = mapper.readValue(line, SerializedMessage.class);
+                    msg = sm.toChatMessage();
+                } catch (Exception e) {
+                    log.error("反序列化失败，跳过第 {} 行: {}", i, e.getMessage());
                     continue;
                 }
-                // 历史消息原样恢复：入站处置不回溯
-                window.addAll(BlockProjector.explode(msg, "h" + window.size()));
+                Set<String> succeeded = Boolean.TRUE.equals(sm.success) && sm.toolCallId != null
+                        ? Set.of(sm.toolCallId)
+                        : Set.of();
+                window.addAll(pipeline.ingest(msg, succeeded, i));
+                replayed++;
             }
-            if (!lines.isEmpty()) {
-                log.info("从 JSONL 加载 {} 条消息 → {} 个内容块", lines.size(), window.size());
+            messageCount = lines.size();
+            if (replayed > 0) {
+                log.info("从 JSONL 回放消息 #{}~{} → {} 个内容块", fromSeq, lines.size(), window.size());
             }
         } catch (IOException e) {
             log.error("JSONL 加载失败: {}", e.getMessage(), e);
-        }
-    }
-
-    /** 序列化消息为 JSON 字符串。 */
-    private String serialize(ChatMessage message) {
-        try {
-            SerializedMessage sm = SerializedMessage.from(message);
-            return mapper.writeValueAsString(sm);
-        } catch (Exception e) {
-            log.error("序列化失败: {}", e.getMessage(), e);
-            return "{}";
-        }
-    }
-
-    /** 反序列化 JSON 字符串为消息。 */
-    private ChatMessage deserialize(String json) {
-        try {
-            SerializedMessage sm = mapper.readValue(json, SerializedMessage.class);
-            return sm.toChatMessage();
-        } catch (Exception e) {
-            log.error("反序列化失败: {}", e.getMessage(), e);
-            return null;
         }
     }
 
@@ -133,6 +132,8 @@ public class JsonlStore {
         public String name;           // UserMessage 的 name 属性
         public String toolCallId;
         public String toolName;
+        /** 工具结果是否执行成功（仅 tool 行）。回放时据此还原块上的执行状态 */
+        public Boolean success;
         public List<ToolCallRef> toolCalls;
 
         public SerializedMessage() {

@@ -1,15 +1,15 @@
 package cn.kong.eon;
 
 import cn.kong.eon.agent.EonAgent;
+import cn.kong.eon.agent.context.ContentCompressor;
 import cn.kong.eon.agent.context.pipeline.ArtifactSpillRule;
 import cn.kong.eon.agent.context.pipeline.ContextPipeline;
 import cn.kong.eon.agent.context.pipeline.IngestRule;
-import cn.kong.eon.agent.context.pipeline.ToolArgsRecoverRule;
-import cn.kong.eon.agent.context.pipeline.ToolResultFormatRule;
+import cn.kong.eon.agent.context.pipeline.ToolResultStatusRule;
 import cn.kong.eon.agent.context.policy.CompressionPolicy;
 import cn.kong.eon.agent.context.policy.ContextSummarizer;
 import cn.kong.eon.agent.hook.postmodel.LoopDetectHook;
-import cn.kong.eon.agent.hook.posttool.CheckpointHook;
+import cn.kong.eon.agent.hook.posttool.SessionSnapshotHook;
 import cn.kong.eon.agent.hook.posttool.FailureBreakerHook;
 import cn.kong.eon.agent.hook.premodel.BudgetHook;
 import cn.kong.eon.agent.hook.premodel.CtxCompactHook;
@@ -19,11 +19,15 @@ import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.agent.loop.LoopDetector;
 import cn.kong.eon.tool.mcp.McpClientManager;
+import cn.kong.eon.model.SessionSnapshot;
+import cn.kong.eon.model.RestoreMode;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.store.ArtifactStore;
-import cn.kong.eon.store.CheckpointStore;
+import cn.kong.eon.store.SessionSnapshotStore;
 import cn.kong.eon.store.JsonlStore;
 import cn.kong.eon.store.MemoryStore;
+import cn.kong.eon.store.SessionRegistry;
+import cn.kong.eon.store.SessionRegistry.SessionSummary;
 import cn.kong.eon.store.TodoStore;
 import cn.kong.eon.config.HttpConfig;
 import cn.kong.eon.tool.PathResolver;
@@ -43,7 +47,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,17 +65,21 @@ public class EonApplication {
     private static final Logger log = LoggerFactory.getLogger(EonApplication.class);
 
     private static final String CONFIG_PATH = "config/agent.yaml";
-    private static final String SYSTEM_PROMPT_PATH = "prompts/system_prompt.md";
     private static final String DEFAULT_WORKDIR = ".";
-    private static final String SESSION_ID_PREFIX = "eon_";
+    /** 恢复选择器关键字：取最近活跃的会话。 */
+    private static final String SELECTOR_LAST = "last";
+    /** /history 默认展示的块数。 */
+    private static final int DEFAULT_HISTORY_LINES = 20;
 
     private final AgentConfig config;
     private final ObjectMapper objectMapper;
+    /** 内容压缩。入站落盘的头尾摘要与压缩处置共用同一份实现。 */
+    private final ContentCompressor compressor;
     private final LlmClient llmClient;
     private final ToolRegistry toolRegistry;
     private final TodoStore todoStore;
     private final ArtifactStore artifactStore;
-    private final CheckpointStore checkpointStore;
+    private final SessionSnapshotStore snapshotStore;
     private final MemoryStore memoryStore;
     private final JsonlStore jsonlStore;
     private final ContextPipeline contextPipeline;
@@ -79,6 +90,10 @@ public class EonApplication {
     private final EonAgent agent;
     private final String workDir;
     private final String transcriptPath;
+    /** 会话注册表：历史会话的发现与定位，加载链路入口。 */
+    private final SessionRegistry sessionRegistry;
+    /** 本次恢复的会话摘要；新会话为 null。 */
+    private final SessionSummary resumedSession;
     /** 会话级状态，跨多次用户输入保留预算/压缩等累积状态。 */
     private final SessionState sessionState;
     /** CLI 交互回调，共享 Scanner。 */
@@ -92,8 +107,23 @@ public class EonApplication {
     }
 
     public EonApplication(String workDir) {
+        this(workDir, null);
+    }
+
+    /**
+     * @param workDir        工作目录
+     * @param resumeSelector 恢复选择器：null/空表示新会话；{@code last} 表示最近活跃会话；
+     *                       其余按完整会话 id 或唯一前缀匹配
+     */
+    public EonApplication(String workDir, String resumeSelector) {
+        this(workDir, resumeSelector, null);
+    }
+
+    /** CLI 内切换会话时复用同一个 Scanner，避免重复包裹 System.in 丢缓冲数据。 */
+    EonApplication(String workDir, String resumeSelector, java.util.Scanner sharedScanner) {
         this.workDir = workDir != null ? workDir : DEFAULT_WORKDIR;
         this.objectMapper = createObjectMapper();
+        this.compressor = new ContentCompressor(objectMapper);
 
         log.info("从 classpath 加载配置: {}", CONFIG_PATH);
         this.config = AgentConfig.loadFromClasspath(CONFIG_PATH);
@@ -105,7 +135,9 @@ public class EonApplication {
         this.llmClient = new LlmClient(config);
 
         Path sessionBaseDir = resolveSessionBaseDir();
-        String sessionId = generateSessionId();
+        this.sessionRegistry = new SessionRegistry(sessionBaseDir, objectMapper);
+        this.resumedSession = resolveResumed(resumeSelector);
+        String sessionId = resumedSession != null ? resumedSession.sessionId() : generateSessionId();
         Path sessionDir = sessionBaseDir.resolve(sessionId);
         try {
             Files.createDirectories(sessionDir);
@@ -114,20 +146,42 @@ public class EonApplication {
         }
         this.todoStore = new TodoStore();
         this.artifactStore = new ArtifactStore(sessionDir.resolve("artifacts"));
-        this.checkpointStore = new CheckpointStore(sessionDir.resolve("checkpoints"), objectMapper);
+        this.snapshotStore = new SessionSnapshotStore(sessionDir.resolve("session.json"), objectMapper);
         this.memoryStore = new MemoryStore(sessionBaseDir, objectMapper);
 
-        // 工具注册表与 MCP 连接要在入站管线之前完成：管线的 ToolSupport 靠注册表判断
-        // 工具参数是否已在磁盘留副本，MCP 工具晚于管线注册会使其参数永远拿不到可恢复标记。
+        // 快照要在 JsonlStore 之前读回：回放起点（压缩水位线）取自快照
+        SessionSnapshot snapshot = resumedSession != null ? snapshotStore.load() : null;
+        RestoreMode mode = RestoreMode.of(snapshot, resumedSession != null ? resumedSession.messageCount() : 0);
+        int replayFrom = mode == RestoreMode.RESUME
+                ? snapshot.getCompressionState().getKeepFromMessage() : 0;
+        if (mode == RestoreMode.LOAD && snapshot != null) {
+            log.warn("会话 {} 快照不自洽（水位 {} / 账本 {} 行 / 摘要 {}），改为全量回放",
+                    sessionId, snapshot.getCompressionState().getKeepFromMessage(),
+                    resumedSession.messageCount(),
+                    snapshot.getCompressionState().getLastSummary() != null ? "有" : "无");
+        }
+
         this.toolRegistry = createToolRegistry();
         connectMcpServers();
         this.contextPipeline = createContextPipeline();
 
         Path jsonlPath = sessionDir.resolve("transcript.jsonl");
-        this.jsonlStore = new JsonlStore(jsonlPath, objectMapper, contextPipeline);
+        this.jsonlStore = new JsonlStore(jsonlPath, objectMapper, contextPipeline, replayFrom);
         this.transcriptPath = jsonlPath.toAbsolutePath().toString();
         this.sessionState = SessionState.create(sessionId, "");
-        log.info("会话 {} 已初始化, transcript: {}", sessionId, transcriptPath);
+        if (snapshot != null) {
+            restore(snapshot, mode);
+            log.info("会话 {} 已恢复: 模式 {}, 回放 #{}~{} 共 {} 条, 摘要 {} 字符, 累计 {} tokens",
+                    sessionId, mode, replayFrom, resumedSession.messageCount(),
+                    resumedSession.messageCount() - replayFrom,
+                    snapshot.getCompressionState().getLastSummary() != null
+                            ? snapshot.getCompressionState().getLastSummary().length() : 0,
+                    snapshot.getUsageAccum() != null ? snapshot.getUsageAccum().getTotalTokens() : 0);
+        } else if (resumedSession != null) {
+            log.info("会话 {} 无快照（未调用过 todo_write），按全量历史启动", sessionId);
+        } else {
+            log.info("会话 {} 已初始化, transcript: {}", sessionId, transcriptPath);
+        }
 
         Path workspaceDir = sessionDir.resolve("workspace");
         try {
@@ -137,10 +191,12 @@ public class EonApplication {
         }
         String sessionWorkDir = workspaceDir.toAbsolutePath().toString();
         PathResolver pathResolver = new PathResolver(sessionWorkDir, config.getTools().isSandboxEnabled());
-        this.cliInteractionCallback = new CliInteractionCallback(new java.util.Scanner(System.in, StandardCharsets.UTF_8));
+        this.cliInteractionCallback = sharedScanner != null
+                ? new CliInteractionCallback(sharedScanner)
+                : new CliInteractionCallback(new java.util.Scanner(System.in, StandardCharsets.UTF_8));
         this.toolContext = new ToolContext(
                 todoStore, artifactStore, memoryStore,
-                jsonlStore, checkpointStore, pathResolver, cliInteractionCallback);
+                jsonlStore, snapshotStore, pathResolver, cliInteractionCallback);
 
         var ldc = config.getLoopDetect();
         this.loopDetector = new LoopDetector(
@@ -159,6 +215,40 @@ public class EonApplication {
         log.info("EonApplication 就绪: {} 个工具, {} 个 hook",
                 toolRegistry.getAllToolNames().size(), agent.getHookCount());
     }
+
+    /**
+     * 从快照恢复会话级状态。累计 token 与 todo 无条件恢复；
+     * 摘要与回放水位线只在 RESUME 模式下恢复——LOAD 模式意味着快照这两项不自洽，
+     * 照搬会让"摘要已覆盖 #0~keepFrom-1、账本保留 #keepFrom~"这个前提落空。
+     */
+    private void restore(SessionSnapshot cp, RestoreMode mode) {
+        if (cp.getUsageAccum() != null) {
+            sessionState.setUsageAccum(cp.getUsageAccum());
+        }
+        if (mode == RestoreMode.RESUME && cp.getCompressionState() != null) {
+            sessionState.getCompressionState().setLastSummary(cp.getCompressionState().getLastSummary());
+            sessionState.getCompressionState().setKeepFromMessage(cp.getCompressionState().getKeepFromMessage());
+        }
+        if (cp.getTodoSnapshot() != null && !cp.getTodoSnapshot().isEmpty()) {
+            todoStore.replaceAll(cp.getTodoSnapshot(), 0);
+        }
+    }
+
+    /**
+     * 解析恢复选择器：null/空表示新会话；{@code last} 取最近活跃会话；
+     * 其余按完整 id 或唯一前缀匹配，未命中或歧义直接报错。
+     */
+    private SessionSummary resolveResumed(String selector) {
+        if (selector == null || selector.isBlank()) return null;
+        var found = SELECTOR_LAST.equalsIgnoreCase(selector)
+                ? sessionRegistry.last()
+                : sessionRegistry.find(selector);
+        if (found.isEmpty()) {
+            throw new IllegalArgumentException("未找到会话: " + selector + "（可用 /sessions 查看历史会话）");
+        }
+        return found.get();
+    }
+
 
     /**
      * 运行一轮对话，同一会话内复用会话级状态。
@@ -234,7 +324,7 @@ public class EonApplication {
 
     /** 生成会话 ID，包含时间戳和随机后缀。 */
     private String generateSessionId() {
-        return SESSION_ID_PREFIX + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+        return SessionRegistry.SESSION_ID_PREFIX + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
                 + "_" + UUID.randomUUID().toString().substring(0, 6);
     }
 
@@ -243,20 +333,21 @@ public class EonApplication {
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * 创建入站管线。规则按声明顺序执行：ArtifactSpill 落盘大结果，
-     * ToolResultFormat 套格式化外壳，ToolArgsRecover 标记参数块的可恢复性。
+     * 创建入站管线。只做落盘：ArtifactSpill 把超阈值的工具结果完整写入 artifact，
+     * 块里换成头尾摘要 + 引用；ToolResultFormat 给结果套格式化外壳。
+     * 压缩（截断/清空/裁剪/摘要）是另一套机制，不在这里出现。
      */
     private ContextPipeline createContextPipeline() {
-        int snipKeepChars = config.getContext().getSnipKeepChars();
-
+        var ctx = config.getContext();
         List<IngestRule> rules = new ArrayList<>();
-        rules.add(new ArtifactSpillRule());
-        rules.add(new ToolResultFormatRule());
-        rules.add(new ToolArgsRecoverRule());
+        rules.add(new ArtifactSpillRule(compressor));
+        rules.add(new ToolResultStatusRule());
 
-        log.info("入站管线已装配: {} 条规则", rules.size());
+        log.info("入站管线已装配: {} 条规则 (落盘阈值 {} 字符, 保留 {} 字符)",
+                rules.size(), ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
 
-        return new ContextPipeline(rules, artifactStore, toolRegistry, snipKeepChars);
+        return new ContextPipeline(rules, artifactStore,
+                ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
     }
 
     /** 创建压缩策略：档位判定 + 块处置 + 摘要生成。 */
@@ -266,12 +357,12 @@ public class EonApplication {
 
         ContextSummarizer summarizer = new ContextSummarizer(llmClient, transcriptPath, ctxCfg);
 
-        log.info("压缩策略已装配: 水位 {}/{}/{} | 轮数周期 {} 档位 {} | 尾部保护 {} 块 | 参数骨架化阈值 {} 字符",
+        log.info("压缩策略已装配: 水位 {}/{}/{} | 轮数周期 {} 档位 {} | 尾部保护 {} 块 | 参数裁剪阈值 {} 字符",
                 comp.getSnipWaterLevel(), comp.getPruneWaterLevel(), comp.getSummarizeWaterLevel(),
                 comp.getTurnInterval(), comp.getTurnLevel(),
-                comp.getTailGuardBlocks(), comp.getOffloadMinChars());
+                comp.getTailGuardBlocks(), comp.getArgsPruneMinChars());
 
-        return new CompressionPolicy(ctxCfg, objectMapper, summarizer);
+        return new CompressionPolicy(ctxCfg, compressor, summarizer);
     }
 
     /** 创建工具注册表，注册所有内置工具。 */
@@ -362,22 +453,39 @@ public class EonApplication {
 
         // PostTool Hooks
         agent.addHook(new FailureBreakerHook(loopDetector));
-        agent.addHook(new CheckpointHook(config, checkpointStore, todoStore));
+        agent.addHook(new SessionSnapshotHook(config, snapshotStore, todoStore));
     }
 
     public static void main(String[] args) {
         String workDir = System.getProperty("eon.workdir", DEFAULT_WORKDIR);
         log.info("启动 Eon Agent, 工作目录={}", workDir);
 
-        EonApplication app = new EonApplication(workDir);
+        // 解析恢复入口：--resume <id|前缀> 或 --last（最近活跃会话），剩余参数拼为单次输入
+        String resumeSelector = null;
+        String[] rest = args;
+        if (args.length >= 2 && "--resume".equalsIgnoreCase(args[0])) {
+            resumeSelector = args[1];
+            rest = java.util.Arrays.copyOfRange(args, 2, args.length);
+        } else if (args.length >= 1 && "--last".equalsIgnoreCase(args[0])) {
+            resumeSelector = SELECTOR_LAST;
+            rest = java.util.Arrays.copyOfRange(args, 1, args.length);
+        }
+
+        EonApplication app;
+        try {
+            app = new EonApplication(workDir, resumeSelector);
+        } catch (IllegalArgumentException e) {
+            System.out.println("启动失败: " + e.getMessage());
+            return;
+        }
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("关闭钩子已触发");
             app.shutdown();
         }));
 
-        if (args.length > 0) {
-            String input = String.join(" ", args);
+        if (rest.length > 0) {
+            String input = String.join(" ", rest);
             log.info("单次运行模式，输入: {}", input);
             String result = app.run(input);
             System.out.println("\n" + result);
@@ -388,11 +496,11 @@ public class EonApplication {
         runCliLoop(app);
     }
 
-    /** 交互式 CLI 循环，支持 /exit、/quit、/tools、/clear、/help 命令。 */
+    /** 交互式 CLI 循环，支持 /exit、/tools、/sessions、/resume、/new、/history、/delete、/help 命令。 */
     private static void runCliLoop(EonApplication app) {
         java.util.Scanner scanner = app.cliInteractionCallback.getScanner();
 
-        printWelcome();
+        printWelcome(app);
         System.out.flush();
 
         while (true) {
@@ -415,6 +523,46 @@ public class EonApplication {
                 System.out.flush();
                 continue;
             }
+            if (input.equalsIgnoreCase("/sessions")) {
+                printSessions(app);
+                continue;
+            }
+            if (input.toLowerCase().startsWith("/resume")) {
+                String[] parts = input.split("\\s+");
+                if (parts.length < 2) {
+                    System.out.println("用法: /resume <序号|会话id|前缀|last>（可用 /sessions 查看会话列表）");
+                    continue;
+                }
+                String selector = resolveSelector(app, parts[1]);
+                if (selector == null) continue;
+                app = switchSession(app, scanner, selector);
+                if (app == null) continue;
+                printWelcome(app);
+                continue;
+            }
+            if (input.equalsIgnoreCase("/new")) {
+                app = switchSession(app, scanner, null);
+                if (app == null) continue;
+                printWelcome(app);
+                continue;
+            }
+            if (input.toLowerCase().startsWith("/history")) {
+                String[] parts = input.split("\\s+");
+                printHistory(app, parts.length >= 2 ? parseCount(parts[1]) : DEFAULT_HISTORY_LINES);
+                continue;
+            }
+            if (input.toLowerCase().startsWith("/delete")) {
+                String[] parts = input.split("\\s+");
+                if (parts.length < 2) {
+                    System.out.println("用法: /delete <序号|会话id>（可用 /sessions 查看会话列表）");
+                    continue;
+                }
+                String selector = resolveSelector(app, parts[1]);
+                if (selector == null) continue;
+                app.sessionRegistry.delete(selector);
+                System.out.println("已删除会话: " + selector + "（磁盘文件保留，可从 data/deleted.json 中移除该条目恢复）");
+                continue;
+            }
             if (input.equalsIgnoreCase("/help")) {
                 printHelp();
                 continue;
@@ -435,22 +583,135 @@ public class EonApplication {
         app.shutdown();
     }
 
+    /**
+     * 切换会话：关掉旧应用后重建（复用同一个 Scanner）。
+     *
+     * @param selector 恢复选择器，null 表示新起一个会话
+     */
+    private static EonApplication switchSession(EonApplication old, java.util.Scanner scanner, String selector) {
+        try {
+            old.shutdown();
+            return new EonApplication(old.workDir, selector, scanner);
+        } catch (Exception e) {
+            log.error("切换会话失败: {}", selector, e);
+            System.out.println("切换会话失败: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 把 CLI 参数解析为会话 id：纯数字视为 {@code /sessions} 列表的序号，
+     * 其余（含 {@code last}）原样交给注册表按 id 或前缀匹配。
+     *
+     * @return 解析结果；序号越界或列表为空时返回 null，表示已提示过错误
+     */
+    private static String resolveSelector(EonApplication app, String token) {
+        if (!token.matches("\\d+")) return token;
+        var sessions = app.sessionRegistry.list();
+        int index = Integer.parseInt(token) - 1;
+        if (index < 0 || index >= sessions.size()) {
+            System.out.println("序号超出范围: " + token + "（当前共 " + sessions.size() + " 个会话）");
+            return null;
+        }
+        return sessions.get(index).sessionId();
+    }
+
+    private static int parseCount(String token) {
+        try {
+            int n = Integer.parseInt(token);
+            return n > 0 ? n : DEFAULT_HISTORY_LINES;
+        } catch (NumberFormatException e) {
+            return DEFAULT_HISTORY_LINES;
+        }
+    }
+
+    /** 列出历史会话：序号 / 标题 / 最后活跃 / 消息数 / 恢复能力 / 摘要预览，按最后活跃时间倒序。 */
+    private static void printSessions(EonApplication app) {
+        var sessions = app.sessionRegistry.list();
+        System.out.println();
+        System.out.println(" 历史会话");
+        System.out.println(" " + LINE_BOLD);
+        System.out.println();
+        if (sessions.isEmpty()) {
+            System.out.println("   （无历史会话）");
+        }
+        for (int i = 0; i < sessions.size(); i++) {
+            var s = sessions.get(i);
+            System.out.printf("  #%-2d %-32s %-10s %5d 条  %-8s %s%n",
+                    i + 1, clip(s.title(), 32), relativeTime(s.lastActivityAt()), s.messageCount(),
+                    s.hasSnapshot() ? "[可恢复]" : "[无快照]",
+                    s.summaryPreview() != null ? s.summaryPreview() : "");
+        }
+        System.out.println();
+        System.out.println(" /resume <序号|id|前缀|last> 恢复 · /delete <序号|id> 删除");
+        System.out.println();
+    }
+
+    /** 展示当前上下文窗口里的内容——即恢复后模型实际能看到的历史，取最近 n 块。 */
+    private static void printHistory(EonApplication app, int n) {
+        var blocks = app.jsonlStore.window().blocks();
+        System.out.println();
+        System.out.println(" 当前上下文（共 " + blocks.size() + " 块，显示最近 " + Math.min(n, blocks.size()) + " 块）");
+        System.out.println(" " + LINE_BOLD);
+        System.out.println();
+        for (int i = Math.max(0, blocks.size() - n); i < blocks.size(); i++) {
+            var b = blocks.get(i);
+            String prefix = switch (b.kind()) {
+                case USER_INPUT -> "[用户]";
+                case AI_TEXT -> "[助手]";
+                case TOOL_ARGS -> "[调用:" + b.toolName() + "]";
+                case TOOL_RESULT -> "[结果:" + b.toolName() + "]";
+                case OTHER -> "[其他]";
+            };
+            String text = b.text() == null ? "" : b.text().replace("\n", " ").trim();
+            System.out.printf("  %-18s %s%n", clip(prefix, 18), clip(text, 60));
+        }
+        System.out.println();
+    }
+
+    /** 相对时间：1 小时内按分钟、1 天内按小时、7 天内按天，更早显示日期。 */
+    private static String relativeTime(Instant at) {
+        long minutes = Duration.between(at, Instant.now()).toMinutes();
+        if (minutes < 1) return "刚刚";
+        if (minutes < 60) return minutes + " 分钟前";
+        if (minutes < 60 * 24) return (minutes / 60) + " 小时前";
+        if (minutes < 60 * 24 * 7) return (minutes / (60 * 24)) + " 天前";
+        return DateTimeFormatter.ofPattern("M-dd HH:mm")
+                .format(LocalDateTime.ofInstant(at, ZoneId.systemDefault()));
+    }
+
+    private static String clip(String text, int max) {
+        if (text == null) return "";
+        return text.length() <= max ? text : text.substring(0, max - 1) + "…";
+    }
+
     private static final String LINE_BOLD = "━".repeat(44);
     private static final String LINE_DOUBLE = "═".repeat(44);
 
-    private static void printWelcome() {
+    private static void printWelcome(EonApplication app) {
         System.out.println();
         System.out.println("╔" + LINE_DOUBLE + "╗");
         System.out.println("║  Eon — AI 个人助手                          ║");
         System.out.println("║  由孔明灯开发                               ║");
         System.out.println("╚" + LINE_DOUBLE + "╝");
         System.out.println();
+        System.out.println(" 会话: " + app.sessionState.getSessionId());
+        if (app.resumedSession != null) {
+            var s = app.resumedSession;
+            System.out.println(" 恢复: " + s.title() + " — " + relativeTime(s.lastActivityAt())
+                    + " · " + s.messageCount() + " 条 · " + (s.hasSnapshot() ? "有快照" : "无快照"));
+        }
+        System.out.println();
         System.out.println(" 直接输入问题开始对话，或使用以下命令：");
         System.out.println();
-        System.out.println("   /help    查看帮助");
-        System.out.println("   /tools   列出可用工具");
-        System.out.println("   /clear   清屏");
-        System.out.println("   /exit    退出");
+        System.out.println("   /help     查看帮助");
+        System.out.println("   /tools    列出可用工具");
+        System.out.println("   /sessions 列出历史会话");
+        System.out.println("   /resume   恢复指定会话");
+        System.out.println("   /new      新建会话");
+        System.out.println("   /history  查看当前上下文");
+        System.out.println("   /clear    清屏");
+        System.out.println("   /exit     退出");
         System.out.println();
     }
 
@@ -465,10 +726,18 @@ public class EonApplication {
         System.out.println("   • 管理待办事项、记忆你的偏好");
         System.out.println();
         System.out.println(" 命令：");
-        System.out.println("   /help    显示本帮助");
-        System.out.println("   /tools   列出可用工具");
-        System.out.println("   /clear   清屏");
-        System.out.println("   /exit    退出程序");
+        System.out.println("   /help     显示本帮助");
+        System.out.println("   /tools    列出可用工具");
+        System.out.println("   /sessions 列出历史会话（按最后活跃时间倒序，带序号）");
+        System.out.println("   /resume <序号|id|前缀|last>  恢复会话，复用其摘要与累积 token");
+        System.out.println("   /new      新建一个会话");
+        System.out.println("   /history [n]  查看当前上下文的最后 n 块（默认 " + DEFAULT_HISTORY_LINES + "）");
+        System.out.println("   /delete <序号|id>  删除会话（软删除，磁盘文件保留）");
+        System.out.println("   /clear    清屏");
+        System.out.println("   /exit     退出程序");
+        System.out.println();
+        System.out.println(" 启动参数：--resume <id|前缀> 恢复指定会话 · --last 恢复最近活跃的会话");
+        System.out.println("           不带参数启动则是新会话");
         System.out.println();
     }
 

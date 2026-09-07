@@ -14,9 +14,9 @@ import java.util.Set;
  * 上下文窗口。块序列的一等持有者。
  * 职责：持有有序块列表、按位置划定尾部保护区、维护 tool_use/tool_result 配对不变式。
  * <p>
- * <b>保护区按位置下标划定，不按轮次</b>。锚点是最后一条用户输入——它代表当前诉求，
- * 从它往上再延伸若干块构成保护区，保护区之上的内容才可压缩。这样一组规则不依赖任何
- * 会话级计数器，也就不存在"计数重置导致保护区错位"的可能。
+ * <b>保护区按位置下标划定</b>：窗口末尾固定 N 个块不参与任何档位的处置。
+ * 不锚定在用户消息位置——当前任务正在产出的内容（往往几十上百个块）恰恰最占空间，
+ * 锚在最后一条用户输入上会让它们全部免压，可压缩区间几乎不增长。
  */
 public class ContextWindow {
 
@@ -26,26 +26,9 @@ public class ContextWindow {
 
     private final List<ContextBlock> blocks = new ArrayList<>();
 
-    /** 最后一条用户输入块的下标，-1 表示窗口内没有用户输入。 */
-    private int lastUserIndex = -1;
-
-    /**
-     * 追加块。用户输入的 pin 标记在此统一转移，调用方无需感知。
-     * <p>
-     * 转移必须在这里做而不是交给调用方：漏掉"取消上一条的 pin"会导致当前诉求
-     * 反而失去豁免而被删除，而这类漏写在单条调用路径上看不出来。
-     */
+    /** 追加块。 */
     public void addAll(List<ContextBlock> newBlocks) {
-        for (ContextBlock block : newBlocks) {
-            if (block.kind() == BlockKind.USER_INPUT) {
-                if (lastUserIndex >= 0) {
-                    blocks.get(lastUserIndex).setPinned(false);
-                }
-                block.setPinned(true);
-                lastUserIndex = blocks.size();
-            }
-            blocks.add(block);
-        }
+        blocks.addAll(newBlocks);
     }
 
     /** 块列表，供处置逻辑就地改写。 */
@@ -66,55 +49,31 @@ public class ContextWindow {
         return BlockProjector.assemble(blocks);
     }
 
-    /** 最后一条用户输入块的下标；-1 表示窗口内没有用户输入。 */
-    public int lastUserIndex() {
-        return lastUserIndex;
-    }
-
     /**
-     * 保护区起始下标：下标 ≥ 此值的块不参与任何档位的处置。
-     * <p>
-     * 锚点是最后一条用户输入（当前诉求所在处），向上再保护 tailGuardBlocks 个块——
-     * 上一轮任务收尾的内容紧贴新输入，往往是当前诉求的直接上下文，不该在新输入一进来就被摘要掉。
-     * 锚点之后的块是当前任务正在产出的内容，同样在保护区内。
+     * 保护区起始下标：窗口末尾 tailGuardBlocks 个块不参与任何档位的处置。
      *
-     * @param tailGuardBlocks 从锚点向上额外保护的块数
+     * @param tailGuardBlocks 从末尾向前保护的块数
      */
     public int protectedFrom(int tailGuardBlocks) {
-        if (blocks.isEmpty()) return 0;
-        int anchor = lastUserIndex >= 0 ? lastUserIndex : blocks.size();
-        return Math.max(0, anchor - tailGuardBlocks);
+        return Math.max(0, blocks.size() - tailGuardBlocks);
     }
 
     /**
      * 删除保护区之前的全部块（下标 &lt; protectedFrom）。
      * <p>
      * 保留策略不做类型区分——用户消息同样删除，其诉求由摘要承载。
-     * 被 pin 的块恒在保护区内（保护区锚点就是它），因此不受影响。
      * 调用方必须先完成摘要写入，否则删除即永久丢失。
      *
-     * @return 是否删除了至少一个块
+     * @return 第一个幸存块的消息序号（恢复时的回放起点）；窗口被清空时返回 -1
      */
-    public boolean removeBefore(int protectedFrom) {
+    public int removeBefore(int protectedFrom) {
         int removeCount = Math.min(protectedFrom, blocks.size());
-        if (removeCount <= 0) {
-            return false;
+        if (removeCount > 0) {
+            List<ContextBlock> kept = new ArrayList<>(blocks.subList(removeCount, blocks.size()));
+            blocks.clear();
+            blocks.addAll(kept);
         }
-        List<ContextBlock> kept = new ArrayList<>(blocks.subList(removeCount, blocks.size()));
-        blocks.clear();
-        blocks.addAll(kept);
-        rebuildUserIndex();
-        return true;
-    }
-
-    /** 重建用户输入索引。块结构变化（删除、配对修复）后调用，不做增量修正以免错位。 */
-    private void rebuildUserIndex() {
-        lastUserIndex = -1;
-        for (int i = 0; i < blocks.size(); i++) {
-            if (blocks.get(i).kind() == BlockKind.USER_INPUT) {
-                lastUserIndex = i;
-            }
-        }
+        return blocks.isEmpty() ? -1 : blocks.get(0).messageSeq();
     }
 
     /**
@@ -185,6 +144,7 @@ public class ContextWindow {
                         .kind(BlockKind.TOOL_RESULT)
                         .groupId(block.groupId() + SYNTHETIC_GROUP_SUFFIX + block.toolCallId())
                         .ordinal(block.ordinal())
+                        .messageSeq(block.messageSeq())
                         .toolName(block.toolName())
                         .toolCallId(block.toolCallId())
                         .text("[合成] 工具结果缺失，请重新调用此工具获取最新结果")
@@ -194,6 +154,5 @@ public class ContextWindow {
 
         blocks.clear();
         blocks.addAll(withSynthetics);
-        rebuildUserIndex();
     }
 }

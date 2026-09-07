@@ -24,7 +24,7 @@ public class MessageFinalizer {
 
     /**
      * 回填 AI 消息和工具结果，清理临时状态。
-     * 卸载的安全边界：只有执行成功的调用才保证参数已真正落盘。
+     * 成功调用 id 集合随消息一起进账本，回放时据此还原工具结果的执行状态。
      */
     public void finalizeAndAppend(SessionState state) {
         String assistantText = state.getLastAssistantText();

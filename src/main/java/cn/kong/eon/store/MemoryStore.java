@@ -111,16 +111,15 @@ public class MemoryStore {
         return items;
     }
 
-    /** 渲染全部记忆为 XML 注入块文本。 */
+    /** 渲染全部记忆为注入文本。{@code <memories>} 标签由 ContextBuilder 统一添加。 */
     public String renderForInjection() {
         List<MemoryItem> items = loadAll();
         if (items.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder("<memories>\n");
+        StringBuilder sb = new StringBuilder();
         for (MemoryItem m : items) {
             sb.append("- [").append(m.id).append("] ").append(m.title)
                     .append(": ").append(truncate(m.content, 200)).append("\n");
         }
-        sb.append("</memories>");
         return sb.toString();
     }
 
