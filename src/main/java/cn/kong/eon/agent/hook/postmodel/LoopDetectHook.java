@@ -22,8 +22,8 @@ import java.util.Map;
 public class LoopDetectHook implements Hook.PostModelHook {
     private static final Logger log = LoggerFactory.getLogger(LoopDetectHook.class);
 
-    private static final String STOP_MSG = "重复调用同一工具同一参数 %d 次，疑似死循环";
-    private static final String WARN_MSG = "工具 %1$s 已重复调用 %2$d 次，请考虑换参数或换工具";
+    private static final String STOP_MSG = "工具 %s 以相同参数调用 %s 次";
+    private static final String WARN_MSG = "工具 %s 已重复调用 %s 次，请考虑换参数或换工具";
 
     private final int warnThreshold;
     private final int stopThreshold;
@@ -61,7 +61,9 @@ public class LoopDetectHook implements Hook.PostModelHook {
         }
 
         for (ToolExecutionRequest req : requests) {
-            if (breaker.isTripped(req.name())) continue;
+            if (breaker.isTripped(req.name())) {
+                continue;
+            }
 
             String fingerprint = req.name() + "|" + (req.arguments() != null ? req.arguments() : "");
             int count = callFingerprintCount.getOrDefault(fingerprint, 0) + 1;
@@ -69,9 +71,8 @@ public class LoopDetectHook implements Hook.PostModelHook {
 
             if (count >= stopThreshold) {
                 log.warn("[LoopDetect] 死循环: 工具 '{}' 以相同参数调用 {} 次", req.name(), count);
-                String msg = String.format(STOP_MSG, count);
-                return HookResult.stop(StopCategory.LOOP_DETECTED,
-                        StopCategory.LOOP_DETECTED.format(msg));
+                String msg = String.format(STOP_MSG, req.name(), count);
+                return HookResult.stop(StopCategory.LOOP_DETECTED, StopCategory.LOOP_DETECTED.format(msg));
             }
             if (count >= warnThreshold) {
                 log.info("[LoopDetect] 告警 - 工具 '{}' 重复 {} 次", req.name(), count);
@@ -79,11 +80,6 @@ public class LoopDetectHook implements Hook.PostModelHook {
             }
         }
         return HookResult.ok();
-    }
-
-    /** 清除指定工具的指纹计数（工具执行后调用，避免跨轮误判）。 */
-    public void clearForTool(String toolName) {
-        callFingerprintCount.entrySet().removeIf(e -> e.getKey().startsWith(toolName + "|"));
     }
 
     /** 清空全部指纹，在每个任务开始时调用。 */

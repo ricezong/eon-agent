@@ -38,7 +38,6 @@ public class TruncationHook implements Hook.PostModelHook {
         }
         if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
             state.addNudge(TRUNCATION_NUDGE);
-            log.info("[Truncation] 输出被截断，已注入提示");
         }
         return HookResult.ok();
     }

@@ -221,10 +221,8 @@ public class EonAgent {
             flusher.flushAndAppend(state);
             logger.turnDone(rec, state);
 
-            // ── 阶段 8：推进熔断冷却，恢复的工具写入 nudge ──
-            for (String msg : breaker.tickCooldown()) {
-                state.addNudge(msg);
-            }
+            // ── 阶段 8：推进熔断冷却 ──
+            breaker.tickCooldown();
 
             return new TurnOutcome.Continue();
         } finally {
