@@ -15,6 +15,8 @@ import cn.kong.eon.agent.hook.premodel.ContextCompressionHook;
 import cn.kong.eon.agent.hook.premodel.TodoHook;
 import cn.kong.eon.agent.hook.pretool.GateHook;
 import cn.kong.eon.agent.exec.ToolHealthTracker;
+import cn.kong.eon.agent.turn.Slf4jTurnListener;
+import cn.kong.eon.agent.turn.TurnListener;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.tool.mcp.McpClientManager;
@@ -48,6 +50,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -197,10 +200,12 @@ public class EonApplication {
 
         this.compressionPolicy = createCompressionPolicy();
 
+        List<TurnListener> listeners = List.of(new Slf4jTurnListener());
+
         this.agent = new EonAgent(
                 config, llmClient, toolRegistry,
                 jsonlStore, systemPrompt,
-                toolContext, tracker);
+                toolContext, tracker, listeners);
 
         registerHooks();
 

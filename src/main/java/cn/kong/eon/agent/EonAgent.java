@@ -1,17 +1,19 @@
 package cn.kong.eon.agent;
 
 import cn.kong.eon.agent.context.ContextBuilder;
-import cn.kong.eon.agent.context.ContextMetrics;
-import cn.kong.eon.agent.hook.Hook;
-import cn.kong.eon.agent.stop.StopCategory;
-import cn.kong.eon.agent.exec.ToolHealthTracker;
-import cn.kong.eon.agent.turn.TurnOutcome;
-import cn.kong.eon.agent.hook.HookDispatcher;
-import cn.kong.eon.agent.flush.MessageFlusher;
-import cn.kong.eon.agent.stop.StopHandler;
 import cn.kong.eon.agent.exec.ToolExecHandler;
-import cn.kong.eon.agent.turn.TurnLogger;
-import cn.kong.eon.agent.turn.TurnRecord;
+import cn.kong.eon.agent.exec.ToolHealthTracker;
+import cn.kong.eon.agent.flush.MessageFlusher;
+import cn.kong.eon.agent.hook.Hook;
+import cn.kong.eon.agent.hook.HookDispatcher;
+import cn.kong.eon.agent.stop.StopCategory;
+import cn.kong.eon.agent.stop.StopHandler;
+import cn.kong.eon.agent.turn.TurnEvent;
+import cn.kong.eon.agent.turn.TurnListener;
+import cn.kong.eon.agent.turn.TurnOutcome;
+import cn.kong.eon.agent.turn.event.MessageStarted;
+import cn.kong.eon.agent.turn.event.TaskCompleted;
+import cn.kong.eon.agent.turn.event.TextChunk;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.llm.LlmResponse;
@@ -34,6 +36,7 @@ import java.util.List;
 /**
  * Agent 核心引擎。每轮执行：PreModel → 构建上下文 → 调用 LLM → PostModel →
  * 工具执行(PreTool→Execute→PostTool) → 回填消息。无工具调用时任务完成。
+ * 事件驱动：引擎在关键阶段发出 TurnEvent，由 TurnListener 消费。
  */
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
@@ -48,7 +51,7 @@ public class EonAgent {
     private final TokenCountEstimator tokenCountEstimator;
 
     // ── 协作组件
-    private final TurnLogger logger;
+    private final List<TurnListener> listeners;
     private final ToolExecHandler toolHandler;
     private final StopHandler stopHandler;
     private final MessageFlusher flusher;
@@ -81,7 +84,8 @@ public class EonAgent {
                     JsonlStore jsonlStore,
                     String basePrompt,
                     ToolContext toolContext,
-                    ToolHealthTracker tracker) {
+                    ToolHealthTracker tracker,
+                    List<TurnListener> listeners) {
         this.config = config;
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
@@ -89,13 +93,13 @@ public class EonAgent {
         this.basePrompt = basePrompt;
         this.toolContext = toolContext;
         this.tracker = tracker;
+        this.listeners = listeners != null ? listeners : List.of();
         this.tokenCountEstimator = new OpenAiTokenCountEstimator("gpt-4o");
-        this.logger = new TurnLogger(config);
         this.toolHandler = new ToolExecHandler(
-                toolRegistry, toolContext, logger, tracker,
+                toolRegistry, toolContext, this::emit, tracker,
                 config.getTools().getParallelism());
         this.flusher = new MessageFlusher(jsonlStore);
-        this.stopHandler = new StopHandler(config, logger);
+        this.stopHandler = new StopHandler(config, this::emit);
     }
 
     /**
@@ -136,6 +140,23 @@ public class EonAgent {
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    //  事件分发
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * 向所有监听器发送事件。
+     */
+    private void emit(TurnEvent event) {
+        for (TurnListener l : listeners) {
+            try {
+                l.onEvent(event);
+            } catch (Exception e) {
+                log.warn("事件监听器异常: {}", e.getMessage(), e);
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     //  主循环
     // ═══════════════════════════════════════════════════════════════════
 
@@ -172,10 +193,7 @@ public class EonAgent {
      * 执行单个 Turn。返回 Continue 继续循环，Exit 退出并携带输出。
      */
     private TurnOutcome executeTurn(SessionState state) {
-        TurnRecord rec = logger.newRecord();
         try {
-            logger.turnHeader(rec, state);
-
             // ── 阶段 1：准备上下文（跑 PreModel Hooks，再渲染 nudge） ──
             ContextBuilder ctx = buildContext(state);
             TurnOutcome preModel = prepareContext(state, ctx);
@@ -186,8 +204,6 @@ public class EonAgent {
             // ── 阶段 2：构建 messages ──
             List<ChatMessage> messages = ctx.build();
             state.setCurrentMessages(messages);
-            ContextMetrics metrics = ctx.metrics();
-            logger.contextInfo(rec, metrics, messages.size(), toolRegistry.getAllToolNames().size());
 
             // ── 阶段 3：调用 LLM ──
             LlmResponse response = llmClient.chat(messages, toolRegistry.getSpecifications());
@@ -197,7 +213,6 @@ public class EonAgent {
             String thought = response.aiMessage().text() != null ? response.aiMessage().text() : "";
             state.setLastAssistantText(thought);
             List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
-            logger.llmResponse(rec, requests);
 
             // ── 阶段 4：PostModel Hooks（截断检测、工具校验、循环检测等） ──
             state.setPendingToolCalls(requests);
@@ -206,36 +221,35 @@ public class EonAgent {
                 return exit;
             }
             if (postModel instanceof TurnOutcome.Skip) {
-                return finishSkip(state, rec);
+                return finishSkip(state);
             }
 
             // ── 阶段 5：无工具调用 → 任务完成 ──
             if (requests == null || requests.isEmpty()) {
-                return handleNoToolCalls(rec, state, thought);
+                emit(TextChunk.now(thought));
+                return handleNoToolCalls(state, thought);
             }
 
             // ── 阶段 6：Extension Loop（PreTool → 执行 → PostTool） ──
-            TurnOutcome extension = executeExtensionLoop(rec, state, requests);
+            TurnOutcome extension = executeExtensionLoop(state, requests);
             if (extension instanceof TurnOutcome.Exit exit) {
                 return exit;
             }
 
             // ── 阶段 7：推进熔断冷却 ──
-            logger.turnDone(rec, state);
             tracker.tickCooldown();
 
             return new TurnOutcome.Continue();
         } finally {
             // ── 阶段 8：消息回填 ──
             flusher.flush(state);
-            flushTurn(rec);
         }
     }
 
     /**
      * Extension Loop：PreTool → 执行 → PostTool。
      */
-    private TurnOutcome executeExtensionLoop(TurnRecord rec, SessionState state, List<ToolExecutionRequest> requests) {
+    private TurnOutcome executeExtensionLoop(SessionState state, List<ToolExecutionRequest> requests) {
         // PreTool Hooks
         TurnOutcome preTool = firePreToolHooks(state, requests);
         if (preTool instanceof TurnOutcome.Exit exit) {
@@ -243,7 +257,7 @@ public class EonAgent {
         }
 
         // 执行工具
-        List<ToolExecResult> results = toolHandler.execute(rec, state);
+        List<ToolExecResult> results = toolHandler.execute(state);
 
         // PostTool Hooks（逐个工具检查，遇到 Exit/Skip 停止）
         for (int i = 0; i < requests.size(); i++) {
@@ -260,16 +274,14 @@ public class EonAgent {
     /**
      * 处理无工具调用：模型未发起工具调用，视为任务完成退出。
      */
-    private TurnOutcome handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
-        logger.turnDone(rec, state);
+    private TurnOutcome handleNoToolCalls(SessionState state, String thought) {
         return new TurnOutcome.Exit(thought);
     }
 
     /**
-     * Skip 收尾：记录日志、推进熔断冷却，返回 Continue 进入下一轮。
+     * Skip 收尾：推进熔断冷却，返回 Continue 进入下一轮。
      */
-    private TurnOutcome finishSkip(SessionState state, TurnRecord rec) {
-        logger.turnDone(rec, state);
+    private TurnOutcome finishSkip(SessionState state) {
         tracker.tickCooldown();
         return new TurnOutcome.Continue();
     }
@@ -279,11 +291,11 @@ public class EonAgent {
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * 退出处理：渲染记忆引用 → 记录日志 → 返回输出。
+     * 退出处理：渲染记忆引用 → 发出完成事件 → 返回输出。
      */
     private String completeExit(SessionState state, String rawOutput) {
         String output = renderMemoryReferences(rawOutput);
-        logger.agentComplete(state);
+        emit(TaskCompleted.now(output, state.getTurnCount(), state.getUsageAccum().getTotalTokens()));
         return output;
     }
 
@@ -300,19 +312,11 @@ public class EonAgent {
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * 初始化运行：记录日志、写入用户输入到 JSONL。
+     * 初始化运行：发出对话开始事件、写入用户输入到 JSONL。
      */
     private void initRun(SessionState state) {
-        logger.agentStart(state);
-        // 写入用户输入到 JSONL
+        emit(MessageStarted.now(state.getSessionId(), state.getUserInput()));
         jsonlStore.append(UserMessage.from(state.getUserInput()));
-    }
-
-    /**
-     * 输出 Turn 日志。
-     */
-    private void flushTurn(TurnRecord rec) {
-        logger.flush(rec);
     }
 
     // ═══════════════════════════════════════════════════════════════════
