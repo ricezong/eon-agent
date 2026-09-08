@@ -3,7 +3,7 @@ package cn.kong.eon.agent.hook.postmodel;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.stop.StopCategory;
-import cn.kong.eon.agent.exec.ToolBreaker;
+import cn.kong.eon.agent.exec.ToolHealthTracker;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -27,15 +27,15 @@ public class LoopDetectHook implements Hook.PostModelHook {
 
     private final int warnThreshold;
     private final int stopThreshold;
-    private final ToolBreaker breaker;
+    private final ToolHealthTracker tracker;
 
     /** 指纹 → 调用次数，同一轮内累计 */
     private final Map<String, Integer> callFingerprintCount = new HashMap<>();
 
-    public LoopDetectHook(AgentConfig.LoopDetectConfig cfg, ToolBreaker breaker) {
+    public LoopDetectHook(AgentConfig.LoopDetectConfig cfg, ToolHealthTracker tracker) {
         this.warnThreshold = cfg.getRepeatWarn();
         this.stopThreshold = cfg.getRepeatStop();
-        this.breaker = breaker;
+        this.tracker = tracker;
     }
 
     @Override
@@ -61,7 +61,7 @@ public class LoopDetectHook implements Hook.PostModelHook {
         }
 
         for (ToolExecutionRequest req : requests) {
-            if (breaker.isTripped(req.name())) {
+            if (tracker.isTripped(req.name())) {
                 continue;
             }
 
@@ -77,6 +77,7 @@ public class LoopDetectHook implements Hook.PostModelHook {
             if (count >= warnThreshold) {
                 log.info("[LoopDetect] 告警 - 工具 '{}' 重复 {} 次", req.name(), count);
                 state.addNudge(String.format(WARN_MSG, req.name(), count));
+                return HookResult.skip();
             }
         }
         return HookResult.ok();

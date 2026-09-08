@@ -23,7 +23,7 @@ import java.util.Set;
 public class TodoSnapshotHook implements Hook.PostToolHook {
     private static final Logger log = LoggerFactory.getLogger(TodoSnapshotHook.class);
 
-    private static final String WARN_MSG = "连续 %d 步 Todo 无变化，请检查是否陷入循环";
+    private static final String WARN_MSG = "连续 %s 步 Todo 无变化，请检查是否陷入循环";
 
     private final AgentConfig config;
     private final SessionSnapshotStore snapshotStore;
@@ -52,11 +52,6 @@ public class TodoSnapshotHook implements Hook.PostToolHook {
     }
 
     @Override
-    public int order() {
-        return 100;
-    }
-
-    @Override
     public HookResult afterToolExecution(SessionState state, String toolName, boolean success) {
         if (!"todo_write".equals(toolName) || !success) return HookResult.ok();
 
@@ -73,7 +68,7 @@ public class TodoSnapshotHook implements Hook.PostToolHook {
             snapshots.removeFirst();
         }
 
-        if (snapshots.size() >= windowSize) {
+        if (snapshots.size() == windowSize) {
             Set<String> unique = new HashSet<>(snapshots);
             if (unique.size() == 1) {
                 stepsWithoutProgress++;

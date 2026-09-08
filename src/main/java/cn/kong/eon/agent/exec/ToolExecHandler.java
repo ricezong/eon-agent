@@ -4,7 +4,7 @@ import cn.kong.eon.agent.turn.TurnLogger;
 import cn.kong.eon.agent.turn.TurnRecord;
 import cn.kong.eon.config.ObjectMapperConfig;
 import cn.kong.eon.model.SessionState;
-import cn.kong.eon.model.ToolExecutionResult;
+import cn.kong.eon.model.ToolExecResult;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.tool.ToolRegistry;
@@ -39,18 +39,18 @@ public class ToolExecHandler {
     private final ToolRegistry toolRegistry;
     private final ToolContext toolContext;
     private final TurnLogger logger;
-    private final ToolBreaker breaker;
+    private final ToolHealthTracker tracker;
     private final ExecutorService parallelExecutor;
 
     public ToolExecHandler(ToolRegistry toolRegistry,
                            ToolContext toolContext,
                            TurnLogger logger,
-                           ToolBreaker breaker,
+                           ToolHealthTracker tracker,
                            int parallelism) {
         this.toolRegistry = toolRegistry;
         this.toolContext = toolContext;
         this.logger = logger;
-        this.breaker = breaker;
+        this.tracker = tracker;
         this.parallelExecutor = Executors.newFixedThreadPool(Math.max(1, parallelism), r -> {
             Thread t = new Thread(r, "tool-exec");
             t.setDaemon(true);
@@ -62,10 +62,10 @@ public class ToolExecHandler {
      * 执行所有待执行的工具调用，保持与请求列表一致的顺序。
      * 串行豁免工具立即执行，其余提交并行后统一收集。
      */
-    public List<ToolExecutionResult> execute(TurnRecord rec, SessionState state) {
+    public List<ToolExecResult> execute(TurnRecord rec, SessionState state) {
         List<ToolExecutionRequest> requests = state.getPendingToolCalls();
-        ToolExecutionResult[] results = new ToolExecutionResult[requests.size()];
-        List<Future<ToolExecutionResult>> futures = new ArrayList<>();
+        ToolExecResult[] results = new ToolExecResult[requests.size()];
+        List<Future<ToolExecResult>> futures = new ArrayList<>();
         List<Integer> pendingIndices = new ArrayList<>();
 
         // 第一遍：分发——串行的立即执行，并行的提交线程池
@@ -96,7 +96,7 @@ public class ToolExecHandler {
             }
         }
 
-        List<ToolExecutionResult> resultList = List.of(results);
+        List<ToolExecResult> resultList = List.of(results);
         state.setLastToolResults(resultList);
         return resultList;
     }
@@ -104,7 +104,7 @@ public class ToolExecHandler {
     // ═══════════════════ 单次执行 ═══════════════════
 
     /** 串行执行单个工具（含异常兜底）。 */
-    private ToolExecutionResult runSerial(ToolExecutionRequest req, TurnRecord rec, SessionState state) {
+    private ToolExecResult runSerial(ToolExecutionRequest req, TurnRecord rec, SessionState state) {
         try {
             return executeSingle(req, rec, state);
         } catch (Exception e) {
@@ -115,10 +115,10 @@ public class ToolExecHandler {
     /**
      * 执行单个工具请求：参数解析 → 执行 → 日志 → 封装结果。
      */
-    private ToolExecutionResult executeSingle(ToolExecutionRequest req, TurnRecord rec, SessionState state) {
+    private ToolExecResult executeSingle(ToolExecutionRequest req, TurnRecord rec, SessionState state) {
         // 熔断拦截：跳过执行，合成错误结果告知 LLM
-        if (breaker.isTripped(req.name())) {
-            String msg = breaker.trippedMessage(req.name());
+        if (tracker.isTripped(req.name())) {
+            String msg = tracker.trippedMessage(req.name());
             log.warn("[ToolExecution] 工具 '{}' 已熔断，跳过执行", req.name());
             return syntheticError(req, msg, rec);
         }
@@ -130,14 +130,14 @@ public class ToolExecHandler {
         String argsSummary = truncate(args.toString());
         logger.toolExecuted(rec, req.name(), outcome.success(), argsSummary, outcome.content().length());
 
-        return ToolExecutionResult.of(req.id(), req.name(), outcome, outcome.content());
+        return ToolExecResult.of(req.id(), req.name(), outcome, outcome.content());
     }
 
     /** 合成错误结果（用于异常隔离）。 */
-    private ToolExecutionResult syntheticError(ToolExecutionRequest req, String errorMsg, TurnRecord rec) {
+    private ToolExecResult syntheticError(ToolExecutionRequest req, String errorMsg, TurnRecord rec) {
         ToolOutcome outcome = ToolOutcome.failure(errorMsg);
         logger.toolExecuted(rec, req.name(), false, "(错误)", outcome.content().length());
-        return ToolExecutionResult.of(req.id(), req.name(), outcome, outcome.content());
+        return ToolExecResult.of(req.id(), req.name(), outcome, outcome.content());
     }
 
     // ═══════════════════ 工具方法 ═══════════════════

@@ -8,8 +8,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 截断检测（PostModel, order=5）。
- * finishReason=length 时注入截断提示 nudge，让下一轮重新调用工具。
- * 本 Hook 只负责注入 nudge，是否继续循环由 EonAgent 的控制流决定。
+ * finishReason=length 时注入截断提示 nudge 并返回 skip()，
+ * 跳过当前 Turn 后续阶段直接进入下一轮，让模型重新调用工具。
  */
 public class TruncationHook implements Hook.PostModelHook {
     private static final Logger log = LoggerFactory.getLogger(TruncationHook.class);
@@ -38,6 +38,8 @@ public class TruncationHook implements Hook.PostModelHook {
         }
         if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
             state.addNudge(TRUNCATION_NUDGE);
+            log.info("[Truncation] 输出被截断(finishReason=length)，注入 nudge 并跳过后续阶段");
+            return HookResult.skip();
         }
         return HookResult.ok();
     }

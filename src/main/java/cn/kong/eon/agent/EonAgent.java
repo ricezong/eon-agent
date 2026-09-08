@@ -4,7 +4,7 @@ import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.agent.context.ContextMetrics;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.stop.StopCategory;
-import cn.kong.eon.agent.exec.ToolBreaker;
+import cn.kong.eon.agent.exec.ToolHealthTracker;
 import cn.kong.eon.agent.turn.TurnOutcome;
 import cn.kong.eon.agent.hook.HookDispatcher;
 import cn.kong.eon.agent.flush.MessageFlusher;
@@ -16,7 +16,7 @@ import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.llm.LlmResponse;
 import cn.kong.eon.model.SessionState;
-import cn.kong.eon.model.ToolExecutionResult;
+import cn.kong.eon.model.ToolExecResult;
 import cn.kong.eon.store.JsonlStore;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolRegistry;
@@ -52,7 +52,7 @@ public class EonAgent {
     private final ToolExecHandler toolHandler;
     private final StopHandler stopHandler;
     private final MessageFlusher flusher;
-    private final ToolBreaker breaker;
+    private final ToolHealthTracker tracker;
 
     // ── Hook 列表（按阶段分组）
     private final List<Hook.PreModelHook> preModelHooks = new ArrayList<>();
@@ -81,18 +81,18 @@ public class EonAgent {
                     JsonlStore jsonlStore,
                     String basePrompt,
                     ToolContext toolContext,
-                    ToolBreaker breaker) {
+                    ToolHealthTracker tracker) {
         this.config = config;
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.jsonlStore = jsonlStore;
         this.basePrompt = basePrompt;
         this.toolContext = toolContext;
-        this.breaker = breaker;
+        this.tracker = tracker;
         this.tokenCountEstimator = new OpenAiTokenCountEstimator("gpt-4o");
         this.logger = new TurnLogger(config);
         this.toolHandler = new ToolExecHandler(
-                toolRegistry, toolContext, logger, breaker,
+                toolRegistry, toolContext, logger, tracker,
                 config.getTools().getParallelism());
         this.flusher = new MessageFlusher(jsonlStore);
         this.stopHandler = new StopHandler(config, logger);
@@ -205,8 +205,11 @@ public class EonAgent {
             if (postModel instanceof TurnOutcome.Exit exit) {
                 return exit;
             }
+            if (postModel instanceof TurnOutcome.Skip) {
+                return finishSkip(state, rec);
+            }
 
-            // ── 阶段 5：无工具调用 → 截断则继续循环，否则任务完成 ──
+            // ── 阶段 5：无工具调用 → 任务完成 ──
             if (requests == null || requests.isEmpty()) {
                 return handleNoToolCalls(rec, state, thought);
             }
@@ -217,17 +220,14 @@ public class EonAgent {
                 return exit;
             }
 
-            // ── 阶段 7：回填 AI 消息和工具结果到 JSONL ──
-            flusher.flushAndAppend(state);
+            // ── 阶段 7：推进熔断冷却 ──
             logger.turnDone(rec, state);
-
-            // ── 阶段 8：推进熔断冷却 ──
-            breaker.tickCooldown();
+            tracker.tickCooldown();
 
             return new TurnOutcome.Continue();
         } finally {
-            // 兜底：确保任何退出路径都不会丢失未回填的消息
-            flusher.flushIfPending(state);
+            // ── 阶段 8：消息回填 ──
+            flusher.flush(state);
             flushTurn(rec);
         }
     }
@@ -235,8 +235,7 @@ public class EonAgent {
     /**
      * Extension Loop：PreTool → 执行 → PostTool。
      */
-    private TurnOutcome executeExtensionLoop(TurnRecord rec, SessionState state,
-                                             List<ToolExecutionRequest> requests) {
+    private TurnOutcome executeExtensionLoop(TurnRecord rec, SessionState state, List<ToolExecutionRequest> requests) {
         // PreTool Hooks
         TurnOutcome preTool = firePreToolHooks(state, requests);
         if (preTool instanceof TurnOutcome.Exit exit) {
@@ -244,11 +243,11 @@ public class EonAgent {
         }
 
         // 执行工具
-        List<ToolExecutionResult> results = toolHandler.execute(rec, state);
+        List<ToolExecResult> results = toolHandler.execute(rec, state);
 
-        // PostTool Hooks（逐个工具检查，遇到 Exit 停止）
+        // PostTool Hooks（逐个工具检查，遇到 Exit/Skip 停止）
         for (int i = 0; i < requests.size(); i++) {
-            ToolExecutionResult result = results.get(i);
+            ToolExecResult result = results.get(i);
             TurnOutcome postTool = firePostToolHooks(state, requests.get(i).name(), result.success());
             if (postTool instanceof TurnOutcome.Exit exit) {
                 return exit;
@@ -259,17 +258,20 @@ public class EonAgent {
     }
 
     /**
-     * 处理无工具调用：finishReason=length 时截断 nudge 已由 TruncationHook 注入，继续循环；
-     * 否则任务完成退出。
+     * 处理无工具调用：模型未发起工具调用，视为任务完成退出。
      */
     private TurnOutcome handleNoToolCalls(TurnRecord rec, SessionState state, String thought) {
-        flusher.flushAndAppend(state);
-        boolean truncated = "length".equalsIgnoreCase(state.getLastResponse().finishReason());
-        if (truncated) {
-            logger.outputTruncated(rec);
-            return new TurnOutcome.Continue();
-        }
+        logger.turnDone(rec, state);
         return new TurnOutcome.Exit(thought);
+    }
+
+    /**
+     * Skip 收尾：记录日志、推进熔断冷却，返回 Continue 进入下一轮。
+     */
+    private TurnOutcome finishSkip(SessionState state, TurnRecord rec) {
+        logger.turnDone(rec, state);
+        tracker.tickCooldown();
+        return new TurnOutcome.Continue();
     }
 
     // ═══════════════════════════════════════════════════════════════════

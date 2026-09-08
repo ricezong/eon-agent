@@ -14,7 +14,7 @@ import cn.kong.eon.agent.hook.premodel.BudgetHook;
 import cn.kong.eon.agent.hook.premodel.ContextCompressionHook;
 import cn.kong.eon.agent.hook.premodel.TodoHook;
 import cn.kong.eon.agent.hook.pretool.GateHook;
-import cn.kong.eon.agent.exec.ToolBreaker;
+import cn.kong.eon.agent.exec.ToolHealthTracker;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.tool.mcp.McpClientManager;
@@ -78,7 +78,7 @@ public class EonApplication {
     private final CompressionPolicy compressionPolicy;
     private final ToolContext toolContext;
     private final HttpConfig httpConfig;
-    private final ToolBreaker breaker;
+    private final ToolHealthTracker tracker;
     private final LoopDetectHook loopDetectHook;
     private final TodoSnapshotHook todoSnapshotHook;
     private final EonAgent agent;
@@ -191,8 +191,8 @@ public class EonApplication {
                 jsonlStore, snapshotStore, pathResolver, cliInteractionCallback);
 
         var ldc = config.getLoopDetect();
-        this.breaker = new ToolBreaker(ldc);
-        this.loopDetectHook = new LoopDetectHook(ldc, breaker);
+        this.tracker = new ToolHealthTracker(ldc);
+        this.loopDetectHook = new LoopDetectHook(ldc, tracker);
         this.todoSnapshotHook = new TodoSnapshotHook(config, snapshotStore, todoStore);
 
         this.compressionPolicy = createCompressionPolicy();
@@ -200,7 +200,7 @@ public class EonApplication {
         this.agent = new EonAgent(
                 config, llmClient, toolRegistry,
                 jsonlStore, systemPrompt,
-                toolContext, breaker);
+                toolContext, tracker);
 
         registerHooks();
 
@@ -249,7 +249,7 @@ public class EonApplication {
         // 任务边界：会话级状态与循环检测状态必须在同一点重置，
         // 否则上一任务熔断的工具在新任务里仍会被拦截而永久不可用。
         sessionState.beginRun(userInput);
-        breaker.reset();
+        tracker.reset();
         loopDetectHook.reset();
         todoSnapshotHook.reset();
 
@@ -427,7 +427,7 @@ public class EonApplication {
         agent.addHook(new GateHook(toolRegistry, config));
 
         // PostTool Hooks
-        agent.addHook(new ToolFailureHook(breaker));
+        agent.addHook(new ToolFailureHook(tracker));
         agent.addHook(todoSnapshotHook);
     }
 

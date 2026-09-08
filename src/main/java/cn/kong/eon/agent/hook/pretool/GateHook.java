@@ -51,11 +51,9 @@ public class GateHook implements Hook.PreToolHook {
             if (!toolRegistry.isDestructive(req.name())) continue;
 
             if (autoApproveDestructive) {
-                log.warn("[Gate] 破坏性工具 '{}' 已自动批准 | 参数: {} | turn: {}",
-                        req.name(), req.arguments(), state.getTurnCount());
+                log.warn("[Gate] 破坏性工具 '{}' 已自动批准 | 参数: {} | turn: {}", req.name(), req.arguments(), state.getTurnCount());
             } else {
-                log.warn("[Gate] 破坏性工具 '{}' 需要审批，已拒绝 | 参数: {} | turn: {}",
-                        req.name(), req.arguments(), state.getTurnCount());
+                log.warn("[Gate] 破坏性工具 '{}' 需要审批，已拒绝 | 参数: {} | turn: {}", req.name(), req.arguments(), state.getTurnCount());
                 return HookResult.stop(StopCategory.GATE_REJECTED, StopCategory.GATE_REJECTED.format(req.name()));
             }
         }

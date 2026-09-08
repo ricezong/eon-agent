@@ -9,7 +9,12 @@ import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import java.util.List;
 
 /**
- * Hook 调度器。按阶段分组调度各 Hook，触发 stop 时立即返回 Exit。
+ * Hook 调度器。按阶段分组调度各 Hook：
+ * <ul>
+ *   <li>ok() → 继续执行下一个 Hook</li>
+ *   <li>skip() → 跳过当前 Turn 后续阶段，直接返回 Continue</li>
+ *   <li>stop() → 立即返回 Exit</li>
+ * </ul>
  */
 public class HookDispatcher {
 
@@ -38,6 +43,9 @@ public class HookDispatcher {
                 continue;
             }
             HookResult result = hook.afterModelCall(state);
+            if (result.isSkip()) {
+                return new TurnOutcome.Skip();
+            }
             if (!result.isStop()) {
                 continue;
             }

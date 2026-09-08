@@ -26,7 +26,7 @@ public class SessionState {
     private transient List<ChatMessage> currentMessages;
     private transient LlmResponse lastResponse;
     private transient List<ToolExecutionRequest> pendingToolCalls;
-    private transient List<ToolExecutionResult> lastToolResults;
+    private transient List<ToolExecResult> lastToolResults;
 
     public SessionState() {
         this.turnCount = 0;
@@ -151,11 +151,11 @@ public class SessionState {
         this.pendingToolCalls = pendingToolCalls;
     }
 
-    public List<ToolExecutionResult> getLastToolResults() {
+    public List<ToolExecResult> getLastToolResults() {
         return lastToolResults;
     }
 
-    public void setLastToolResults(List<ToolExecutionResult> lastToolResults) {
+    public void setLastToolResults(List<ToolExecResult> lastToolResults) {
         this.lastToolResults = lastToolResults;
     }
 

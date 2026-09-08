@@ -10,8 +10,8 @@ import java.util.*;
  * 工具熔断器。跟踪单个工具的连续失败次数，超过阈值后熔断，
  * 冷却 N 轮后自动恢复。熔断期间执行层拦截跳过，不终止会话。
  */
-public class ToolBreaker {
-    private static final Logger log = LoggerFactory.getLogger(ToolBreaker.class);
+public class ToolHealthTracker {
+    private static final Logger log = LoggerFactory.getLogger(ToolHealthTracker.class);
 
     private static final String WARN_MSG = "工具 %s 已连续失败 %s 次，请检查参数或换用其他工具";
     private static final String BLOCK_MSG = "工具 %s 已熔断不可用，请换用其他工具或调整方案";
@@ -22,11 +22,11 @@ public class ToolBreaker {
     private final Map<String, Integer> failureCount = new HashMap<>();
     private final Map<String, Integer> trippedCooldown = new HashMap<>();
 
-    public ToolBreaker(AgentConfig.LoopDetectConfig cfg) {
+    public ToolHealthTracker(AgentConfig.LoopDetectConfig cfg) {
         this(cfg.getFailureWarn(), cfg.getFailureStop(), cfg.getCooldownTurns());
     }
 
-    public ToolBreaker(int warnThreshold, int stopThreshold, int cooldownTurns) {
+    public ToolHealthTracker(int warnThreshold, int stopThreshold, int cooldownTurns) {
         this.warnThreshold = warnThreshold;
         this.stopThreshold = stopThreshold;
         this.cooldownTurns = cooldownTurns;
@@ -50,11 +50,11 @@ public class ToolBreaker {
 
         int fails = failureCount.getOrDefault(toolName, 0) + 1;
         failureCount.put(toolName, fails);
-        log.warn("[ToolBreaker] 工具 '{}' 失败: 连续 {} 次", toolName, fails);
+        log.warn("[ToolHealthTracker] 工具 '{}' 失败: 连续 {} 次", toolName, fails);
 
         if (fails >= stopThreshold) {
             trippedCooldown.put(toolName, cooldownTurns);
-            log.error("[ToolBreaker] 工具 '{}' 已熔断: 连续失败 {} 次, 冷却 {} 轮", toolName, fails, cooldownTurns);
+            log.error("[ToolHealthTracker] 工具 '{}' 已熔断: 连续失败 {} 次, 冷却 {} 轮", toolName, fails, cooldownTurns);
             return String.format(WARN_MSG, toolName, fails);
         }
 
@@ -87,7 +87,7 @@ public class ToolBreaker {
                 String toolName = entry.getKey();
                 it.remove();
                 failureCount.remove(toolName);
-                log.info("[ToolBreaker] 工具 '{}' 冷却结束，恢复可用", toolName);
+                log.info("[ToolHealthTracker] 工具 '{}' 冷却结束，恢复可用", toolName);
             } else {
                 entry.setValue(remaining);
             }
@@ -98,6 +98,6 @@ public class ToolBreaker {
     public void reset() {
         failureCount.clear();
         trippedCooldown.clear();
-        log.debug("[ToolBreaker] 熔断状态已重置");
+        log.debug("[ToolHealthTracker] 熔断状态已重置");
     }
 }

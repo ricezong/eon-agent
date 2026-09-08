@@ -51,6 +51,7 @@ public class ToolValidationHook implements Hook.PostModelHook {
             if (!toolRegistry.contains(req.name())) {
                 state.addNudge(String.format(TOOL_NOT_FOUND_NUDGE, req.name()));
                 log.warn("[ToolValidation] 工具 '{}' 不存在", req.name());
+                return HookResult.skip();
             }
         }
         return HookResult.ok();
