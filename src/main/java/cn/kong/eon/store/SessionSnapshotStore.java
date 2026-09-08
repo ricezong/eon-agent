@@ -1,5 +1,6 @@
 package cn.kong.eon.store;
 
+import cn.kong.eon.config.ObjectMapperConfig;
 import cn.kong.eon.model.CompressionState;
 import cn.kong.eon.model.SessionSnapshot;
 import cn.kong.eon.model.TodoItem;
@@ -26,9 +27,9 @@ public class SessionSnapshotStore {
     private final Path file;
     private final ObjectMapper mapper;
 
-    public SessionSnapshotStore(Path sessionFile, ObjectMapper objectMapper) {
+    public SessionSnapshotStore(Path sessionFile) {
         this.file = sessionFile;
-        this.mapper = objectMapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
+        this.mapper = ObjectMapperConfig.getObjectMapper().copy().enable(SerializationFeature.INDENT_OUTPUT);
         this.mapper.findAndRegisterModules();
     }
 

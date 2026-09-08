@@ -1,9 +1,9 @@
 package cn.kong.eon.tool;
 
+import cn.kong.eon.config.ObjectMapperConfig;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.mcp.McpClientManager;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,16 +18,14 @@ public class ToolRegistry {
 
     private final Map<String, ToolDescriptor> tools = new LinkedHashMap<>();
     private final Set<String> whitelist;
-    private final ObjectMapper objectMapper;
     private final ArgumentSanitizer sanitizer;
 
     private final Map<String, McpClientManager> mcpToolSources = new HashMap<>();
     private final Map<String, ToolSpecification> mcpToolSpecs = new HashMap<>();
 
-    public ToolRegistry(Set<String> whitelist, ObjectMapper objectMapper) {
+    public ToolRegistry(Set<String> whitelist) {
         this.whitelist = whitelist != null ? whitelist : new HashSet<>();
-        this.objectMapper = objectMapper;
-        this.sanitizer = new ArgumentSanitizer(objectMapper);
+        this.sanitizer = new ArgumentSanitizer();
     }
 
     /** 注册本地工具（受白名单过滤）。 */
@@ -191,7 +189,7 @@ public class ToolRegistry {
             return "{}";
         }
         try {
-            return objectMapper.writeValueAsString(arguments);
+            return ObjectMapperConfig.getObjectMapper().writeValueAsString(arguments);
         } catch (Exception e) {
             log.warn("参数转 JSON 失败: {}", arguments, e);
             return "{}";

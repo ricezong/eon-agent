@@ -1,5 +1,6 @@
 package cn.kong.eon.store;
 
+import cn.kong.eon.config.ObjectMapperConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -53,11 +54,10 @@ public class SessionRegistry {
     ) {}
 
     private final Path baseDir;
-    private final ObjectMapper mapper;
+    private static final ObjectMapper mapper = ObjectMapperConfig.getObjectMapper();
 
-    public SessionRegistry(Path baseDir, ObjectMapper mapper) {
+    public SessionRegistry(Path baseDir) {
         this.baseDir = baseDir;
-        this.mapper = mapper;
     }
 
     /** 列出未删除的会话，按最后活跃时间倒序。 */

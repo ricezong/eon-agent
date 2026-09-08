@@ -2,8 +2,6 @@ package cn.kong.eon.config;
 
 import cn.kong.eon.agent.context.block.CompressionLevel;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,8 +30,7 @@ public class AgentConfig {
 
     /** 从输入流加载配置：反序列化 → 校验 → 环境变量解析。 */
     public static AgentConfig load(InputStream yamlStream) {
-        ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
-                .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+        ObjectMapper mapper = ObjectMapperConfig.getYamlMapper();
         try {
             AgentConfig config = mapper.readValue(yamlStream, AgentConfig.class);
             if (config == null) {
@@ -567,6 +564,8 @@ public class AgentConfig {
         private Set<String> whitelist = new LinkedHashSet<>();
         private boolean sandboxEnabled = true;
         private int parallelism = 4;
+        /** 破坏性工具是否自动批准，false 时触发 GATE_REJECTED 终止 */
+        private boolean autoApproveDestructive = true;
         private WebFetch webFetch;
         private Download download;
 
@@ -634,6 +633,14 @@ public class AgentConfig {
 
         public void setParallelism(int v) {
             this.parallelism = v;
+        }
+
+        public boolean isAutoApproveDestructive() {
+            return autoApproveDestructive;
+        }
+
+        public void setAutoApproveDestructive(boolean v) {
+            this.autoApproveDestructive = v;
         }
 
         public WebFetch getWebFetch() {

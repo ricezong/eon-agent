@@ -1,6 +1,6 @@
 package cn.kong.eon.agent.context.policy;
 
-import cn.kong.eon.agent.context.ContentCompressor;
+import cn.kong.eon.agent.context.ContentTrimmer;
 import cn.kong.eon.agent.context.ContextMetrics;
 import cn.kong.eon.agent.context.ContextWindow;
 import cn.kong.eon.agent.context.block.CompressionLevel;
@@ -17,11 +17,11 @@ import java.util.List;
 public class CompressionPolicy {
 
     private final AgentConfig.ContextConfig config;
-    private final ContentCompressor compressor;
+    private final ContentTrimmer compressor;
     private final ContextSummarizer summarizer;
 
     public CompressionPolicy(AgentConfig.ContextConfig config,
-                             ContentCompressor compressor,
+                             ContentTrimmer compressor,
                              ContextSummarizer summarizer) {
         this.config = config;
         this.compressor = compressor;
@@ -121,7 +121,6 @@ public class CompressionPolicy {
                     : null;
             // 用户消息只有"原文保留"与"被摘要吸收后删除"两个状态
             case USER_INPUT -> null;
-            case OTHER -> headTailPlaceholder(block, config.getSnipKeepChars());
         };
     }
 

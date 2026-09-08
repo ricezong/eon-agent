@@ -1,5 +1,6 @@
 package cn.kong.eon.agent.context;
 
+import cn.kong.eon.config.ObjectMapperConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -9,16 +10,14 @@ import java.util.Map;
 /**
  * 内容压缩。两种手法：headTail 面向普通文本，skeleton 面向工具参数 JSON。
  */
-public final class ContentCompressor {
+public final class ContentTrimmer {
 
     /** 参数中超过该长度的字符串字段才被视为大字段并替换。 */
     private static final int LONG_FIELD_CHARS = 200;
 
-    private final ObjectMapper objectMapper;
+    private static final ObjectMapper objectMapper = ObjectMapperConfig.getObjectMapper();
 
-    public ContentCompressor(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
+    public ContentTrimmer() {}
 
     // ═══════════════ 普通文本 ═══════════════
 

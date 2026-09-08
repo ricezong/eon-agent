@@ -7,8 +7,7 @@ import cn.kong.eon.agent.context.block.CompressionLevel;
 import cn.kong.eon.agent.context.policy.CompressionPolicy;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
-import cn.kong.eon.agent.hook.StopCategory;
-import cn.kong.eon.agent.hook.StopReason;
+import cn.kong.eon.agent.support.StopCategory;
 import cn.kong.eon.model.CompressionState;
 import cn.kong.eon.model.SessionState;
 import org.slf4j.Logger;
@@ -18,18 +17,18 @@ import org.slf4j.LoggerFactory;
  * 压缩执行点（PreModel, order=100）。每轮调 LLM 前调用
  * {@link CompressionPolicy#apply} 判定并执行一个压缩档位。
  */
-public class CtxCompactHook implements Hook.PreModelHook {
-    private static final Logger log = LoggerFactory.getLogger(CtxCompactHook.class);
+public class ContextCompressionHook implements Hook.PreModelHook {
+    private static final Logger log = LoggerFactory.getLogger(ContextCompressionHook.class);
 
     private final CompressionPolicy policy;
 
-    public CtxCompactHook(CompressionPolicy policy) {
+    public ContextCompressionHook(CompressionPolicy policy) {
         this.policy = policy;
     }
 
     @Override
     public String name() {
-        return "CtxCompact";
+        return "ContextCompressionHook";
     }
 
     @Override
@@ -41,7 +40,8 @@ public class CtxCompactHook implements Hook.PreModelHook {
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
         ContextWindow window = ctx.getWindow();
         if (window == null || window.isEmpty()) {
-            return HookResult.stop(new StopReason(StopCategory.UNEXPECTED_ERROR, "上下文为空"));
+            return HookResult.stop(StopCategory.UNEXPECTED_ERROR,
+                    StopCategory.UNEXPECTED_ERROR.format("上下文为空"));
         }
 
         CompressionState cs = state.getCompressionState();
@@ -55,7 +55,7 @@ public class CtxCompactHook implements Hook.PreModelHook {
         ctx.setSummary(cs.getLastSummary());
 
         // 处置后窗口变了，度量要重算
-        log.info("[CtxCompact] {}: 水位 {} -> {}", level, pct(before.waterLevel()), pct(ctx.metrics().waterLevel()));
+        log.info("[ContextCompressionHook] {}: 水位 {} -> {}", level, pct(before.waterLevel()), pct(ctx.metrics().waterLevel()));
 
         return HookResult.ok();
     }

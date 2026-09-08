@@ -1,15 +1,17 @@
 package cn.kong.eon;
 
 import cn.kong.eon.agent.EonAgent;
-import cn.kong.eon.agent.context.ContentCompressor;
+import cn.kong.eon.agent.context.ContentTrimmer;
 import cn.kong.eon.agent.context.pipeline.ContextPipeline;
 import cn.kong.eon.agent.context.policy.CompressionPolicy;
 import cn.kong.eon.agent.context.policy.ContextSummarizer;
 import cn.kong.eon.agent.hook.postmodel.LoopDetectHook;
-import cn.kong.eon.agent.hook.posttool.SessionSnapshotHook;
-import cn.kong.eon.agent.hook.posttool.FailureBreakerHook;
+import cn.kong.eon.agent.hook.postmodel.ToolValidationHook;
+import cn.kong.eon.agent.hook.postmodel.TruncationHook;
+import cn.kong.eon.agent.hook.posttool.TodoSnapshotHook;
+import cn.kong.eon.agent.hook.posttool.ToolFailureHook;
 import cn.kong.eon.agent.hook.premodel.BudgetHook;
-import cn.kong.eon.agent.hook.premodel.CtxCompactHook;
+import cn.kong.eon.agent.hook.premodel.ContextCompressionHook;
 import cn.kong.eon.agent.hook.premodel.TodoHook;
 import cn.kong.eon.agent.hook.pretool.GateHook;
 import cn.kong.eon.config.AgentConfig;
@@ -32,9 +34,6 @@ import cn.kong.eon.tool.CliInteractionCallback;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolRegistry;
 import cn.kong.eon.tool.builtin.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,8 +48,6 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -68,9 +65,8 @@ public class EonApplication {
     private static final int DEFAULT_HISTORY_LINES = 20;
 
     private final AgentConfig config;
-    private final ObjectMapper objectMapper;
     /** 内容压缩器。 */
-    private final ContentCompressor compressor;
+    private final ContentTrimmer compressor;
     private final LlmClient llmClient;
     private final ToolRegistry toolRegistry;
     private final TodoStore todoStore;
@@ -117,8 +113,7 @@ public class EonApplication {
     /** 切换会话时复用同一个 Scanner。 */
     EonApplication(String workDir, String resumeSelector, java.util.Scanner sharedScanner) {
         this.workDir = workDir != null ? workDir : DEFAULT_WORKDIR;
-        this.objectMapper = createObjectMapper();
-        this.compressor = new ContentCompressor(objectMapper);
+        this.compressor = new ContentTrimmer();
 
         log.info("从 classpath 加载配置: {}", CONFIG_PATH);
         this.config = AgentConfig.loadFromClasspath(CONFIG_PATH);
@@ -130,7 +125,7 @@ public class EonApplication {
         this.llmClient = new LlmClient(config);
 
         Path sessionBaseDir = resolveSessionBaseDir();
-        this.sessionRegistry = new SessionRegistry(sessionBaseDir, objectMapper);
+        this.sessionRegistry = new SessionRegistry(sessionBaseDir);
         this.resumedSession = resolveResumed(resumeSelector);
         String sessionId = resumedSession != null ? resumedSession.sessionId() : generateSessionId();
         Path sessionDir = sessionBaseDir.resolve(sessionId);
@@ -141,8 +136,8 @@ public class EonApplication {
         }
         this.todoStore = new TodoStore();
         this.artifactStore = new ArtifactStore(sessionDir.resolve("artifacts"));
-        this.snapshotStore = new SessionSnapshotStore(sessionDir.resolve("session.json"), objectMapper);
-        this.memoryStore = new MemoryStore(sessionBaseDir, objectMapper);
+        this.snapshotStore = new SessionSnapshotStore(sessionDir.resolve("session.json"));
+        this.memoryStore = new MemoryStore(sessionBaseDir);
 
         // 快照要在 JsonlStore 之前读回：回放起点（压缩水位线）取自快照
         SessionSnapshot snapshot = resumedSession != null ? snapshotStore.load() : null;
@@ -161,7 +156,7 @@ public class EonApplication {
         this.contextPipeline = createContextPipeline();
 
         Path jsonlPath = sessionDir.resolve("transcript.jsonl");
-        this.jsonlStore = new JsonlStore(jsonlPath, objectMapper, contextPipeline, replayFrom);
+        this.jsonlStore = new JsonlStore(jsonlPath, contextPipeline, replayFrom);
         this.transcriptPath = jsonlPath.toAbsolutePath().toString();
         this.sessionState = SessionState.create(sessionId, "");
         if (snapshot != null) {
@@ -203,7 +198,7 @@ public class EonApplication {
         this.agent = new EonAgent(
                 config, llmClient, toolRegistry,
                 jsonlStore, systemPrompt,
-                toolContext, loopDetector, objectMapper);
+                toolContext);
 
         registerHooks();
 
@@ -271,14 +266,6 @@ public class EonApplication {
             mcp.close();
         }
         log.info("EonApplication 已关闭。");
-    }
-
-    /** 创建 ObjectMapper。 */
-    private ObjectMapper createObjectMapper() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new JavaTimeModule());
-        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        return mapper;
     }
 
     /** 加载系统提示词，优先 classpath，回退文件系统。 */
@@ -351,8 +338,7 @@ public class EonApplication {
     /** 创建工具注册表并注册内置工具。 */
     private ToolRegistry createToolRegistry() {
         ToolRegistry registry = new ToolRegistry(
-                config.getTools().getWhitelist(),
-                objectMapper);
+                config.getTools().getWhitelist());
 
         registry.register(ReadFileTool.descriptor());
         registry.register(WriteFileTool.descriptor());
@@ -360,7 +346,7 @@ public class EonApplication {
         registry.register(DownloadFileTool.descriptor(
                 config.getTools().getDownload().getMaxFileSizeMb() * 1024 * 1024,
                 httpConfig.getClient()));
-        registry.register(TodoWriteTool.descriptor(objectMapper));
+        registry.register(TodoWriteTool.descriptor());
         registry.register(UpdateMemoryTool.descriptor());
 
         var searchCfg = config.getWebSearch();
@@ -371,7 +357,7 @@ public class EonApplication {
                     searchCfg.getSearchSource(),
                     searchCfg.getTopK(),
                     searchCfg.getRecencyFilter(),
-                    objectMapper, httpConfig.getClient()));
+                    httpConfig.getClient()));
         } else {
             log.warn("web_search 工具未注册: QIANFAN_API_KEY 未配置");
         }
@@ -426,17 +412,19 @@ public class EonApplication {
         // PreModel Hooks
         agent.addHook(new BudgetHook(config));
         agent.addHook(new TodoHook(todoStore));
-        agent.addHook(new CtxCompactHook(compressionPolicy));
+        agent.addHook(new ContextCompressionHook(compressionPolicy));
 
         // PostModel Hooks
+        agent.addHook(new TruncationHook());
+        agent.addHook(new ToolValidationHook(toolRegistry));
         agent.addHook(new LoopDetectHook(loopDetector));
 
         // PreTool Hooks
-        agent.addHook(new GateHook(toolRegistry));
+        agent.addHook(new GateHook(toolRegistry, config));
 
         // PostTool Hooks
-        agent.addHook(new FailureBreakerHook(loopDetector));
-        agent.addHook(new SessionSnapshotHook(config, snapshotStore, todoStore));
+        agent.addHook(new ToolFailureHook(loopDetector));
+        agent.addHook(new TodoSnapshotHook(config, snapshotStore, todoStore, loopDetector));
     }
 
     public static void main(String[] args) {
@@ -637,7 +625,6 @@ public class EonApplication {
                 case AI_TEXT -> "[助手]";
                 case TOOL_ARGS -> "[调用:" + b.toolName() + "]";
                 case TOOL_RESULT -> "[结果:" + b.toolName() + "]";
-                case OTHER -> "[其他]";
             };
             String text = b.text() == null ? "" : b.text().replace("\n", " ").trim();
             System.out.printf("  %-18s %s%n", clip(prefix, 18), clip(text, 60));

@@ -16,9 +16,6 @@ import java.util.Map;
  */
 public final class BlockProjector {
 
-    private BlockProjector() {
-    }
-
     /**
      * 把一条消息爆炸为若干内容块。
      */
@@ -65,10 +62,6 @@ public final class BlockProjector {
                     .build());
             return blocks;
         }
-
-        blocks.add(base(BlockKind.OTHER, groupId, 0, messageSeq)
-                .text(String.valueOf(msg))
-                .build());
         return blocks;
     }
 

@@ -2,8 +2,7 @@ package cn.kong.eon.agent.hook.postmodel;
 
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
-import cn.kong.eon.agent.hook.StopCategory;
-import cn.kong.eon.agent.hook.StopReason;
+import cn.kong.eon.agent.support.StopCategory;
 import cn.kong.eon.agent.loop.LoopDetector;
 import cn.kong.eon.model.SessionState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -51,8 +50,8 @@ public class LoopDetectHook implements Hook.PostModelHook {
         LoopDetector.DetectionResult dr = loopDetector.recordToolCalls(requests);
         if (dr.stop()) {
             log.warn("[LoopDetect] 停止 - {}", dr.message());
-            StopReason reason = new StopReason(StopCategory.LOOP_DETECTED, dr.message());
-            return HookResult.stop(reason);
+            return HookResult.stop(StopCategory.LOOP_DETECTED,
+                    StopCategory.LOOP_DETECTED.format(dr.message()));
         }
         if (dr.warn()) {
             log.info("[LoopDetect] 告警 - {}", dr.message());

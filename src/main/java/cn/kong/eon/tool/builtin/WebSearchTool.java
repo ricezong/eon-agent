@@ -1,5 +1,6 @@
 package cn.kong.eon.tool.builtin;
 
+import cn.kong.eon.config.ObjectMapperConfig;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
@@ -31,7 +32,8 @@ public class WebSearchTool implements ToolExecutor {
     private static final String SEARCH_URL = "https://qianfan.baidubce.com/v2/ai_search/web_search";
     private static final int TIMEOUT_SECONDS = 30;
 
-    private final ObjectMapper mapper;
+    private static final ObjectMapper mapper = ObjectMapperConfig.getObjectMapper();
+
     private final HttpClient httpClient;
     private final String apiKey;
     /** 以下三项是工具参数缺省值，由 agent.yaml 的 web_search 配置注入 */
@@ -40,12 +42,11 @@ public class WebSearchTool implements ToolExecutor {
     private final String defaultRecencyFilter;
 
     public WebSearchTool(String apiKey, String searchSource, int defaultTopK, String defaultRecencyFilter,
-                         ObjectMapper objectMapper, HttpClient httpClient) {
+                         HttpClient httpClient) {
         this.apiKey = apiKey != null ? apiKey : "";
         this.searchSource = searchSource;
         this.defaultTopK = defaultTopK;
         this.defaultRecencyFilter = defaultRecencyFilter;
-        this.mapper = objectMapper;
         this.httpClient = httpClient;
     }
 
@@ -66,9 +67,9 @@ public class WebSearchTool implements ToolExecutor {
 
     public static ToolDescriptor descriptor(String apiKey, String searchSource, int defaultTopK,
                                             String defaultRecencyFilter,
-                                            ObjectMapper objectMapper, HttpClient httpClient) {
+                                            HttpClient httpClient) {
         return ToolDescriptor.fromAnnotated(
-                new WebSearchTool(apiKey, searchSource, defaultTopK, defaultRecencyFilter, objectMapper, httpClient),
+                new WebSearchTool(apiKey, searchSource, defaultTopK, defaultRecencyFilter, httpClient),
                 ToolPermission.READONLY);
     }
 

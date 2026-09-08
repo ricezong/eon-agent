@@ -1,5 +1,6 @@
 package cn.kong.eon.store;
 
+import cn.kong.eon.config.ObjectMapperConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
@@ -23,9 +24,9 @@ public class MemoryStore {
     private final Path memoryDir;
     private final ObjectMapper mapper;
 
-    public MemoryStore(Path baseDir, ObjectMapper objectMapper) {
+    public MemoryStore(Path baseDir) {
         this.memoryDir = baseDir.resolve("memories");
-        this.mapper = objectMapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
+        this.mapper = ObjectMapperConfig.getObjectMapper().copy().enable(SerializationFeature.INDENT_OUTPUT);
         try {
             Files.createDirectories(memoryDir);
         } catch (IOException e) {

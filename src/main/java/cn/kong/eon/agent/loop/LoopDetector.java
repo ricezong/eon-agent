@@ -15,7 +15,7 @@ import java.util.*;
 public class LoopDetector {
     private static final Logger log = LoggerFactory.getLogger(LoopDetector.class);
 
-    // ── DetectionResult 消息模板（进 nudge 或 StopReason，模型可见） ──
+    // ── DetectionResult 消息模板（进 nudge 或 StopCategory） ──
 
     /** 死循环停止原因：%d=同一参数重复调用次数 */
     private static final String REPEAT_STOP = "重复调用同一工具同一参数 %d 次，疑似死循环";

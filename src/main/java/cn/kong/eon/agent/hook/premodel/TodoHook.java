@@ -44,17 +44,13 @@ public class TodoHook implements Hook.PreModelHook {
         // 渲染 Todo 列表到上下文
         StringBuilder sb = new StringBuilder();
         List<TodoItem> todos = todoStore.getAll();
-        if (todos.isEmpty()) {
-            sb.append("（暂无任务）\n");
-        } else {
+        if (!todos.isEmpty()) {
             for (TodoItem t : todos) {
                 sb.append(t.toString()).append("\n");
             }
+            ctx.setTodo(sb.toString());
+            log.debug("[Todo] 已渲染: {} 字符", sb.length());
         }
-
-        ctx.setTodo(sb.toString());
-        log.debug("[Todo] 已渲染: {} 字符", sb.length());
-
         return HookResult.ok();
     }
 }

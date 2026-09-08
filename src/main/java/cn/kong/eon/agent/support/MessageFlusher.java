@@ -15,10 +15,10 @@ import java.util.Set;
  * 所有回填都经过 {@link JsonlStore#append} → 入站管线，不存在绕过关卡的路径。
  * 工具结果以原始输出回填，落盘与格式化交给入站规则完成。
  */
-public class MessageFinalizer {
+public class MessageFlusher {
     private final JsonlStore jsonlStore;
 
-    public MessageFinalizer(JsonlStore jsonlStore) {
+    public MessageFlusher(JsonlStore jsonlStore) {
         this.jsonlStore = jsonlStore;
     }
 
@@ -26,7 +26,7 @@ public class MessageFinalizer {
      * 回填 AI 消息和工具结果，清理临时状态。
      * 成功调用 id 集合随消息一起进账本，回放时据此还原工具结果的执行状态。
      */
-    public void finalizeAndAppend(SessionState state) {
+    public void flushAndAppend(SessionState state) {
         String assistantText = state.getLastAssistantText();
         var pendingCalls = state.getPendingToolCalls();
         boolean hasText = assistantText != null && !assistantText.isBlank();
@@ -58,12 +58,12 @@ public class MessageFinalizer {
     /**
      * 仅当存在 pending 工具调用或结果时执行回填。用于 stop 流程中避免重复回填。
      */
-    public void finalizeIfPending(SessionState state) {
+    public void flushIfPending(SessionState state) {
         boolean hasPendingCalls = state.getPendingToolCalls() != null && !state.getPendingToolCalls().isEmpty();
         boolean hasToolResults = state.getLastToolResults() != null && !state.getLastToolResults().isEmpty();
         boolean hasText = state.getLastAssistantText() != null && !state.getLastAssistantText().isBlank();
         if (hasPendingCalls || hasToolResults || hasText) {
-            finalizeAndAppend(state);
+            flushAndAppend(state);
         }
     }
 

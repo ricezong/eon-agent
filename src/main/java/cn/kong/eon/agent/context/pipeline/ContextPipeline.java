@@ -1,6 +1,6 @@
 package cn.kong.eon.agent.context.pipeline;
 
-import cn.kong.eon.agent.context.ContentCompressor;
+import cn.kong.eon.agent.context.ContentTrimmer;
 import cn.kong.eon.agent.context.StoreSupport;
 import cn.kong.eon.agent.context.block.BlockKind;
 import cn.kong.eon.agent.context.block.BlockProjector;
@@ -21,12 +21,12 @@ public class ContextPipeline {
 
     private static final Logger log = LoggerFactory.getLogger(ContextPipeline.class);
 
-    private final ContentCompressor compressor;
+    private final ContentTrimmer compressor;
     private final StoreSupport storeSupport;
     private final int spillThresholdChars;
     private final int spillKeepChars;
 
-    public ContextPipeline(ContentCompressor compressor,
+    public ContextPipeline(ContentTrimmer compressor,
                            StoreSupport storeSupport,
                            int spillThresholdChars,
                            int spillKeepChars) {

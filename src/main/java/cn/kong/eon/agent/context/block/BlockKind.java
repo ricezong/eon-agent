@@ -15,8 +15,5 @@ public enum BlockKind {
     TOOL_ARGS,
 
     /** 工具执行结果 */
-    TOOL_RESULT,
-
-    /** 兜底类型 */
-    OTHER
+    TOOL_RESULT
 }

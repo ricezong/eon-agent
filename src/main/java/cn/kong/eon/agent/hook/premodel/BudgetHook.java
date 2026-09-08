@@ -3,8 +3,7 @@ package cn.kong.eon.agent.hook.premodel;
 import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
-import cn.kong.eon.agent.hook.StopCategory;
-import cn.kong.eon.agent.hook.StopReason;
+import cn.kong.eon.agent.support.StopCategory;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
 import org.slf4j.Logger;
@@ -53,8 +52,7 @@ public class BudgetHook implements Hook.PreModelHook {
         // 预算耗尽，终止
         if (used >= maxBudget) {
             log.warn("[Budget] 超限 {}% ({}/{}) → 停止", String.format("%.0f", ratio * 100), used, maxBudget);
-            StopReason reason = new StopReason(StopCategory.BUDGET_EXCEEDED, "Token 预算超限: " + used + " >= " + maxBudget);
-            return HookResult.stop(reason);
+            return HookResult.stop(StopCategory.BUDGET_EXCEEDED, StopCategory.BUDGET_EXCEEDED.format(used, maxBudget));
         }
 
         // 达到阈值比例，注入收尾提示词

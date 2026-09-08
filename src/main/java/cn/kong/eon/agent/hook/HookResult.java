@@ -1,38 +1,43 @@
 package cn.kong.eon.agent.hook;
 
+import cn.kong.eon.agent.support.StopCategory;
+
 /**
  * Hook 执行返回值。ok() 继续，stop() 请求终止。
- * 所有终止场景统一走 stop，由 EonAgent 执行终止。
  */
 public final class HookResult {
 
     private final Action action;
-    private final StopReason stopReason;
+    private final StopCategory category;
+    private final String message;
 
-    private HookResult(Action action, StopReason stopReason) {
+    private HookResult(Action action, StopCategory category, String message) {
         this.action = action;
-        this.stopReason = stopReason;
+        this.category = category;
+        this.message = message;
     }
 
-    /** 继续，一切正常。 */
     public static HookResult ok() {
-        return new HookResult(Action.CONTINUE, null);
+        return new HookResult(Action.CONTINUE, null, null);
     }
 
-    /** 请求停止。EonAgent 直接终止。 */
-    public static HookResult stop(StopReason stopReason) {
-        return new HookResult(Action.STOP, stopReason);
+    /** 请求停止。message 由调用方通过 {@link StopCategory#format} 生成。 */
+    public static HookResult stop(StopCategory category, String message) {
+        return new HookResult(Action.STOP, category, message);
     }
 
     public boolean isStop() {
         return action == Action.STOP;
     }
 
-    public StopReason getStopReason() {
-        return stopReason;
+    public StopCategory getCategory() {
+        return category;
     }
 
-    /** Hook 动作枚举。 */
+    public String getMessage() {
+        return message;
+    }
+
     public enum Action {
         CONTINUE,
         STOP

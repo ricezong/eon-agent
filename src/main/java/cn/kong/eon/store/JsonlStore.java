@@ -3,6 +3,7 @@ package cn.kong.eon.store;
 import cn.kong.eon.agent.context.ContextWindow;
 import cn.kong.eon.agent.context.pipeline.ContextPipeline;
 import cn.kong.eon.agent.context.block.ContextBlock;
+import cn.kong.eon.config.ObjectMapperConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
@@ -26,15 +27,14 @@ public class JsonlStore {
     private static final Logger log = LoggerFactory.getLogger(JsonlStore.class);
 
     private final Path jsonlFile;
-    private final ObjectMapper mapper;
+    private static final ObjectMapper mapper = ObjectMapperConfig.getObjectMapper();
     private final ContextWindow window = new ContextWindow();
     private final ContextPipeline pipeline;
     /** 下一条消息的序号，等于账本当前行数 */
     private int messageCount = 0;
 
-    public JsonlStore(Path jsonlFile, ObjectMapper objectMapper, ContextPipeline pipeline, int replayFrom) {
+    public JsonlStore(Path jsonlFile, ContextPipeline pipeline, int replayFrom) {
         this.jsonlFile = jsonlFile;
-        this.mapper = objectMapper;
         this.pipeline = pipeline;
         try {
             Files.createDirectories(jsonlFile.getParent());
