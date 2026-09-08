@@ -1,5 +1,7 @@
-package cn.kong.eon.agent.support;
+package cn.kong.eon.agent.exec;
 
+import cn.kong.eon.agent.turn.TurnLogger;
+import cn.kong.eon.agent.turn.TurnRecord;
 import cn.kong.eon.config.ObjectMapperConfig;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.ToolExecutionResult;
@@ -26,8 +28,8 @@ import java.util.concurrent.TimeUnit;
  * 支持并行执行，串行豁免清单（todo_write/AskQuestion）强制串行。
  * 工具结果以原始输出回填，由入站管线统一决定落盘与格式化策略。
  */
-public class ToolExecutionHandler {
-    private static final Logger log = LoggerFactory.getLogger(ToolExecutionHandler.class);
+public class ToolExecHandler {
+    private static final Logger log = LoggerFactory.getLogger(ToolExecHandler.class);
 
     private static final int ARGS_SUMMARY_LIMIT = 80;
 
@@ -37,15 +39,18 @@ public class ToolExecutionHandler {
     private final ToolRegistry toolRegistry;
     private final ToolContext toolContext;
     private final TurnLogger logger;
+    private final ToolBreaker breaker;
     private final ExecutorService parallelExecutor;
 
-    public ToolExecutionHandler(ToolRegistry toolRegistry,
-                                ToolContext toolContext,
-                                TurnLogger logger,
-                                int parallelism) {
+    public ToolExecHandler(ToolRegistry toolRegistry,
+                           ToolContext toolContext,
+                           TurnLogger logger,
+                           ToolBreaker breaker,
+                           int parallelism) {
         this.toolRegistry = toolRegistry;
         this.toolContext = toolContext;
         this.logger = logger;
+        this.breaker = breaker;
         this.parallelExecutor = Executors.newFixedThreadPool(Math.max(1, parallelism), r -> {
             Thread t = new Thread(r, "tool-exec");
             t.setDaemon(true);
@@ -111,6 +116,13 @@ public class ToolExecutionHandler {
      * 执行单个工具请求：参数解析 → 执行 → 日志 → 封装结果。
      */
     private ToolExecutionResult executeSingle(ToolExecutionRequest req, TurnRecord rec, SessionState state) {
+        // 熔断拦截：跳过执行，合成错误结果告知 LLM
+        if (breaker.isTripped(req.name())) {
+            String msg = breaker.trippedMessage(req.name());
+            log.warn("[ToolExecution] 工具 '{}' 已熔断，跳过执行", req.name());
+            return syntheticError(req, msg, rec);
+        }
+
         Map<String, Object> args = parseArgs(req.arguments());
 
         ToolOutcome outcome = toolRegistry.execute(req.name(), args, state, toolContext);
@@ -142,7 +154,7 @@ public class ToolExecutionHandler {
     }
 
     private static String truncate(String s) {
-        return s.length() > ToolExecutionHandler.ARGS_SUMMARY_LIMIT ? s.substring(0, ToolExecutionHandler.ARGS_SUMMARY_LIMIT) + "..." : s;
+        return s.length() > ToolExecHandler.ARGS_SUMMARY_LIMIT ? s.substring(0, ToolExecHandler.ARGS_SUMMARY_LIMIT) + "..." : s;
     }
 
     /** 关闭线程池。 */

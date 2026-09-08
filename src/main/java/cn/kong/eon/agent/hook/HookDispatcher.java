@@ -1,8 +1,8 @@
-package cn.kong.eon.agent.support;
+package cn.kong.eon.agent.hook;
 
 import cn.kong.eon.agent.context.ContextBuilder;
-import cn.kong.eon.agent.hook.Hook;
-import cn.kong.eon.agent.hook.HookResult;
+import cn.kong.eon.agent.stop.StopFunction;
+import cn.kong.eon.agent.turn.TurnOutcome;
 import cn.kong.eon.model.SessionState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 

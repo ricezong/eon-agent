@@ -466,6 +466,7 @@ public class AgentConfig {
         private int noProgressSteps = 6;
         private int failureWarn = 3;
         private int failureStop = 5;
+        private int cooldownTurns = 3;
 
         public int getRepeatWarn() {
             return repeatWarn;
@@ -505,6 +506,14 @@ public class AgentConfig {
 
         public void setFailureStop(int v) {
             this.failureStop = v;
+        }
+
+        public int getCooldownTurns() {
+            return cooldownTurns;
+        }
+
+        public void setCooldownTurns(int v) {
+            this.cooldownTurns = v;
         }
 
     }

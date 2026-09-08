@@ -1,6 +1,6 @@
 package cn.kong.eon.agent.hook;
 
-import cn.kong.eon.agent.support.StopCategory;
+import cn.kong.eon.agent.stop.StopCategory;
 
 /**
  * Hook 执行返回值。ok() 继续，stop() 请求终止。

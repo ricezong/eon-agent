@@ -14,9 +14,9 @@ import cn.kong.eon.agent.hook.premodel.BudgetHook;
 import cn.kong.eon.agent.hook.premodel.ContextCompressionHook;
 import cn.kong.eon.agent.hook.premodel.TodoHook;
 import cn.kong.eon.agent.hook.pretool.GateHook;
+import cn.kong.eon.agent.exec.ToolBreaker;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
-import cn.kong.eon.agent.loop.LoopDetector;
 import cn.kong.eon.tool.mcp.McpClientManager;
 import cn.kong.eon.model.SessionSnapshot;
 import cn.kong.eon.model.RestoreMode;
@@ -78,7 +78,9 @@ public class EonApplication {
     private final CompressionPolicy compressionPolicy;
     private final ToolContext toolContext;
     private final HttpConfig httpConfig;
-    private final LoopDetector loopDetector;
+    private final ToolBreaker breaker;
+    private final LoopDetectHook loopDetectHook;
+    private final TodoSnapshotHook todoSnapshotHook;
     private final EonAgent agent;
     private final String workDir;
     private final String transcriptPath;
@@ -189,16 +191,16 @@ public class EonApplication {
                 jsonlStore, snapshotStore, pathResolver, cliInteractionCallback);
 
         var ldc = config.getLoopDetect();
-        this.loopDetector = new LoopDetector(
-                ldc.getRepeatWarn(), ldc.getRepeatStop(), ldc.getNoProgressSteps(),
-                ldc.getFailureWarn(), ldc.getFailureStop());
+        this.breaker = new ToolBreaker(ldc);
+        this.loopDetectHook = new LoopDetectHook(ldc, breaker);
+        this.todoSnapshotHook = new TodoSnapshotHook(config, snapshotStore, todoStore);
 
         this.compressionPolicy = createCompressionPolicy();
 
         this.agent = new EonAgent(
                 config, llmClient, toolRegistry,
                 jsonlStore, systemPrompt,
-                toolContext);
+                toolContext, breaker);
 
         registerHooks();
 
@@ -247,7 +249,9 @@ public class EonApplication {
         // 任务边界：会话级状态与循环检测状态必须在同一点重置，
         // 否则上一任务熔断的工具在新任务里仍会被拦截而永久不可用。
         sessionState.beginRun(userInput);
-        loopDetector.reset();
+        breaker.reset();
+        loopDetectHook.reset();
+        todoSnapshotHook.reset();
 
         log.info("=== 会话 {} 任务开始 ===", sessionState.getSessionId());
         log.info("用户输入: {}", userInput.length() > 200 ? userInput.substring(0, 200) + "..." : userInput);
@@ -417,14 +421,14 @@ public class EonApplication {
         // PostModel Hooks
         agent.addHook(new TruncationHook());
         agent.addHook(new ToolValidationHook(toolRegistry));
-        agent.addHook(new LoopDetectHook(loopDetector));
+        agent.addHook(loopDetectHook);
 
         // PreTool Hooks
         agent.addHook(new GateHook(toolRegistry, config));
 
         // PostTool Hooks
-        agent.addHook(new ToolFailureHook(loopDetector));
-        agent.addHook(new TodoSnapshotHook(config, snapshotStore, todoStore, loopDetector));
+        agent.addHook(new ToolFailureHook(breaker));
+        agent.addHook(todoSnapshotHook);
     }
 
     public static void main(String[] args) {

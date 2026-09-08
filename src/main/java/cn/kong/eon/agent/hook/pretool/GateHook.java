@@ -2,7 +2,7 @@ package cn.kong.eon.agent.hook.pretool;
 
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
-import cn.kong.eon.agent.support.StopCategory;
+import cn.kong.eon.agent.stop.StopCategory;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
 import cn.kong.eon.tool.ToolRegistry;

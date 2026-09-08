@@ -1,4 +1,4 @@
-package cn.kong.eon.agent.support;
+package cn.kong.eon.agent.turn;
 
 /**
  * 循环控制返回值。Continue 继续，Exit 携带输出文本退出。

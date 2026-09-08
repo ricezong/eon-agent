@@ -3,14 +3,15 @@ package cn.kong.eon.agent;
 import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.agent.context.ContextMetrics;
 import cn.kong.eon.agent.hook.Hook;
-import cn.kong.eon.agent.support.StopCategory;
-import cn.kong.eon.agent.support.TurnOutcome;
-import cn.kong.eon.agent.support.HookDispatcher;
-import cn.kong.eon.agent.support.MessageFlusher;
-import cn.kong.eon.agent.support.StopHandler;
-import cn.kong.eon.agent.support.ToolExecutionHandler;
-import cn.kong.eon.agent.support.TurnLogger;
-import cn.kong.eon.agent.support.TurnRecord;
+import cn.kong.eon.agent.stop.StopCategory;
+import cn.kong.eon.agent.exec.ToolBreaker;
+import cn.kong.eon.agent.turn.TurnOutcome;
+import cn.kong.eon.agent.hook.HookDispatcher;
+import cn.kong.eon.agent.flush.MessageFlusher;
+import cn.kong.eon.agent.stop.StopHandler;
+import cn.kong.eon.agent.exec.ToolExecHandler;
+import cn.kong.eon.agent.turn.TurnLogger;
+import cn.kong.eon.agent.turn.TurnRecord;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.llm.LlmResponse;
@@ -48,9 +49,10 @@ public class EonAgent {
 
     // ── 协作组件
     private final TurnLogger logger;
-    private final ToolExecutionHandler toolHandler;
+    private final ToolExecHandler toolHandler;
     private final StopHandler stopHandler;
     private final MessageFlusher flusher;
+    private final ToolBreaker breaker;
 
     // ── Hook 列表（按阶段分组）
     private final List<Hook.PreModelHook> preModelHooks = new ArrayList<>();
@@ -78,17 +80,19 @@ public class EonAgent {
                     ToolRegistry toolRegistry,
                     JsonlStore jsonlStore,
                     String basePrompt,
-                    ToolContext toolContext) {
+                    ToolContext toolContext,
+                    ToolBreaker breaker) {
         this.config = config;
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.jsonlStore = jsonlStore;
         this.basePrompt = basePrompt;
         this.toolContext = toolContext;
+        this.breaker = breaker;
         this.tokenCountEstimator = new OpenAiTokenCountEstimator("gpt-4o");
         this.logger = new TurnLogger(config);
-        this.toolHandler = new ToolExecutionHandler(
-                toolRegistry, toolContext, logger,
+        this.toolHandler = new ToolExecHandler(
+                toolRegistry, toolContext, logger, breaker,
                 config.getTools().getParallelism());
         this.flusher = new MessageFlusher(jsonlStore);
         this.stopHandler = new StopHandler(config, logger);
@@ -216,6 +220,11 @@ public class EonAgent {
             // ── 阶段 7：回填 AI 消息和工具结果到 JSONL ──
             flusher.flushAndAppend(state);
             logger.turnDone(rec, state);
+
+            // ── 阶段 8：推进熔断冷却，恢复的工具写入 nudge ──
+            for (String msg : breaker.tickCooldown()) {
+                state.addNudge(msg);
+            }
 
             return new TurnOutcome.Continue();
         } finally {

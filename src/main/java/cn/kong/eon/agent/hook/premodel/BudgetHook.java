@@ -3,7 +3,7 @@ package cn.kong.eon.agent.hook.premodel;
 import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
-import cn.kong.eon.agent.support.StopCategory;
+import cn.kong.eon.agent.stop.StopCategory;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.model.SessionState;
 import org.slf4j.Logger;
