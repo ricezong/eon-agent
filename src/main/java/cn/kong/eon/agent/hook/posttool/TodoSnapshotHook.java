@@ -78,7 +78,7 @@ public class TodoSnapshotHook implements Hook.PostToolHook {
         // 保存快照
         List<TodoItem> todos = todoStore.getAll();
         snapshotStore.save(todos, state.getUsageAccum(), state.getCompressionState());
-        log.info("[TodoSnapshotHook] 已保存: todo={} 条, keepFrom={}", todos.size(), state.getCompressionState().getKeepFromMessage());
+        log.info("[TodoSnapshotHook] 已保存: todo={} 条, replayFrom={}", todos.size(), state.getCompressionState().getReplayFromSeq());
 
         return HookResult.ok();
     }

@@ -180,10 +180,10 @@ public class EonApplication {
         SessionSnapshot snapshot = resumedSession != null ? snapshotStore.load() : null;
         RestoreMode mode = RestoreMode.of(snapshot, resumedSession != null ? resumedSession.messageCount() : 0);
         int replayFrom = mode == RestoreMode.RESUME
-                ? snapshot.getCompressionState().getKeepFromMessage() : 0;
+                ? snapshot.getCompressionState().getReplayFromSeq() : 0;
         if (mode == RestoreMode.LOAD && snapshot != null) {
             log.warn("会话 {} 快照不自洽（水位 {} / 账本 {} 行 / 摘要 {}），改为全量回放",
-                    sessionId, snapshot.getCompressionState().getKeepFromMessage(),
+                    sessionId, snapshot.getCompressionState().getReplayFromSeq(),
                     resumedSession.messageCount(),
                     snapshot.getCompressionState().getLastSummary() != null ? "有" : "无");
         }
@@ -250,7 +250,7 @@ public class EonApplication {
         }
         if (mode == RestoreMode.RESUME && cp.getCompressionState() != null) {
             sessionState.getCompressionState().setLastSummary(cp.getCompressionState().getLastSummary());
-            sessionState.getCompressionState().setKeepFromMessage(cp.getCompressionState().getKeepFromMessage());
+            sessionState.getCompressionState().setReplayFromSeq(cp.getCompressionState().getReplayFromSeq());
         }
         if (cp.getTodoSnapshot() != null && !cp.getTodoSnapshot().isEmpty()) {
             todoStore.replaceAll(cp.getTodoSnapshot(), 0);

@@ -7,7 +7,7 @@ public enum RestoreMode {
 
     /**
      * 快照续接：快照自洽时，恢复摘要/水位线/todo/累计 token，
-     * 从 keepFromMessage 起回放假本，不重建完整历史。
+     * 从 replayFromSeq 起回放假本，不重建完整历史。
      */
     RESUME,
 
@@ -21,9 +21,9 @@ public enum RestoreMode {
     public static RestoreMode of(SessionSnapshot cp, long ledgerSize) {
         if (cp == null || cp.getCompressionState() == null) return LOAD;
         CompressionState cs = cp.getCompressionState();
-        int keepFrom = cs.getKeepFromMessage();
+        int replayFrom = cs.getReplayFromSeq();
         boolean hasSummary = cs.getLastSummary() != null && !cs.getLastSummary().isBlank();
-        boolean inRange = keepFrom >= 0 && keepFrom <= ledgerSize;
-        return inRange && (keepFrom > 0) == hasSummary ? RESUME : LOAD;
+        boolean inRange = replayFrom >= 0 && replayFrom <= ledgerSize;
+        return inRange && (replayFrom > 0) == hasSummary ? RESUME : LOAD;
     }
 }

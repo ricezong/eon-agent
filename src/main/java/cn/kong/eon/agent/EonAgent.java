@@ -290,13 +290,27 @@ public class EonAgent {
     //  退出处理
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * 退出处理：渲染记忆引用 → 发出完成事件 → 返回输出。
-     */
+    /** 退出处理：保存快照 → 渲染记忆引用 → 发出完成事件 → 返回输出。*/
     private String completeExit(SessionState state, String rawOutput) {
+        saveSnapshot(state);
         String output = renderMemoryReferences(rawOutput);
         emit(TaskCompleted.now(output, state.getTurnCount(), state.getUsageAccum().getTotalTokens()));
         return output;
+    }
+
+    /** 保存会话快照。任务结束时调用，确保压缩状态和累计 token 落盘。*/
+    private void saveSnapshot(SessionState state) {
+        try {
+            toolContext.snapshotStore().save(
+                    toolContext.todoStore().getAll(),
+                    state.getUsageAccum(),
+                    state.getCompressionState());
+            log.info("[Snapshot] 任务结束快照已保存: replayFrom={}, tokens={}",
+                    state.getCompressionState().getReplayFromSeq(),
+                    state.getUsageAccum().getTotalTokens());
+        } catch (Exception e) {
+            log.warn("[Snapshot] 任务结束快照保存失败: {}", e.getMessage());
+        }
     }
 
     /**

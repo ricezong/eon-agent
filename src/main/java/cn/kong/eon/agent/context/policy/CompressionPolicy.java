@@ -50,10 +50,10 @@ public class CompressionPolicy {
             window.removeBefore(protectedFrom);
             // 修复配对后再取水位线：repairPairing 可能丢弃首块（孤立 TOOL_RESULT）
             window.repairPairing();
-            int keepFrom = window.firstSurvivorSeq();
-            // 摘要覆盖 #0~keepFrom-1，账本保留 #keepFrom~；窗口清空时 keepFrom=-1 保留旧水位线
-            if (keepFrom >= 0) {
-                state.setKeepFromMessage(keepFrom);
+            int replayFrom = window.firstSurvivorSeq();
+            // 摘要覆盖 #0~replayFrom-1，账本保留 #replayFrom~；窗口清空时 replayFrom=-1 保留旧水位线
+            if (replayFrom >= 0) {
+                state.setReplayFromSeq(replayFrom);
             }
             disposed = true;
         } else {

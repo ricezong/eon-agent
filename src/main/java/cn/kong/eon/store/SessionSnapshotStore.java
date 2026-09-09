@@ -53,8 +53,8 @@ public class SessionSnapshotStore {
                 // 文件系统不支持原子移动时退化为普通替换，tmp 已写完整，内容仍是完整的
                 Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
             }
-            log.info("会话快照已保存: todo={} 条, keepFrom={}",
-                    todoSnapshot.size(), compressionState != null ? compressionState.getKeepFromMessage() : 0);
+            log.info("会话快照已保存: todo={} 条, replayFrom={}",
+                    todoSnapshot.size(), compressionState != null ? compressionState.getReplayFromSeq() : 0);
         } catch (IOException e) {
             log.error("保存会话快照失败", e);
         }
