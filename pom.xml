@@ -24,6 +24,7 @@
         <flexmark.version>0.64.8</flexmark.version>
         <junit.version>5.11.4</junit.version>
         <assertj.version>3.27.7</assertj.version>
+        <commons-lang3.version>3.20.0</commons-lang3.version>
     </properties>
 
     <dependencies>
@@ -66,6 +67,13 @@
             <groupId>com.vladsch.flexmark</groupId>
             <artifactId>flexmark-html2md-converter</artifactId>
             <version>${flexmark.version}</version>
+        </dependency>
+
+        <!-- Tool -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>${commons-lang3.version}</version>
         </dependency>
 
         <!-- Logging -->

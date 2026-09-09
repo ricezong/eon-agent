@@ -107,7 +107,7 @@ public class SessionContext {
 
         // ── 1. 会话 ID 与目录
         this.sessionId = resumedSession != null ? resumedSession.sessionId() : generateSessionId();
-        Path sessionBaseDir = Path.of(config.getStorage().getBaseDir()).toAbsolutePath();
+        Path sessionBaseDir = Path.of(config.getStorage().getBaseDir()).toAbsolutePath().normalize();
         Path sessionDir = sessionBaseDir.resolve(sessionId);
         try {
             Files.createDirectories(sessionDir);
