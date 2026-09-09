@@ -18,7 +18,7 @@ import java.util.Set;
 
 /**
  * 会话快照（PostTool, order=100）。todo_write 成功后：
- * ① 激活 Todo 状态；② 无进展检测；③ 保存会话快照。
+ * ① 无进展检测；② 保存会话快照。
  */
 public class TodoSnapshotHook implements Hook.PostToolHook {
     private static final Logger log = LoggerFactory.getLogger(TodoSnapshotHook.class);
@@ -55,13 +55,7 @@ public class TodoSnapshotHook implements Hook.PostToolHook {
     public HookResult afterToolExecution(SessionState state, String toolName, boolean success) {
         if (!"todo_write".equals(toolName) || !success) return HookResult.ok();
 
-        // 1. 激活 Todo 状态
-        if (!state.hasTodoBeenUsed()) {
-            state.setTodoBeenUsed(true);
-            log.info("[TodoSnapshotHook] Todo 已激活");
-        }
-
-        // 2. 无进展检测
+        // 无进展检测
         String snapshot = todoStore.getAll().toString();
         snapshots.addLast(snapshot);
         if (snapshots.size() > windowSize) {
@@ -81,7 +75,7 @@ public class TodoSnapshotHook implements Hook.PostToolHook {
             }
         }
 
-        // 3. 保存快照
+        // 保存快照
         List<TodoItem> todos = todoStore.getAll();
         snapshotStore.save(todos, state.getUsageAccum(), state.getCompressionState());
         log.info("[TodoSnapshotHook] 已保存: todo={} 条, keepFrom={}", todos.size(), state.getCompressionState().getKeepFromMessage());

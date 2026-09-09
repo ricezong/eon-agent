@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * Todo 渲染（PreModel, order=20）。
- * todo_write 调用后激活，渲染 Todo 列表到上下文。
+ * TodoStore 有数据时渲染 Todo 列表到上下文；全完成/取消后自动清空。
  */
 public class TodoHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(TodoHook.class);
@@ -31,7 +31,7 @@ public class TodoHook implements Hook.PreModelHook {
 
     @Override
     public boolean active(SessionState state) {
-        return state.hasTodoBeenUsed();
+        return true;
     }
 
     @Override
@@ -41,15 +41,15 @@ public class TodoHook implements Hook.PreModelHook {
 
     @Override
     public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
-        // 渲染 Todo 列表到上下文
-        StringBuilder sb = new StringBuilder();
+        // TodoStore 有数据时渲染 Todo 列表到上下文
         List<TodoItem> todos = todoStore.getAll();
         if (!todos.isEmpty()) {
+            StringBuilder sb = new StringBuilder();
             for (TodoItem t : todos) {
                 sb.append(t.toString()).append("\n");
             }
             ctx.setTodo(sb.toString());
-            log.debug("[Todo] 已渲染: {} 字符", sb.length());
+            log.debug("[Todo] 已渲染: {} 条", todos.size());
         }
         return HookResult.ok();
     }

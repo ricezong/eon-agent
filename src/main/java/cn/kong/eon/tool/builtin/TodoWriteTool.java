@@ -4,6 +4,7 @@ import cn.kong.eon.model.SessionState;
 import cn.kong.eon.model.TodoItem;
 import cn.kong.eon.model.TodoStatus;
 import cn.kong.eon.model.ToolPermission;
+import cn.kong.eon.store.TodoStore;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -74,10 +75,16 @@ public class TodoWriteTool implements ToolExecutor {
             result = context.todoStore().replaceAll(items, state.getTurnCount());
         }
 
-        // 标记 todo 已使用（激活 TodoHook）
-        state.setTodoBeenUsed(true);
+        // 全部完成/取消时清空 TodoStore，使 Todo 不再注入上下文
+        boolean allDone = result.stream()
+                .allMatch(t -> t.getStatus() == TodoStatus.COMPLETED || t.getStatus() == TodoStatus.CANCELLED);
+        if (allDone) {
+            context.todoStore().clear();
+            log.info("todo_write: 全部完成/取消，已清空 TodoStore");
+            return ToolOutcome.success("所有任务已完成。\n" + formatTodoList(result));
+        }
 
-        String progress = cn.kong.eon.store.TodoStore.formatProgress(result);
+        String progress = TodoStore.formatProgress(result);
         log.info("todo_write: {} items (merge={}), {}", result.size(), merge, progress);
 
         return ToolOutcome.success("待办列表已更新。 " + progress + "\n" + formatTodoList(result));

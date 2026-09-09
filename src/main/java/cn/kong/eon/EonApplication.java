@@ -55,6 +55,8 @@ import java.util.UUID;
 
 /**
  * Agent 启动类。负责配置加载、组件初始化、工具注册、上下文架构装配和 Hook 注册。
+ * 会话懒加载：启动时不创建会话，首次收到用户输入后才初始化会话；
+ * 恢复会话（--resume / --last）时在构造函数中立即初始化。
  */
 public class EonApplication {
 
@@ -67,37 +69,37 @@ public class EonApplication {
     /** /history 默认展示块数。 */
     private static final int DEFAULT_HISTORY_LINES = 20;
 
+    // ── 基础组件（构造函数初始化，与具体会话无关）
     private final AgentConfig config;
-    /** 内容压缩器。 */
     private final ContentTrimmer compressor;
     private final LlmClient llmClient;
     private final ToolRegistry toolRegistry;
-    private final TodoStore todoStore;
-    private final ArtifactStore artifactStore;
-    private final SessionSnapshotStore snapshotStore;
     private final MemoryStore memoryStore;
-    private final JsonlStore jsonlStore;
-    private final ContextPipeline contextPipeline;
-    private final CompressionPolicy compressionPolicy;
-    private final ToolContext toolContext;
     private final HttpConfig httpConfig;
-    private final ToolHealthTracker tracker;
-    private final LoopDetectHook loopDetectHook;
-    private final TodoSnapshotHook todoSnapshotHook;
-    private final EonAgent agent;
+    private final CliInteractionCallback cliInteractionCallback;
     private final String workDir;
-    private final String transcriptPath;
-    /** 会话注册表。 */
+    private final String systemPrompt;
     private final SessionRegistry sessionRegistry;
     /** 恢复的会话摘要，新会话为 null。 */
     private final SessionSummary resumedSession;
-    /** 会话级状态。 */
-    private final SessionState sessionState;
-    /** CLI 交互回调。 */
-    private final CliInteractionCallback cliInteractionCallback;
 
     /** MCP 客户端列表。 */
     private final java.util.List<McpClientManager> mcpClients = new java.util.ArrayList<>();
+
+    // ── 会话相关组件（延迟到首次 run 时初始化）
+    private ContextPipeline contextPipeline;
+    private TodoStore todoStore;
+    private ArtifactStore artifactStore;
+    private SessionSnapshotStore snapshotStore;
+    private JsonlStore jsonlStore;
+    private CompressionPolicy compressionPolicy;
+    private ToolHealthTracker tracker;
+    private LoopDetectHook loopDetectHook;
+    private TodoSnapshotHook todoSnapshotHook;
+    private EonAgent agent;
+    private String transcriptPath;
+    private SessionState sessionState;
+    private boolean sessionInitialized = false;
 
     public EonApplication() {
         this(DEFAULT_WORKDIR);
@@ -123,7 +125,7 @@ public class EonApplication {
         log.info("从 classpath 加载配置: {}", CONFIG_PATH);
         this.config = AgentConfig.loadFromClasspath(CONFIG_PATH);
 
-        String systemPrompt = loadSystemPrompt(config.getContext().getSystemPromptPath());
+        this.systemPrompt = loadSystemPrompt(config.getContext().getSystemPromptPath());
         log.info("系统提示词已加载: {} 字符", systemPrompt.length());
 
         this.httpConfig = new HttpConfig();
@@ -132,19 +134,49 @@ public class EonApplication {
         Path sessionBaseDir = resolveSessionBaseDir();
         this.sessionRegistry = new SessionRegistry(sessionBaseDir);
         this.resumedSession = resolveResumed(resumeSelector);
+        this.memoryStore = new MemoryStore(sessionBaseDir);
+
+        this.toolRegistry = createToolRegistry();
+        connectMcpServers();
+
+        this.cliInteractionCallback = sharedScanner != null
+                ? new CliInteractionCallback(sharedScanner)
+                : new CliInteractionCallback(new java.util.Scanner(System.in, StandardCharsets.UTF_8));
+
+        // 恢复会话时立即初始化以回放历史消息
+        if (resumedSession != null) {
+            initSession();
+        }
+
+        log.info("EonApplication 就绪{}: {} 个工具{}",
+                sessionInitialized ? "（会话已恢复）" : "（等待用户输入后创建会话）",
+                toolRegistry.getAllToolNames().size(),
+                sessionInitialized ? ", " + agent.getHookCount() + " 个 hook" : "");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  会话懒加载
+    // ═══════════════════════════════════════════════════════════════════
+
+    /** 初始化会话相关组件。首次收到用户输入时调用，或恢复会话时在构造函数中调用。 */
+    private synchronized void initSession() {
+        if (sessionInitialized) return;
+
         String sessionId = resumedSession != null ? resumedSession.sessionId() : generateSessionId();
+        Path sessionBaseDir = Path.of(config.getStorage().getBaseDir()).toAbsolutePath();
         Path sessionDir = sessionBaseDir.resolve(sessionId);
         try {
             Files.createDirectories(sessionDir);
         } catch (IOException e) {
             throw new RuntimeException("创建会话目录失败: " + sessionDir, e);
         }
+
         this.todoStore = new TodoStore();
         this.artifactStore = new ArtifactStore(sessionDir.resolve("artifacts"));
         this.snapshotStore = new SessionSnapshotStore(sessionDir.resolve("session.json"));
-        this.memoryStore = new MemoryStore(sessionBaseDir);
+        this.contextPipeline = createContextPipeline(artifactStore);
 
-        // 快照要在 JsonlStore 之前读回：回放起点（压缩水位线）取自快照
+        // 快照要在 JsonlStore 之前读回：回放起点取自快照
         SessionSnapshot snapshot = resumedSession != null ? snapshotStore.load() : null;
         RestoreMode mode = RestoreMode.of(snapshot, resumedSession != null ? resumedSession.messageCount() : 0);
         int replayFrom = mode == RestoreMode.RESUME
@@ -155,10 +187,6 @@ public class EonApplication {
                     resumedSession.messageCount(),
                     snapshot.getCompressionState().getLastSummary() != null ? "有" : "无");
         }
-
-        this.toolRegistry = createToolRegistry();
-        connectMcpServers();
-        this.contextPipeline = createContextPipeline();
 
         Path jsonlPath = sessionDir.resolve("transcript.jsonl");
         this.jsonlStore = new JsonlStore(jsonlPath, contextPipeline, replayFrom);
@@ -186,10 +214,8 @@ public class EonApplication {
         }
         String sessionWorkDir = workspaceDir.toAbsolutePath().toString();
         PathResolver pathResolver = new PathResolver(sessionWorkDir, config.getTools().isSandboxEnabled());
-        this.cliInteractionCallback = sharedScanner != null
-                ? new CliInteractionCallback(sharedScanner)
-                : new CliInteractionCallback(new java.util.Scanner(System.in, StandardCharsets.UTF_8));
-        this.toolContext = new ToolContext(
+
+        ToolContext toolContext = new ToolContext(
                 todoStore, artifactStore, memoryStore,
                 jsonlStore, snapshotStore, pathResolver, cliInteractionCallback);
 
@@ -209,8 +235,9 @@ public class EonApplication {
 
         registerHooks();
 
-        log.info("EonApplication 就绪: {} 个工具, {} 个 hook",
-                toolRegistry.getAllToolNames().size(), agent.getHookCount());
+        sessionInitialized = true;
+        log.info("会话 {} 已就绪: {} 个工具, {} 个 hook",
+                sessionId, toolRegistry.getAllToolNames().size(), agent.getHookCount());
     }
 
     /**
@@ -245,10 +272,14 @@ public class EonApplication {
     }
 
 
-    /** 运行一轮对话。 */
+    /** 运行一轮对话。首次调用时自动初始化会话。 */
     public String run(String userInput) {
         if (userInput == null || userInput.isBlank()) {
             return "输入不能为空。";
+        }
+
+        if (!sessionInitialized) {
+            initSession();
         }
 
         // 任务边界：会话级状态与循环检测状态必须在同一点重置，
@@ -267,10 +298,16 @@ public class EonApplication {
         return output;
     }
 
+    public boolean isSessionInitialized() {
+        return sessionInitialized;
+    }
+
     /** 关闭应用，释放资源。 */
     public void shutdown() {
         log.info("正在关闭 EonApplication...");
-        agent.shutdown();
+        if (sessionInitialized) {
+            agent.shutdown();
+        }
         for (McpClientManager mcp : mcpClients) {
             mcp.close();
         }
@@ -319,12 +356,10 @@ public class EonApplication {
     //  上下文架构装配
     // ═══════════════════════════════════════════════════════════════════
 
-    /** 创建入站管线：大结果落盘。 */
-    private ContextPipeline createContextPipeline() {
+    private ContextPipeline createContextPipeline(ArtifactStore artifactStore) {
         var ctx = config.getContext();
         log.info("入站管线已装配 (落盘阈值 {} 字符, 保留 {} 字符)",
                 ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
-
         return new ContextPipeline(compressor, artifactStore,
                 ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
     }
@@ -527,6 +562,10 @@ public class EonApplication {
                 continue;
             }
             if (input.toLowerCase().startsWith("/history")) {
+                if (!app.sessionInitialized) {
+                    System.out.println("当前无活跃会话，发送消息后将自动创建会话。");
+                    continue;
+                }
                 String[] parts = input.split("\\s+");
                 printHistory(app, parts.length >= 2 ? parseCount(parts[1]) : DEFAULT_HISTORY_LINES);
                 continue;
@@ -563,15 +602,15 @@ public class EonApplication {
         app.shutdown();
     }
 
-    /** 切换会话：关掉旧应用后重建。 */
+    /** 切换会话：关掉旧应用后重建。失败时回退到新空会话。 */
     private static EonApplication switchSession(EonApplication old, java.util.Scanner scanner, String selector) {
+        old.shutdown();
         try {
-            old.shutdown();
             return new EonApplication(old.workDir, selector, scanner);
         } catch (Exception e) {
             log.error("切换会话失败: {}", selector, e);
-            System.out.println("切换会话失败: " + e.getMessage());
-            return null;
+            System.out.println("切换会话失败: " + e.getMessage() + "，已回退到新会话");
+            return new EonApplication(old.workDir, null, scanner);
         }
     }
 
@@ -667,11 +706,15 @@ public class EonApplication {
         System.out.println("║  由孔明灯开发                               ║");
         System.out.println("╚" + LINE_DOUBLE + "╝");
         System.out.println();
-        System.out.println(" 会话: " + app.sessionState.getSessionId());
-        if (app.resumedSession != null) {
-            var s = app.resumedSession;
-            System.out.println(" 恢复: " + s.title() + " — " + relativeTime(s.lastActivityAt())
-                    + " · " + s.messageCount() + " 条 · " + (s.hasSnapshot() ? "有快照" : "无快照"));
+        if (app.sessionInitialized) {
+            System.out.println(" 会话: " + app.sessionState.getSessionId());
+            if (app.resumedSession != null) {
+                var s = app.resumedSession;
+                System.out.println(" 恢复: " + s.title() + " — " + relativeTime(s.lastActivityAt())
+                        + " · " + s.messageCount() + " 条 · " + (s.hasSnapshot() ? "有快照" : "无快照"));
+            }
+        } else {
+            System.out.println(" 会话: 尚未创建（发送消息后将自动创建）");
         }
         System.out.println();
         System.out.println(" 直接输入问题开始对话，或使用以下命令：");
@@ -709,7 +752,7 @@ public class EonApplication {
         System.out.println("   /exit     退出程序");
         System.out.println();
         System.out.println(" 启动参数：--resume <id|前缀> 恢复指定会话 · --last 恢复最近活跃的会话");
-        System.out.println("           不带参数启动则是新会话");
+        System.out.println("           不带参数启动则等待用户输入后创建新会话");
         System.out.println();
     }
 

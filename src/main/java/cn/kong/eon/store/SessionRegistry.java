@@ -135,7 +135,7 @@ public class SessionRegistry {
                 sessionId,
                 title != null ? title : sessionId,
                 lastActivityAt(dir, transcript),
-                countLines(transcript),
+                countUserMessages(transcript),
                 Files.exists(snapshot),
                 readSummaryPreview(snapshot)
         );
@@ -189,13 +189,21 @@ public class SessionRegistry {
         }
     }
 
-    private long countLines(Path transcript) {
+    private long countUserMessages(Path transcript) {
         if (!Files.exists(transcript)) return 0;
         try (Stream<String> lines = Files.lines(transcript, StandardCharsets.UTF_8)) {
-            return lines.count();
+            return lines.filter(this::isUserMessage).count();
         } catch (IOException e) {
-            log.warn("统计账本行数失败: {}", transcript, e);
+            log.warn("统计用户消息失败: {}", transcript, e);
             return 0;
+        }
+    }
+
+    private boolean isUserMessage(String line) {
+        try {
+            return "user".equals(mapper.readTree(line).path("type").asText());
+        } catch (Exception e) {
+            return false;
         }
     }
 

@@ -45,6 +45,12 @@ public class TodoStore {
         return getAll();
     }
 
+    /** 清空所有 Todo。全部完成/取消后调用，使 Todo 不再注入上下文。 */
+    public synchronized void clear() {
+        todos.clear();
+        log.debug("TodoStore 已清空");
+    }
+
     /** 获取所有 Todo（按 id 排序）。 */
     public List<TodoItem> getAll() {
         List<TodoItem> list = new ArrayList<>(todos.values());

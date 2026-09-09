@@ -20,8 +20,6 @@ public class SessionState {
     private CompressionState compressionState;
     private List<String> nudges;             // 跨轮累积的运行时提醒，渲染进上下文后清空
     private String lastAssistantText;
-    private boolean todoBeenUsed = false;    // 是否调用过 todo_write
-
     // 运行时临时字段（不持久化）
     private transient List<ChatMessage> currentMessages;
     private transient LlmResponse lastResponse;
@@ -33,7 +31,6 @@ public class SessionState {
         this.usageAccum = TokenUsage.zero();
         this.compressionState = new CompressionState();
         this.nudges = new ArrayList<>();
-        this.todoBeenUsed = false;
         this.pendingToolCalls = new ArrayList<>();
         this.lastToolResults = new ArrayList<>();
     }
@@ -117,14 +114,6 @@ public class SessionState {
 
     public void setLastAssistantText(String lastAssistantText) {
         this.lastAssistantText = lastAssistantText;
-    }
-
-    public boolean hasTodoBeenUsed() {
-        return todoBeenUsed;
-    }
-
-    public void setTodoBeenUsed(boolean todoBeenUsed) {
-        this.todoBeenUsed = todoBeenUsed;
     }
 
     public List<ChatMessage> getCurrentMessages() {
