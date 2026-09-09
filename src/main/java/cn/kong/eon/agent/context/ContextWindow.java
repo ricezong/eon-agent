@@ -77,34 +77,33 @@ public class ContextWindow {
 
     /**
      * 修复 tool_use/tool_result 配对：丢弃孤立结果块，为缺失结果的调用块补合成结果。
-     * 压缩删除后必须调用，可能丢弃首块（孤立 TOOL_RESULT）。
      */
     public void repairPairing() {
-        // 收集所有调用块的工具调用 ID
+        // 预扫描：收集所有调用块 ID 和结果块 ID
         Set<String> callIds = new HashSet<>();
+        Set<String> resultIds = new HashSet<>();
         for (ContextBlock block : blocks) {
             if (block.kind() == BlockKind.TOOL_ARGS && block.toolCallId() != null) {
                 callIds.add(block.toolCallId());
+            } else if (block.kind() == BlockKind.TOOL_RESULT && block.toolCallId() != null) {
+                resultIds.add(block.toolCallId());
             }
         }
 
         // 逐块过滤：丢弃孤立结果（对应调用块已不在窗口），为缺失结果的调用补合成结果
-        List<ContextBlock> repaired = new ArrayList<>(blocks.size() + 4);
-        Set<String> seenResultIds = new HashSet<>();
+        List<ContextBlock> repaired = new ArrayList<>(blocks.size());
 
         for (ContextBlock block : blocks) {
             if (block.kind() == BlockKind.TOOL_RESULT) {
                 String callId = block.toolCallId();
                 // 丢弃孤立结果：callId 为空或对应的调用块已不在窗口
-                if (callId == null || !callIds.contains(callId)) {
+                if (!callIds.contains(callId)) {
                     continue;
                 }
-                seenResultIds.add(callId);
             }
             repaired.add(block);
-            // 为缺结果的调用块补合成结果
-            if (block.kind() == BlockKind.TOOL_ARGS && block.toolCallId() != null
-                    && !seenResultIds.contains(block.toolCallId())) {
+            // 为缺结果的调用块补合成结果（仅在窗口中确实没有该调用的真实结果时才补）
+            if (block.kind() == BlockKind.TOOL_ARGS && !resultIds.contains(block.toolCallId())) {
                 repaired.add(ContextBlock.builder()
                         .id(block.id() + SYNTHETIC_ID_SUFFIX)
                         .kind(BlockKind.TOOL_RESULT)
