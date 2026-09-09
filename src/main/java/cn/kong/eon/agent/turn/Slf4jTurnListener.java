@@ -27,10 +27,9 @@ public class Slf4jTurnListener implements TurnListener {
 
         } else if (event instanceof ToolCallCompleted e) {
             if (e.success()) {
-                log.info("│ 工具完成: {} 输出 {} 字符", e.toolName(), e.outputLength());
+                log.info("│ 工具完成: {} 输出: {}", e.toolName(), e.output().substring(0, Math.min(200, e.output().length())));
             } else {
-                log.warn("│ 工具失败: {} 输出: {}", e.toolName(),
-                        e.output().length() > 200 ? e.output().substring(0, 200) + "..." : e.output());
+                log.warn("│ 工具失败: {} 输出: {}", e.toolName(), e.output().substring(0, Math.min(200, e.output().length())));
             }
 
         } else if (event instanceof TaskCompleted e) {
