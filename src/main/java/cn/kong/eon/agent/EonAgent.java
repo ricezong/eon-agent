@@ -135,7 +135,6 @@ public class EonAgent {
      */
     public void shutdown() {
         toolHandler.shutdown();
-        toolRegistry.closeAll();
         log.info("EonAgent 资源已释放");
     }
 
