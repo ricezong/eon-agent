@@ -1,6 +1,6 @@
 package cn.kong.eon.config;
 
-import cn.kong.eon.agent.context.block.CompressionLevel;
+import cn.kong.eon.context.block.CompressionLevel;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.*;

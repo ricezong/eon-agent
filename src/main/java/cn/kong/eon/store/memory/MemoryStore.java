@@ -1,0 +1,175 @@
+package cn.kong.eon.store.memory;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * 跨会话记忆存储。记忆文件存储在 {storage.base_dir}/memories/ 下，跨会话共享。
+ */
+@Component
+public class MemoryStore {
+    private static final Logger log = LoggerFactory.getLogger(MemoryStore.class);
+
+    private final Path memoryDir;
+    private final ObjectMapper mapper;
+
+    public MemoryStore(@Value("${eon.storage.base_dir:./data}") String baseDir, ObjectMapper objectMapper) {
+        this.memoryDir = Path.of(baseDir).toAbsolutePath().resolve("memories");
+        this.mapper = objectMapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
+        try {
+            Files.createDirectories(memoryDir);
+        } catch (IOException e) {
+            throw new RuntimeException("创建 memory 目录失败", e);
+        }
+    }
+
+    /** 记忆条目。 */
+    public static class MemoryItem {
+        public String id;
+        public String title;
+        public String content;
+        public Instant createdAt;
+        public Instant updatedAt;
+
+        public MemoryItem() {
+        }
+
+        public MemoryItem(String id, String title, String content) {
+            this.id = id;
+            this.title = title;
+            this.content = content;
+            this.createdAt = Instant.now();
+            this.updatedAt = this.createdAt;
+        }
+    }
+
+    /** 创建新记忆并保存到磁盘。 */
+    public MemoryItem create(String title, String content) {
+        String id = "mem_" + UUID.randomUUID().toString().substring(0, 8);
+        MemoryItem item = new MemoryItem(id, title, content);
+        save(item);
+        log.info("Memory 已创建: {} - {}", id, title);
+        return item;
+    }
+
+    /** 更新已有记忆的标题和内容。 */
+    public MemoryItem update(String id, String title, String content) {
+        MemoryItem existing = load(id);
+        if (existing == null) {
+            throw new IllegalArgumentException("Memory 不存在: " + id);
+        }
+        if (title != null) existing.title = title;
+        if (content != null) existing.content = content;
+        existing.updatedAt = Instant.now();
+        save(existing);
+        log.info("Memory 已更新: {}", id);
+        return existing;
+    }
+
+    /** 删除指定记忆文件。 */
+    public boolean delete(String id) {
+        Path file = memoryDir.resolve(id + ".json");
+        try {
+            boolean deleted = Files.deleteIfExists(file);
+            if (deleted) log.info("Memory 已删除: {}", id);
+            return deleted;
+        } catch (IOException e) {
+            log.error("删除 memory 失败: {}", id, e);
+            return false;
+        }
+    }
+
+    /** 加载全部记忆，按创建时间排序保证注入顺序确定性。 */
+    public List<MemoryItem> loadAll() {
+        List<MemoryItem> items = new ArrayList<>();
+        try (var stream = Files.list(memoryDir)) {
+            stream.filter(p -> p.getFileName().toString().startsWith("mem_"))
+                    .filter(p -> p.toString().endsWith(".json"))
+                    .sorted(Comparator.comparing(p -> p.getFileName().toString()))
+                    .forEach(p -> {
+                        try {
+                            items.add(mapper.readValue(p.toFile(), MemoryItem.class));
+                        } catch (IOException e) {
+                            log.warn("读取 memory 文件失败: {}", p, e);
+                        }
+                    });
+        } catch (IOException e) {
+            log.warn("列出 memories 失败: {}", e.getMessage());
+        }
+        items.sort(Comparator.comparing(m -> m.createdAt));
+        return items;
+    }
+
+    /** 渲染全部记忆为注入文本。 */
+    public String renderForInjection() {
+        List<MemoryItem> items = loadAll();
+        if (items.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (MemoryItem m : items) {
+            sb.append("- [").append(m.id).append("] ").append(m.title)
+                    .append(": ").append(truncate(m.content, 200)).append("\n");
+        }
+        return sb.toString();
+    }
+
+    /** 将文本中的 [[memory:xxx]] 引用替换为记忆标题和内容摘要。 */
+    public String renderReferences(String text) {
+        if (text == null || text.isEmpty()) return text;
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("\\[\\[memory:(mem_[a-f0-9]+)\\]\\]");
+        java.util.regex.Matcher m = p.matcher(text);
+        StringBuilder sb = new StringBuilder();
+        while (m.find()) {
+            String memId = m.group(1);
+            MemoryItem item = load(memId);
+            if (item != null) {
+                String replacement = item.title + "（" + truncate(item.content, 60) + "）";
+                m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(replacement));
+            } else {
+                m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(m.group()));
+            }
+        }
+        m.appendTail(sb);
+        return sb.toString();
+    }
+
+    /** 从磁盘加载单个记忆。 */
+    private MemoryItem load(String id) {
+        Path file = memoryDir.resolve(id + ".json");
+        if (!Files.exists(file)) return null;
+        try {
+            return mapper.readValue(file.toFile(), MemoryItem.class);
+        } catch (IOException e) {
+            log.error("读取 memory 失败: {}", id, e);
+            return null;
+        }
+    }
+
+    /** 保存记忆到磁盘。 */
+    private void save(MemoryItem item) {
+        Path file = memoryDir.resolve(item.id + ".json");
+        try {
+            mapper.writeValue(file.toFile(), item);
+        } catch (IOException e) {
+            log.error("保存 memory 失败: {}", item.id, e);
+        }
+    }
+
+    /** 截断字符串到指定长度。 */
+    private String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max) + "...";
+    }
+}

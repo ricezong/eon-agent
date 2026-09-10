@@ -1,10 +1,10 @@
 package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.session.SessionState;
-import cn.kong.eon.store.TodoItem;
-import cn.kong.eon.store.TodoStatus;
+import cn.kong.eon.store.todo.TodoItem;
+import cn.kong.eon.store.todo.TodoStatus;
 import cn.kong.eon.tool.ToolPermission;
-import cn.kong.eon.store.TodoStore;
+import cn.kong.eon.store.todo.TodoStore;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;

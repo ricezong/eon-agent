@@ -1,10 +1,10 @@
 package cn.kong.eon.tool;
 
-import cn.kong.eon.store.ToolResultStore;
-import cn.kong.eon.store.JsonlStore;
-import cn.kong.eon.store.MemoryStore;
-import cn.kong.eon.store.SessionSnapshotStore;
-import cn.kong.eon.store.TodoStore;
+import cn.kong.eon.store.artifact.ToolResultStore;
+import cn.kong.eon.store.ledger.JsonlStore;
+import cn.kong.eon.store.memory.MemoryStore;
+import cn.kong.eon.store.snapshot.SessionSnapshotStore;
+import cn.kong.eon.store.todo.TodoStore;
 
 /**
  * 工具执行上下文，为工具提供运行时依赖。

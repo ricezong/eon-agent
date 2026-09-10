@@ -1,9 +1,10 @@
 package cn.kong.eon.agent.exec;
 
-import cn.kong.eon.agent.event.TurnEvent;
-import cn.kong.eon.agent.event.AgentToolResult;
-import cn.kong.eon.agent.event.AgentToolUse;
+import cn.kong.eon.event.TurnEvent;
+import cn.kong.eon.event.AgentToolResult;
+import cn.kong.eon.event.AgentToolUse;
 import cn.kong.eon.session.SessionState;
+import cn.kong.eon.session.ToolExecResult;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.tool.ToolRegistry;
@@ -129,7 +130,7 @@ public class ToolExecHandler {
         emit(AgentToolResult.now(turnId, req.id(), req.name(),
                 outcome.content(), outcome.structuredContent(), outcome.success()));
 
-        return ToolExecResult.of(req.id(), req.name(), outcome, outcome.content(), outcome.structuredContent());
+        return new ToolExecResult(req.id(), req.name(), outcome.success(), outcome.content(), outcome.structuredContent());
     }
 
     /** 合成错误结果（用于异常隔离）。 */
@@ -140,7 +141,7 @@ public class ToolExecHandler {
         emit(AgentToolResult.now(turnId, req.id(), req.name(),
                 outcome.content(), outcome.structuredContent(), false));
 
-        return ToolExecResult.of(req.id(), req.name(), outcome, outcome.content(), outcome.structuredContent());
+        return new ToolExecResult(req.id(), req.name(), outcome.success(), outcome.content(), outcome.structuredContent());
     }
 
     // ═══════════════════ 工具方法 ═══════════════════

@@ -1,8 +1,7 @@
 package cn.kong.eon.session;
 
-import cn.kong.eon.agent.exec.ToolExecResult;
 import cn.kong.eon.llm.LlmResponse;
-import cn.kong.eon.agent.context.CompressionState;
+import cn.kong.eon.context.CompressionState;
 import cn.kong.eon.llm.TokenUsage;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;

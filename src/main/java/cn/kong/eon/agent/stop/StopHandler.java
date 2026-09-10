@@ -1,8 +1,8 @@
 package cn.kong.eon.agent.stop;
 
-import cn.kong.eon.agent.event.TurnEvent;
-import cn.kong.eon.agent.event.SessionError;
-import cn.kong.eon.agent.event.SessionStatus;
+import cn.kong.eon.event.TurnEvent;
+import cn.kong.eon.event.SessionError;
+import cn.kong.eon.event.SessionStatus;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.session.SessionState;
 import org.slf4j.Logger;

@@ -1,14 +1,12 @@
 package cn.kong.eon.app;
 
-import cn.kong.eon.agent.context.ContentTrimmer;
+import cn.kong.eon.context.ContentTrimmer;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
-import cn.kong.eon.session.SessionContext;
-import cn.kong.eon.session.SessionState;
 import cn.kong.eon.tool.mcp.McpClientManager;
-import cn.kong.eon.store.SessionRegistry;
-import cn.kong.eon.store.SessionRegistry.SessionSummary;
-import cn.kong.eon.store.MemoryStore;
+import cn.kong.eon.store.index.SessionRegistry;
+import cn.kong.eon.store.index.SessionRegistry.SessionSummary;
+import cn.kong.eon.store.memory.MemoryStore;
 import cn.kong.eon.config.HttpConfig;
 import cn.kong.eon.tool.ToolRegistry;
 import cn.kong.eon.tool.builtin.*;
@@ -28,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import cn.kong.eon.agent.event.TurnListener;
+import cn.kong.eon.event.TurnListener;
 
 /**
  * 应用级容器。管理 LlmClient、ToolRegistry、MCP 连接等重资源，构造一次不随会话切换重建。

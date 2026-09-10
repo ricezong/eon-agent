@@ -2,8 +2,8 @@ package cn.kong.eon.tool.builtin;
 
 import cn.kong.eon.session.SessionState;
 import cn.kong.eon.tool.ToolPermission;
-import cn.kong.eon.store.MemoryStore;
-import cn.kong.eon.store.MemoryStore.MemoryItem;
+import cn.kong.eon.store.memory.MemoryStore;
+import cn.kong.eon.store.memory.MemoryStore.MemoryItem;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;

@@ -1,6 +1,6 @@
 package cn.kong.eon.tool;
 
-import cn.kong.eon.agent.event.StructuredContent;
+import cn.kong.eon.event.StructuredContent;
 
 /**
  * 工具执行结果。封装成功/失败状态、给模型的内容与给前端的结构化展示内容。
