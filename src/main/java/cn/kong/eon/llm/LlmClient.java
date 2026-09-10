@@ -50,6 +50,7 @@ public class LlmClient implements LlmSupport {
                 .temperature(llmConfig.getTemperature())
                 .maxTokens(llmConfig.getMaxTokens())
                 .timeout(Duration.ofSeconds(llmConfig.getTimeout()))
+                .returnThinking(true)
                 .logRequests(false)
                 .logResponses(false)
                 .build();
@@ -62,6 +63,7 @@ public class LlmClient implements LlmSupport {
                     .temperature(llmConfig.getTemperature())
                     .maxTokens(llmConfig.getMaxTokens())
                     .timeout(Duration.ofSeconds(llmConfig.getTimeout()))
+                    .returnThinking(true)
                     .build();
             log.info("LlmClient 已初始化（流式模式）: provider={}, model={}",
                     llmConfig.getProvider(), llmConfig.getModelName());
@@ -134,7 +136,8 @@ public class LlmClient implements LlmSupport {
      */
     public LlmResponse streamChat(List<ChatMessage> messages, List<ToolSpecification> tools,
                                    Consumer<String> onTextDelta,
-                                   Consumer<String> onThinkingDelta) {
+                                   Consumer<String> onThinkingDelta,
+                                   Consumer<String> onThinkingComplete) {
         ChatRequest.Builder requestBuilder = ChatRequest.builder().messages(messages);
         if (tools != null && !tools.isEmpty()) {
             requestBuilder.toolSpecifications(tools);
@@ -157,10 +160,21 @@ public class LlmClient implements LlmSupport {
             }
 
             @Override
+            public void onPartialThinking(dev.langchain4j.model.chat.response.PartialThinking partialThinking) {
+                if (onThinkingDelta != null && partialThinking.text() != null) {
+                    onThinkingDelta.accept(partialThinking.text());
+                }
+            }
+
+            @Override
             public void onCompleteResponse(ChatResponse completeResponse) {
                 AiMessage ai = completeResponse.aiMessage();
                 aiMessageRef.set(ai);
                 usageRef.set(completeResponse.tokenUsage());
+
+                if (onThinkingComplete != null && ai.thinking() != null && !ai.thinking().isBlank()) {
+                    onThinkingComplete.accept(ai.thinking());
+                }
                 if (completeResponse.finishReason() != null) {
                     finishReasonRef.set(completeResponse.finishReason().name());
                 }

@@ -19,8 +19,7 @@ public class Slf4jTurnListener implements TurnListener {
 
         @Override
         public Void visitDelta(AgentDelta e) {
-            log.debug("│ agent.delta: kind={}, delta={}", e.kind(),
-                    e.delta() != null ? clip(e.delta(), 80) : e.inputDelta() != null ? clip(e.inputDelta(), 80) : "");
+            log.debug("│ agent.delta: kind={}, delta={}", e.kind(), e.delta() != null ? clip(e.delta(), 80) : "");
             return null;
         }
 

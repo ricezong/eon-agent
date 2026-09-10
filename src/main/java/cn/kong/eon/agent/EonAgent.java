@@ -205,7 +205,8 @@ public class EonAgent {
             if (llmClient.isStreamEnabled()) {
                 response = llmClient.streamChat(messages, toolRegistry.getSpecifications(),
                         delta -> emit(AgentDelta.text(state.getTurnId(), delta)),
-                        delta -> emit(AgentDelta.thinking(state.getTurnId(), delta)));
+                        delta -> emit(AgentDelta.thinking(state.getTurnId(), delta)),
+                        thinking -> emit(AgentThinking.now(state.getTurnId(), thinking)));
             } else {
                 response = llmClient.chat(messages, toolRegistry.getSpecifications());
             }

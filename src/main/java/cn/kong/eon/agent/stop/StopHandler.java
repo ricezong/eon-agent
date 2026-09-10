@@ -1,6 +1,7 @@
 package cn.kong.eon.agent.stop;
 
 import cn.kong.eon.agent.event.TurnEvent;
+import cn.kong.eon.agent.event.SessionError;
 import cn.kong.eon.agent.event.SessionStatus;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.session.SessionState;
@@ -28,10 +29,11 @@ public class StopHandler {
     }
 
     /**
-     * 统一终止入口。发出 SessionStatus(terminated) 事件，拼终止原因 + 消耗统计。
+     * 统一终止入口。先发出 SessionError，再发出 SessionStatus(terminated)。
      */
     public String forceTerminate(SessionState state, StopCategory category, String message) {
         log.warn("[停止] {} : {}", category.name(), message);
+        emit(SessionError.now(message, category.name()));
         emit(SessionStatus.terminated(category.name() + ": " + message));
         return "任务终止: " + message + "\n"
                 + "消耗: " + state.getUsageAccum().getTotalTokens()

@@ -48,8 +48,6 @@ public class SseTurnListener implements TurnListener {
             data.put("turn_id", e.turnId());
             data.put("kind", e.kind());
             if (e.delta() != null) data.put("delta", e.delta());
-            if (e.inputDelta() != null) data.put("input_delta", e.inputDelta());
-            if (e.toolUseId() != null) data.put("tool_use_id", e.toolUseId());
             return data;
         }
 

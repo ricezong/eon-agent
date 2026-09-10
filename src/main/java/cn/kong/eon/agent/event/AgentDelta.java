@@ -7,10 +7,8 @@ import java.time.Instant;
  */
 public record AgentDelta(
         String turnId,
-        String kind,          // "text" | "thinking" | "tool_use"
-        String delta,          // text/thinking 的增量文本
-        String inputDelta,     // tool_use 的参数增量 JSON
-        String toolUseId,       // kind=tool_use 时关联的 id
+        String kind,          // "text" | "thinking"
+        String delta,
         Instant timestamp
 ) implements TurnEvent {
 
@@ -25,14 +23,10 @@ public record AgentDelta(
     }
 
     public static AgentDelta text(String turnId, String delta) {
-        return new AgentDelta(turnId, "text", delta, null, null, Instant.now());
+        return new AgentDelta(turnId, "text", delta, Instant.now());
     }
 
     public static AgentDelta thinking(String turnId, String delta) {
-        return new AgentDelta(turnId, "thinking", delta, null, null, Instant.now());
-    }
-
-    public static AgentDelta toolUse(String turnId, String toolUseId, String inputDelta) {
-        return new AgentDelta(turnId, "tool_use", null, inputDelta, toolUseId, Instant.now());
+        return new AgentDelta(turnId, "thinking", delta, Instant.now());
     }
 }
