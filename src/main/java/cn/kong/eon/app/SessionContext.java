@@ -4,6 +4,7 @@ import cn.kong.eon.agent.EonAgent;
 import cn.kong.eon.context.ContentTrimmer;
 import cn.kong.eon.context.pipeline.ContextPipeline;
 import cn.kong.eon.context.policy.CompressionPolicy;
+import cn.kong.eon.context.policy.CompressionSettings;
 import cn.kong.eon.context.policy.ContextSummarizer;
 import cn.kong.eon.agent.exec.ToolHealthTracker;
 import cn.kong.eon.hook.postmodel.LoopDetectHook;
@@ -252,12 +253,18 @@ public class SessionContext {
     private CompressionPolicy createCompressionPolicy() {
         var ctxCfg = config.getContext();
         var comp = ctxCfg.getCompression();
-        ContextSummarizer summarizer = new ContextSummarizer(llmClient, transcriptPath, ctxCfg);
+        ContextSummarizer summarizer = new ContextSummarizer(llmClient, transcriptPath,
+                ctxCfg.getSummarizeMaxInputChars(), ctxCfg.getSummarizeMaxOutputChars());
         log.info("压缩策略已装配: 水位 {}/{}/{} | 轮数周期 {} 档位 {} | 尾部保护 {} 块 | 参数裁剪阈值 {} 字符",
                 comp.getSnipWaterLevel(), comp.getPruneWaterLevel(), comp.getSummarizeWaterLevel(),
                 comp.getTurnInterval(), comp.getTurnLevel(),
                 comp.getTailGuardBlocks(), comp.getArgsPruneMinChars());
-        return new CompressionPolicy(ctxCfg, compressor, summarizer);
+        CompressionSettings settings = new CompressionSettings(
+                comp.getSnipWaterLevel(), comp.getPruneWaterLevel(), comp.getSummarizeWaterLevel(),
+                comp.getTurnInterval(), comp.getTurnLevel(),
+                comp.getTailGuardBlocks(), comp.getArgsPruneMinChars(),
+                ctxCfg.getSnipKeepChars());
+        return new CompressionPolicy(settings, compressor, summarizer);
     }
 
     private void registerHooks() {

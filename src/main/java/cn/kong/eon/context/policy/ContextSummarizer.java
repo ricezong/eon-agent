@@ -1,11 +1,10 @@
 package cn.kong.eon.context.policy;
 
 import cn.kong.eon.context.ContextWindow;
-import cn.kong.eon.context.LlmSupport;
 import cn.kong.eon.context.block.BlockKind;
 import cn.kong.eon.context.block.ContextBlock;
-import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.llm.LlmStalledException;
+import cn.kong.eon.context.port.LlmStalledException;
+import cn.kong.eon.context.port.LlmSupport;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -29,11 +28,11 @@ public class ContextSummarizer {
     private final int maxOutputChars;
 
     public ContextSummarizer(LlmSupport llmSupport, String transcriptPath,
-                             AgentConfig.ContextConfig config) {
+                             int maxInputChars, int maxOutputChars) {
         this.llmSupport = llmSupport;
         this.transcriptPath = transcriptPath != null ? transcriptPath : "(transcript 路径不可用)";
-        this.maxInputChars = config.getSummarizeMaxInputChars();
-        this.maxOutputChars = config.getSummarizeMaxOutputChars();
+        this.maxInputChars = maxInputChars;
+        this.maxOutputChars = maxOutputChars;
     }
 
     /**

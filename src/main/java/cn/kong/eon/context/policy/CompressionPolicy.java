@@ -5,7 +5,6 @@ import cn.kong.eon.context.ContextMetrics;
 import cn.kong.eon.context.ContextWindow;
 import cn.kong.eon.context.block.CompressionLevel;
 import cn.kong.eon.context.block.ContextBlock;
-import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.context.CompressionState;
 
 import java.util.List;
@@ -16,14 +15,14 @@ import java.util.List;
  */
 public class CompressionPolicy {
 
-    private final AgentConfig.ContextConfig config;
+    private final CompressionSettings settings;
     private final ContentTrimmer compressor;
     private final ContextSummarizer summarizer;
 
-    public CompressionPolicy(AgentConfig.ContextConfig config,
+    public CompressionPolicy(CompressionSettings settings,
                              ContentTrimmer compressor,
                              ContextSummarizer summarizer) {
-        this.config = config;
+        this.settings = settings;
         this.compressor = compressor;
         this.summarizer = summarizer;
     }
@@ -38,7 +37,7 @@ public class CompressionPolicy {
         }
 
         // 尾部保护区
-        int protectedFrom = window.protectedFrom(config.getCompression().getTailGuardBlocks());
+        int protectedFrom = window.protectedFrom(settings.tailGuardBlocks());
 
         boolean disposed;
         if (level == CompressionLevel.SUMMARIZE) {
@@ -74,12 +73,12 @@ public class CompressionPolicy {
         if (metrics == null) return CompressionLevel.NONE;
 
         double water = metrics.waterLevel();
-        if (water >= config.getCompression().getSummarizeWaterLevel()) return CompressionLevel.SUMMARIZE;
-        if (water >= config.getCompression().getPruneWaterLevel()) return CompressionLevel.PRUNE;
-        if (water >= config.getCompression().getSnipWaterLevel()) return CompressionLevel.SNIP;
+        if (water >= settings.summarizeWaterLevel()) return CompressionLevel.SUMMARIZE;
+        if (water >= settings.pruneWaterLevel()) return CompressionLevel.PRUNE;
+        if (water >= settings.snipWaterLevel()) return CompressionLevel.SNIP;
 
-        if (turnCount > 0 && turnCount % config.getCompression().getTurnInterval() == 0) {
-            return config.getCompression().getTurnLevel();
+        if (turnCount > 0 && turnCount % settings.turnInterval() == 0) {
+            return settings.turnLevel();
         }
         return CompressionLevel.NONE;
     }
@@ -117,7 +116,7 @@ public class CompressionPolicy {
             // AI 正文只参与 SNIP 的头尾截断：推理链被清空比被截断更伤，
             // 截断至少保住开头的问题分析与结尾的结论。
             case AI_TEXT -> level == CompressionLevel.SNIP
-                    ? headTailPlaceholder(block, config.getSnipKeepChars())
+                    ? headTailPlaceholder(block, settings.snipKeepChars())
                     : null;
             // 用户消息只有"原文保留"与"被摘要吸收后删除"两个状态
             case USER_INPUT -> null;
@@ -131,7 +130,7 @@ public class CompressionPolicy {
         if (level.atLeast(CompressionLevel.PRUNE) && block.spilled()) {
             return clearedPlaceholder();
         }
-        return headTailPlaceholder(block, config.getSnipKeepChars());
+        return headTailPlaceholder(block, settings.snipKeepChars());
     }
 
     /**
@@ -140,7 +139,7 @@ public class CompressionPolicy {
      */
     private String argsPrune(ContextBlock block, CompressionLevel level) {
         if (!level.atLeast(CompressionLevel.PRUNE)) return null;
-        if (block.chars() <= config.getCompression().getArgsPruneMinChars()) return null;
+        if (block.chars() <= settings.argsPruneMinChars()) return null;
         return compressor.skeleton(block.text());
     }
 
