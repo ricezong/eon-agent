@@ -1,6 +1,7 @@
 package cn.kong.eon.agent;
 
 import cn.kong.eon.agent.context.ContextBuilder;
+import cn.kong.eon.agent.event.*;
 import cn.kong.eon.agent.exec.ToolExecHandler;
 import cn.kong.eon.agent.exec.ToolHealthTracker;
 import cn.kong.eon.agent.flush.MessageFlusher;
@@ -8,20 +9,15 @@ import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookDispatcher;
 import cn.kong.eon.agent.stop.StopCategory;
 import cn.kong.eon.agent.stop.StopHandler;
-import cn.kong.eon.agent.turn.TurnEvent;
-import cn.kong.eon.agent.turn.TurnListener;
-import cn.kong.eon.agent.turn.TurnOutcome;
-import cn.kong.eon.agent.turn.event.MessageStarted;
-import cn.kong.eon.agent.turn.event.TaskCompleted;
-import cn.kong.eon.agent.turn.event.TextChunk;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.llm.LlmResponse;
-import cn.kong.eon.model.SessionState;
-import cn.kong.eon.model.ToolExecResult;
+import cn.kong.eon.session.SessionState;
+import cn.kong.eon.agent.exec.ToolExecResult;
 import cn.kong.eon.store.JsonlStore;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolRegistry;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -32,6 +28,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Agent 核心引擎。每轮执行：PreModel → 构建上下文 → 调用 LLM → PostModel →
@@ -51,7 +48,7 @@ public class EonAgent {
     private final TokenCountEstimator tokenCountEstimator;
 
     // ── 协作组件
-    private final List<TurnListener> listeners;
+    private final CopyOnWriteArrayList<TurnListener> listeners;
     private final ToolExecHandler toolHandler;
     private final StopHandler stopHandler;
     private final MessageFlusher flusher;
@@ -64,14 +61,7 @@ public class EonAgent {
     private final List<Hook.PostToolHook> postToolHooks = new ArrayList<>();
     private int totalHookCount = 0;
 
-    /**
-     * 单个工具 schema token 估算均值
-     */
     private static final long TOOL_SCHEMA_TOKENS_ESTIMATE = 220;
-
-    /**
-     * 缓存的工具 schema token 开销
-     */
     private long cachedToolSchemaTokens = -1;
 
     // ═══════════════════════════════════════════════════════════════════
@@ -85,7 +75,8 @@ public class EonAgent {
                     String basePrompt,
                     ToolContext toolContext,
                     ToolHealthTracker tracker,
-                    List<TurnListener> listeners) {
+                    List<TurnListener> listeners,
+                    ObjectMapper objectMapper) {
         this.config = config;
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
@@ -93,18 +84,15 @@ public class EonAgent {
         this.basePrompt = basePrompt;
         this.toolContext = toolContext;
         this.tracker = tracker;
-        this.listeners = listeners != null ? listeners : List.of();
+        this.listeners = new CopyOnWriteArrayList<>(listeners != null ? listeners : List.of());
         this.tokenCountEstimator = new OpenAiTokenCountEstimator("gpt-4o");
         this.toolHandler = new ToolExecHandler(
                 toolRegistry, toolContext, this::emit, tracker,
-                config.getTools().getParallelism());
+                config.getTools().getParallelism(), objectMapper);
         this.flusher = new MessageFlusher(jsonlStore);
         this.stopHandler = new StopHandler(config, this::emit);
     }
 
-    /**
-     * 注册 Hook，自动按 order 排序。
-     */
     public void addHook(Hook hook) {
         if (hook instanceof Hook.PreModelHook h) {
             preModelHooks.add(h);
@@ -123,28 +111,29 @@ public class EonAgent {
         log.debug("Hook 已注册: {}", hook.name());
     }
 
-    /**
-     * 已注册 Hook 总数。
-     */
     public int getHookCount() {
         return totalHookCount;
     }
 
-    /**
-     * 关闭 Agent。
-     */
     public void shutdown() {
         toolHandler.shutdown();
         log.info("EonAgent 资源已释放");
+    }
+
+    /** 动态注册 TurnListener。 */
+    public void addListener(TurnListener listener) {
+        listeners.add(listener);
+    }
+
+    /** 动态移除 TurnListener。 */
+    public void removeListener(TurnListener listener) {
+        listeners.remove(listener);
     }
 
     // ═══════════════════════════════════════════════════════════════════
     //  事件分发
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * 向所有监听器发送事件。
-     */
     private void emit(TurnEvent event) {
         for (TurnListener l : listeners) {
             try {
@@ -159,27 +148,37 @@ public class EonAgent {
     //  主循环
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * 运行主循环，返回最终输出文本。
-     */
     public String run(SessionState state) {
         initRun(state);
 
+        // 发出 session.status: running
+        emit(SessionStatus.running());
+
         while (true) {
-            // 步数检查：达到上限终止
+            // 中断检查
+            if (state.isInterrupted()) {
+                return completeExit(state, stopHandler.forceTerminate(
+                        state, StopCategory.USER_INTERRUPTED, "用户主动中断"));
+            }
+
+            // 步数检查
             if (state.getTurnCount() >= config.getLoop().getMaxSteps()) {
-                return completeExit(state, stopHandler.forceTerminate(state, StopCategory.MAX_STEPS_REACHED, StopCategory.MAX_STEPS_REACHED.format(config.getLoop().getMaxSteps())));
+                return completeExit(state, stopHandler.forceTerminate(
+                        state, StopCategory.MAX_STEPS_REACHED,
+                        StopCategory.MAX_STEPS_REACHED.format(config.getLoop().getMaxSteps())));
             }
 
             state.incrementTurn();
 
             try {
-                TurnOutcome action = executeTurn(state);
+                LoopAction action = executeTurn(state);
                 if (action.isExit()) {
-                    return completeExit(state, ((TurnOutcome.Exit) action).output());
+                    return completeExit(state, ((LoopAction.Exit) action).output());
                 }
             } catch (Exception e) {
-                return completeExit(state, stopHandler.forceTerminate(state, StopCategory.UNEXPECTED_ERROR, StopCategory.UNEXPECTED_ERROR.format(e.getMessage())));
+                return completeExit(state, stopHandler.forceTerminate(
+                        state, StopCategory.UNEXPECTED_ERROR,
+                        StopCategory.UNEXPECTED_ERROR.format(e.getMessage())));
             }
         }
     }
@@ -188,15 +187,12 @@ public class EonAgent {
     //  Turn 执行
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * 执行单个 Turn。返回 Continue 继续循环，Exit 退出并携带输出。
-     */
-    private TurnOutcome executeTurn(SessionState state) {
+    private LoopAction executeTurn(SessionState state) {
         try {
-            // ── 阶段 1：准备上下文（跑 PreModel Hooks，再渲染 nudge） ──
+            // ── 阶段 1：准备上下文 ──
             ContextBuilder ctx = buildContext(state);
-            TurnOutcome preModel = prepareContext(state, ctx);
-            if (preModel instanceof TurnOutcome.Exit exit) {
+            LoopAction preModel = prepareContext(state, ctx);
+            if (preModel instanceof LoopAction.Exit exit) {
                 return exit;
             }
 
@@ -204,8 +200,15 @@ public class EonAgent {
             List<ChatMessage> messages = ctx.build();
             state.setCurrentMessages(messages);
 
-            // ── 阶段 3：调用 LLM ──
-            LlmResponse response = llmClient.chat(messages, toolRegistry.getSpecifications());
+            // ── 阶段 3：调用 LLM（流式或同步） ──
+            LlmResponse response;
+            if (llmClient.isStreamEnabled()) {
+                response = llmClient.streamChat(messages, toolRegistry.getSpecifications(),
+                        delta -> emit(AgentDelta.text(state.getTurnId(), delta)),
+                        delta -> emit(AgentDelta.thinking(state.getTurnId(), delta)));
+            } else {
+                response = llmClient.chat(messages, toolRegistry.getSpecifications());
+            }
             state.setLastResponse(response);
             state.getUsageAccum().add(response.usage());
 
@@ -213,91 +216,89 @@ public class EonAgent {
             state.setLastAssistantText(thought);
             List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
 
-            // ── 阶段 4：PostModel Hooks（截断检测、工具校验、循环检测等） ──
+            // ── 阶段 4：PostModel Hooks ──
             state.setPendingToolCalls(requests);
-            TurnOutcome postModel = firePostModelHooks(state);
-            if (postModel instanceof TurnOutcome.Exit exit) {
+            LoopAction postModel = firePostModelHooks(state);
+            if (postModel instanceof LoopAction.Exit exit) {
                 return exit;
             }
-            if (postModel instanceof TurnOutcome.Skip) {
+            if (postModel instanceof LoopAction.Skip) {
                 return finishSkip(state);
             }
 
-            // ── 阶段 5：无工具调用 → 任务完成 ──
+            // ── 阶段 5：无工具调用 → 发出 agent.message 并退出 ──
             if (requests == null || requests.isEmpty()) {
-                emit(TextChunk.now(thought));
+                emit(AgentMessage.now(state.getTurnId(), state.getMessageId(), thought));
                 return handleNoToolCalls(state, thought);
             }
 
-            // ── 阶段 6：Extension Loop（PreTool → 执行 → PostTool） ──
-            TurnOutcome extension = executeExtensionLoop(state, requests);
-            if (extension instanceof TurnOutcome.Exit exit) {
+            // ── 阶段 6：Extension Loop ──
+            LoopAction extension = executeExtensionLoop(state, requests);
+            if (extension instanceof LoopAction.Exit exit) {
                 return exit;
             }
 
             // ── 阶段 7：推进熔断冷却 ──
             tracker.tickCooldown();
 
-            return new TurnOutcome.Continue();
+            return new LoopAction.Continue();
         } finally {
             // ── 阶段 8：消息回填 ──
             flusher.flush(state);
         }
     }
 
-    /**
-     * Extension Loop：PreTool → 执行 → PostTool。
-     */
-    private TurnOutcome executeExtensionLoop(SessionState state, List<ToolExecutionRequest> requests) {
+    private LoopAction executeExtensionLoop(SessionState state, List<ToolExecutionRequest> requests) {
         // PreTool Hooks
-        TurnOutcome preTool = firePreToolHooks(state, requests);
-        if (preTool instanceof TurnOutcome.Exit exit) {
+        LoopAction preTool = firePreToolHooks(state, requests);
+        if (preTool instanceof LoopAction.Exit exit) {
             return exit;
         }
 
-        // 执行工具
+        // 执行工具（ToolExecHandler 内部发出 agent.tool_use 和 agent.tool_result）
         List<ToolExecResult> results = toolHandler.execute(state);
 
-        // PostTool Hooks（逐个工具检查，遇到 Exit/Skip 停止）
+        // PostTool Hooks
         for (int i = 0; i < requests.size(); i++) {
             ToolExecResult result = results.get(i);
-            TurnOutcome postTool = firePostToolHooks(state, requests.get(i).name(), result.success());
-            if (postTool instanceof TurnOutcome.Exit exit) {
+            LoopAction postTool = firePostToolHooks(state, requests.get(i).name(), result.success());
+            if (postTool instanceof LoopAction.Exit exit) {
                 return exit;
             }
         }
 
-        return new TurnOutcome.Continue();
+        return new LoopAction.Continue();
     }
 
-    /**
-     * 处理无工具调用：模型未发起工具调用，视为任务完成退出。
-     */
-    private TurnOutcome handleNoToolCalls(SessionState state, String thought) {
-        return new TurnOutcome.Exit(thought);
+    private LoopAction handleNoToolCalls(SessionState state, String thought) {
+        return new LoopAction.Exit(thought);
     }
 
-    /**
-     * Skip 收尾：推进熔断冷却，返回 Continue 进入下一轮。
-     */
-    private TurnOutcome finishSkip(SessionState state) {
+    private LoopAction finishSkip(SessionState state) {
         tracker.tickCooldown();
-        return new TurnOutcome.Continue();
+        return new LoopAction.Continue();
     }
 
     // ═══════════════════════════════════════════════════════════════════
     //  退出处理
     // ═══════════════════════════════════════════════════════════════════
 
-    /** 退出处理：保存快照 → 渲染记忆引用 → 发出完成事件 → 返回输出。*/
     private String completeExit(SessionState state, String rawOutput) {
         saveSnapshot(state);
         String output = renderMemoryReferences(rawOutput);
-        emit(TaskCompleted.now(output, state.getTurnCount(), state.getUsageAccum().getTotalTokens()));
+
+        // 发出 session.usage
+        emit(SessionUsage.now(state.getTurnId(), state.getMessageId(),
+                state.getUsageAccum().getPromptTokens(),
+                state.getUsageAccum().getCompletionTokens(),
+                state.getUsageAccum().getTotalTokens()));
+
+        // 发出 session.status: idle
+        emit(SessionStatus.idle("task_completed"));
+
         return output;
     }
 
-    /** 保存会话快照。任务结束时调用，确保压缩状态和累计 token 落盘。*/
     private void saveSnapshot(SessionState state) {
         try {
             toolContext.snapshotStore().save(
@@ -312,9 +313,6 @@ public class EonAgent {
         }
     }
 
-    /**
-     * 将 [[memory:xxx]] 引用替换为记忆标题。
-     */
     private String renderMemoryReferences(String text) {
         if (text == null || text.isEmpty()) return text;
         return toolContext.memoryStore().renderReferences(text);
@@ -324,11 +322,7 @@ public class EonAgent {
     //  初始化
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * 初始化运行：发出对话开始事件、写入用户输入到 JSONL。
-     */
     private void initRun(SessionState state) {
-        emit(MessageStarted.now(state.getSessionId(), state.getUserInput()));
         jsonlStore.append(UserMessage.from(state.getUserInput()));
     }
 
@@ -336,9 +330,6 @@ public class EonAgent {
     //  上下文构建
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * 构建 ContextBuilder。
-     */
     private ContextBuilder buildContext(SessionState state) {
         ContextBuilder ctx = new ContextBuilder();
         ctx.setTokenCountEstimator(tokenCountEstimator);
@@ -353,9 +344,6 @@ public class EonAgent {
         return ctx;
     }
 
-    /**
-     * 渲染 nudge 进上下文并清空。渲染即消费，每条只进一次上下文。
-     */
     private void consumeNudges(SessionState state, ContextBuilder ctx) {
         if (state.getNudges().isEmpty()) {
             return;
@@ -364,9 +352,6 @@ public class EonAgent {
         state.getNudges().clear();
     }
 
-    /**
-     * 估算工具 schema 的 token 开销，缓存后复用。
-     */
     private long estimateToolSchemaTokens() {
         if (cachedToolSchemaTokens < 0) {
             int specCount = toolRegistry.getSpecifications().size();
@@ -379,27 +364,24 @@ public class EonAgent {
     //  Hook 调度
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * 准备上下文：先跑 PreModel Hook，再渲染 nudge。顺序不可调换。
-     */
-    private TurnOutcome prepareContext(SessionState state, ContextBuilder ctx) {
-        TurnOutcome outcome = HookDispatcher.dispatchPreModel(preModelHooks, state, ctx, stopHandler::forceTerminate);
-        if (outcome instanceof TurnOutcome.Exit) {
+    private LoopAction prepareContext(SessionState state, ContextBuilder ctx) {
+        LoopAction outcome = HookDispatcher.dispatchPreModel(preModelHooks, state, ctx, stopHandler::forceTerminate);
+        if (outcome instanceof LoopAction.Exit) {
             return outcome;
         }
         consumeNudges(state, ctx);
         return outcome;
     }
 
-    private TurnOutcome firePostModelHooks(SessionState state) {
+    private LoopAction firePostModelHooks(SessionState state) {
         return HookDispatcher.dispatchPostModel(postModelHooks, state, stopHandler::forceTerminate);
     }
 
-    private TurnOutcome firePreToolHooks(SessionState state, List<ToolExecutionRequest> requests) {
+    private LoopAction firePreToolHooks(SessionState state, List<ToolExecutionRequest> requests) {
         return HookDispatcher.dispatchPreTool(preToolHooks, state, requests, stopHandler::forceTerminate);
     }
 
-    private TurnOutcome firePostToolHooks(SessionState state, String toolName, boolean success) {
+    private LoopAction firePostToolHooks(SessionState state, String toolName, boolean success) {
         return HookDispatcher.dispatchPostTool(postToolHooks, state, toolName, success, stopHandler::forceTerminate);
     }
 }

@@ -1,20 +1,18 @@
 package cn.kong.eon.agent.exec;
 
-import cn.kong.eon.agent.turn.TurnEvent;
-import cn.kong.eon.agent.turn.event.ToolCallCompleted;
-import cn.kong.eon.agent.turn.event.ToolCallStarted;
-import cn.kong.eon.config.ObjectMapperConfig;
-import cn.kong.eon.model.SessionState;
-import cn.kong.eon.model.ToolExecResult;
+import cn.kong.eon.agent.event.TurnEvent;
+import cn.kong.eon.agent.event.AgentToolResult;
+import cn.kong.eon.agent.event.AgentToolUse;
+import cn.kong.eon.session.SessionState;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolOutcome;
 import cn.kong.eon.tool.ToolRegistry;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +23,6 @@ import java.util.function.Consumer;
 /**
  * 工具执行处理器。封装工具执行全流程：参数解析 → 执行 → 事件发射。
  * 支持并行执行，串行豁免清单（todo_write/AskQuestion）强制串行。
- * 工具结果以原始输出回填，由入站管线统一决定落盘与格式化策略。
  */
 public class ToolExecHandler {
     private static final Logger log = LoggerFactory.getLogger(ToolExecHandler.class);
@@ -41,15 +38,20 @@ public class ToolExecHandler {
     private final ExecutorService parallelExecutor;
     private final Consumer<TurnEvent> emitter;
 
+    private final ObjectMapper objectMapper;
+
+    /** 带 ObjectMapper 注入的构造函数。 */
     public ToolExecHandler(ToolRegistry toolRegistry,
                            ToolContext toolContext,
                            Consumer<TurnEvent> emitter,
                            ToolHealthTracker tracker,
-                           int parallelism) {
+                           int parallelism,
+                           ObjectMapper objectMapper) {
         this.toolRegistry = toolRegistry;
         this.toolContext = toolContext;
         this.emitter = emitter;
         this.tracker = tracker;
+        this.objectMapper = objectMapper;
         this.parallelExecutor = Executors.newFixedThreadPool(Math.max(1, parallelism), r -> {
             Thread t = new Thread(r, "tool-exec");
             t.setDaemon(true);
@@ -59,7 +61,6 @@ public class ToolExecHandler {
 
     /**
      * 执行所有待执行的工具调用，保持与请求列表一致的顺序。
-     * 串行豁免工具立即执行，其余提交并行后统一收集。
      */
     public List<ToolExecResult> execute(SessionState state) {
         List<ToolExecutionRequest> requests = state.getPendingToolCalls();
@@ -67,7 +68,6 @@ public class ToolExecHandler {
         List<Future<ToolExecResult>> futures = new ArrayList<>();
         List<Integer> pendingIndices = new ArrayList<>();
 
-        // 第一遍：分发——串行的立即执行，并行的提交线程池
         for (int i = 0; i < requests.size(); i++) {
             ToolExecutionRequest req = requests.get(i);
             if (SERIAL_ONLY.contains(req.name())) {
@@ -79,7 +79,6 @@ public class ToolExecHandler {
             }
         }
 
-        // 第二遍：收集并行结果
         for (int j = 0; j < pendingIndices.size(); j++) {
             int idx = pendingIndices.get(j);
             ToolExecutionRequest req = requests.get(idx);
@@ -102,7 +101,6 @@ public class ToolExecHandler {
 
     // ═══════════════════ 单次执行 ═══════════════════
 
-    /** 串行执行单个工具（含异常兜底）。 */
     private ToolExecResult runSerial(ToolExecutionRequest req, SessionState state) {
         try {
             return executeSingle(req, state);
@@ -112,16 +110,17 @@ public class ToolExecHandler {
     }
 
     /**
-     * 执行单个工具请求：参数解析 → 执行 → 发出事件 → 封装结果。
+     * 执行单个工具请求：发出 tool_use 事件 → 执行 → 发出 tool_result 事件。
      */
     private ToolExecResult executeSingle(ToolExecutionRequest req, SessionState state) {
-        int turn = state.getTurnCount();
-        String argsSummary = truncate(req.arguments() != null ? req.arguments() : "");
+        String turnId = state.getTurnId();
 
-        // 发出工具调用开始事件
-        emit(new ToolCallStarted(req.name(), argsSummary, turn, Instant.now()));
+        // 发出 agent.tool_use 事件
+        String perm = toolRegistry.getPermission(req.name()) != null
+                ? toolRegistry.getPermission(req.name()).name() : "UNKNOWN";
+        emit(AgentToolUse.now(turnId, req.id(), req.name(), req.arguments(), perm));
 
-        // 熔断拦截：跳过执行，合成错误结果告知 LLM
+        // 熔断拦截
         if (tracker.isTripped(req.name())) {
             String msg = tracker.trippedMessage(req.name());
             log.warn("[ToolExecution] 工具 '{}' 已熔断，跳过执行", req.name());
@@ -129,57 +128,44 @@ public class ToolExecHandler {
         }
 
         Map<String, Object> args = parseArgs(req.arguments());
-
         ToolOutcome outcome = toolRegistry.execute(req.name(), args, state, toolContext);
 
-        String output = outcome.content();
-        int outputLen = output.length();
+        // 发出 agent.tool_result 事件
+        emit(AgentToolResult.now(turnId, req.id(), req.name(),
+                outcome.content(), outcome.structuredContent(), outcome.success()));
 
-        // 发出工具调用完成事件
-        emit(new ToolCallCompleted(req.name(), argsSummary, outcome.success(), output, outputLen, turn, Instant.now()));
-
-        return ToolExecResult.of(req.id(), req.name(), outcome, output);
+        return ToolExecResult.of(req.id(), req.name(), outcome, outcome.content());
     }
 
     /** 合成错误结果（用于异常隔离）。 */
     private ToolExecResult syntheticError(ToolExecutionRequest req, String errorMsg, SessionState state) {
-        int turn = state.getTurnCount();
-        String argsSummary = truncate(req.arguments() != null ? req.arguments() : "");
+        String turnId = state.getTurnId();
         ToolOutcome outcome = ToolOutcome.failure(errorMsg);
-        String output = outcome.content();
-        int outputLen = output.length();
 
-        emit(new cn.kong.eon.agent.turn.event.ToolCallCompleted(
-                req.name(), argsSummary, false, output, outputLen, turn, java.time.Instant.now()));
+        emit(AgentToolResult.now(turnId, req.id(), req.name(),
+                outcome.content(), outcome.structuredContent(), false));
 
-        return ToolExecResult.of(req.id(), req.name(), outcome, output);
+        return ToolExecResult.of(req.id(), req.name(), outcome, outcome.content());
     }
 
     // ═══════════════════ 工具方法 ═══════════════════
 
-    /** 解析工具参数 JSON 为 Map。 */
     private Map<String, Object> parseArgs(String json) {
         if (json == null || json.isBlank()) return Map.of();
         try {
-            return ObjectMapperConfig.getObjectMapper().readValue(json, new TypeReference<>() {});
+            return objectMapper.readValue(json, new TypeReference<>() {});
         } catch (Exception e) {
             log.warn("[ToolExecution] 参数解析失败: {}", json, e);
             return Map.of();
         }
     }
 
-    private static String truncate(String s) {
-        return s.length() > ToolExecHandler.ARGS_SUMMARY_LIMIT ? s.substring(0, ToolExecHandler.ARGS_SUMMARY_LIMIT) + "..." : s;
-    }
-
-    /** 发出事件。 */
     private void emit(TurnEvent event) {
         if (emitter != null) {
             emitter.accept(event);
         }
     }
 
-    /** 关闭线程池。 */
     public void shutdown() {
         parallelExecutor.shutdown();
         try {

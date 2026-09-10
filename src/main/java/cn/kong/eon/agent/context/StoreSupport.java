@@ -1,6 +1,6 @@
 package cn.kong.eon.agent.context;
 
-import cn.kong.eon.model.ArtifactRef;
+import cn.kong.eon.store.ArtifactRef;
 
 /**
  * 大内容落盘能力。由 ArtifactStore 实现并注入。

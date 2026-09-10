@@ -1,7 +1,7 @@
 package cn.kong.eon.agent.flush;
 
-import cn.kong.eon.model.SessionState;
-import cn.kong.eon.model.ToolExecResult;
+import cn.kong.eon.session.SessionState;
+import cn.kong.eon.agent.exec.ToolExecResult;
 import cn.kong.eon.store.JsonlStore;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
@@ -31,6 +31,14 @@ public class MessageFlusher {
         var pendingCalls = state.getPendingToolCalls();
         boolean hasText = assistantText != null && !assistantText.isBlank();
         boolean hasCalls = pendingCalls != null && !pendingCalls.isEmpty();
+
+        // 异常路径下可能既无文本又无工具调用，直接清理并返回
+        if (!hasText && !hasCalls) {
+            state.setPendingToolCalls(null);
+            state.setLastToolResults(null);
+            state.setLastAssistantText(null);
+            return;
+        }
 
         List<ToolExecResult> toolResults = state.getLastToolResults();
         Set<String> succeeded = succeededIds(toolResults);

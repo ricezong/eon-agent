@@ -1,10 +1,7 @@
 package cn.kong.eon.store;
 
-import cn.kong.eon.config.ObjectMapperConfig;
-import cn.kong.eon.model.CompressionState;
-import cn.kong.eon.model.SessionSnapshot;
-import cn.kong.eon.model.TodoItem;
-import cn.kong.eon.model.TokenUsage;
+import cn.kong.eon.agent.context.CompressionState;
+import cn.kong.eon.llm.TokenUsage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
@@ -27,9 +24,10 @@ public class SessionSnapshotStore {
     private final Path file;
     private final ObjectMapper mapper;
 
-    public SessionSnapshotStore(Path sessionFile) {
+    /** 带 ObjectMapper 注入的构造函数。 */
+    public SessionSnapshotStore(Path sessionFile, ObjectMapper objectMapper) {
         this.file = sessionFile;
-        this.mapper = ObjectMapperConfig.getObjectMapper().copy().enable(SerializationFeature.INDENT_OUTPUT);
+        this.mapper = objectMapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
         this.mapper.findAndRegisterModules();
     }
 

@@ -6,7 +6,7 @@ import cn.kong.eon.agent.context.ContextWindow;
 import cn.kong.eon.agent.context.block.CompressionLevel;
 import cn.kong.eon.agent.context.block.ContextBlock;
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.model.CompressionState;
+import cn.kong.eon.agent.context.CompressionState;
 
 import java.util.List;
 

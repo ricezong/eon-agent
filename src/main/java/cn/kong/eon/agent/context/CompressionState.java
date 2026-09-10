@@ -1,4 +1,4 @@
-package cn.kong.eon.model;
+package cn.kong.eon.agent.context;
 
 /**
  * 压缩状态：最新摘要与回放水位线。

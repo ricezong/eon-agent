@@ -1,4 +1,6 @@
-package cn.kong.eon.model;
+package cn.kong.eon.store;
+
+import cn.kong.eon.agent.context.CompressionState;
 
 /**
  * 会话恢复模式：决定账本回放的起点。按快照自洽性自动选择 RESUME 或 LOAD。

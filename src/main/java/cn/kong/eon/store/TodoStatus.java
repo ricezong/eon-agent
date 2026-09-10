@@ -1,4 +1,4 @@
-package cn.kong.eon.model;
+package cn.kong.eon.store;
 
 /**
  * Todo 任务状态。

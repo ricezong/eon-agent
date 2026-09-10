@@ -1,8 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.config.ObjectMapperConfig;
-import cn.kong.eon.model.SessionState;
-import cn.kong.eon.model.ToolPermission;
+import cn.kong.eon.session.SessionState;
+import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -32,22 +31,28 @@ public class WebSearchTool implements ToolExecutor {
     private static final String SEARCH_URL = "https://qianfan.baidubce.com/v2/ai_search/web_search";
     private static final int TIMEOUT_SECONDS = 30;
 
-    private static final ObjectMapper mapper = ObjectMapperConfig.getObjectMapper();
-
+    private final ObjectMapper mapper;
     private final HttpClient httpClient;
     private final String apiKey;
-    /** 以下三项是工具参数缺省值，由 agent.yaml 的 web_search 配置注入 */
+    /** 以下三项是工具参数缺省值，由 application.yml 的 eon.web_search 配置注入 */
     private final String searchSource;
     private final int defaultTopK;
     private final String defaultRecencyFilter;
 
     public WebSearchTool(String apiKey, String searchSource, int defaultTopK, String defaultRecencyFilter,
                          HttpClient httpClient) {
+        this(apiKey, searchSource, defaultTopK, defaultRecencyFilter, httpClient, null);
+    }
+
+    /** 完整构造函数，注入 ObjectMapper。 */
+    public WebSearchTool(String apiKey, String searchSource, int defaultTopK, String defaultRecencyFilter,
+                         HttpClient httpClient, ObjectMapper objectMapper) {
         this.apiKey = apiKey != null ? apiKey : "";
         this.searchSource = searchSource;
         this.defaultTopK = defaultTopK;
         this.defaultRecencyFilter = defaultRecencyFilter;
         this.httpClient = httpClient;
+        this.mapper = objectMapper;
     }
 
     @Tool(name = "web_search", value = {
@@ -73,6 +78,15 @@ public class WebSearchTool implements ToolExecutor {
                 ToolPermission.READONLY);
     }
 
+    /** 带 ObjectMapper 注入的 descriptor 工厂方法。 */
+    public static ToolDescriptor descriptor(String apiKey, String searchSource, int defaultTopK,
+                                            String defaultRecencyFilter,
+                                            HttpClient httpClient, ObjectMapper objectMapper) {
+        return ToolDescriptor.fromAnnotated(
+                new WebSearchTool(apiKey, searchSource, defaultTopK, defaultRecencyFilter, httpClient, objectMapper),
+                ToolPermission.READONLY);
+    }
+
     @Override
     public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         String query = (String) arguments.get("query");
@@ -81,7 +95,7 @@ public class WebSearchTool implements ToolExecutor {
         }
 
         if (apiKey == null || apiKey.isBlank()) {
-            return ToolOutcome.failure("百度千帆 API Key 未配置（请检查 agent.yaml 的 web_search.api_key 或环境变量 QIANFAN_API_KEY）");
+            return ToolOutcome.failure("百度千帆 API Key 未配置（请检查 application.yml 的 eon.web_search.api_key 或环境变量 QIANFAN_API_KEY）");
         }
 
         int topK = arguments.containsKey("max_results")

@@ -1,4 +1,4 @@
-package cn.kong.eon.model;
+package cn.kong.eon.tool;
 
 /**
  * 工具权限分级：READONLY → RESTRICTED_WRITE → DESTRUCTIVE。

@@ -5,7 +5,7 @@ import cn.kong.eon.agent.context.StoreSupport;
 import cn.kong.eon.agent.context.block.BlockKind;
 import cn.kong.eon.agent.context.block.BlockProjector;
 import cn.kong.eon.agent.context.block.ContextBlock;
-import cn.kong.eon.model.ArtifactRef;
+import cn.kong.eon.store.ArtifactRef;
 import dev.langchain4j.data.message.ChatMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

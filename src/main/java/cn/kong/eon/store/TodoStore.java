@@ -1,7 +1,5 @@
 package cn.kong.eon.store;
 
-import cn.kong.eon.model.TodoItem;
-import cn.kong.eon.model.TodoStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

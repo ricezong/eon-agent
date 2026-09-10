@@ -1,6 +1,5 @@
 package cn.kong.eon.tool;
 
-import cn.kong.eon.config.ObjectMapperConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.model.chat.request.json.*;
@@ -17,7 +16,11 @@ import java.util.Map;
 public class ArgumentSanitizer {
     private static final Logger log = LoggerFactory.getLogger(ArgumentSanitizer.class);
 
-    public ArgumentSanitizer() {
+    private final ObjectMapper objectMapper;
+
+    /** 构造注入 ObjectMapper。 */
+    public ArgumentSanitizer(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
     }
 
     /** 根据 Schema 清洗参数，返回新 Map（不修改原 Map）。 */
@@ -69,7 +72,7 @@ public class ArgumentSanitizer {
         if (raw instanceof List<?>) return raw;
         if (raw instanceof String s) {
             try {
-                Object parsed = ObjectMapperConfig.getObjectMapper().readValue(s.trim(), Object.class);
+                Object parsed = objectMapper.readValue(s.trim(), Object.class);
                 if (parsed instanceof List<?> l) return l;
             } catch (Exception ignored) {
             }

@@ -1,146 +1,101 @@
 package cn.kong.eon.config;
 
 import cn.kong.eon.agent.context.block.CompressionLevel;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
-import java.io.InputStream;
 import java.util.*;
 
 /**
- * Agent 配置加载器。从 agent.yaml 加载，Jackson YAML POJO 绑定，snake_case 映射驼峰。
- * 支持 {@code ${VAR}} / {@code ${VAR:-default}} 环境变量引用。
+ * Agent 配置。通过 Spring Boot {@code @ConfigurationProperties(prefix = "eon")} 自动绑定
+ * application.yml 中的 {@code eon.*} 配置项。
+ * <p>
+ * 环境变量引用 {@code ${VAR}} / {@code ${VAR:-default}} 由 Spring Boot 原生占位符机制处理。
  */
+@ConfigurationProperties(prefix = "eon")
 public class AgentConfig {
 
-    private static final Logger log = LoggerFactory.getLogger(AgentConfig.class);
-
-    private LlmConfig llm;
-    private ContextConfig context;
-    private LoopConfig loop;
-    private LoopDetectConfig loopDetect;
-    private RetryConfig retry;
-    private StorageConfig storage;
-    private ToolsConfig tools;
-    private McpConfig mcp;
-    private WebSearchConfig webSearch;
-    private ModeConfig mode;
-    private BudgetConfig budget;
-
-    /** 从输入流加载配置：反序列化 → 校验 → 环境变量解析。 */
-    public static AgentConfig load(InputStream yamlStream) {
-        ObjectMapper mapper = ObjectMapperConfig.getYamlMapper();
-        try {
-            AgentConfig config = mapper.readValue(yamlStream, AgentConfig.class);
-            if (config == null) {
-                throw new IllegalStateException("agent.yaml 加载结果为空，请检查配置文件内容");
-            }
-            config.validate();
-            config.resolveEnvVars();
-            return config;
-        } catch (Exception e) {
-            throw new IllegalStateException("agent.yaml 加载失败: " + e.getMessage(), e);
-        }
-    }
-
-    /** 从 classpath 加载配置文件。 */
-    public static AgentConfig loadFromClasspath(String path) {
-        try (InputStream is = AgentConfig.class.getClassLoader().getResourceAsStream(path)) {
-            if (is == null) throw new IllegalStateException("classpath 中找不到配置: " + path);
-            return load(is);
-        } catch (IllegalStateException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IllegalStateException("加载配置失败: " + path, e);
-        }
-    }
-
-    /** 为缺失的配置节点填充默认值。 */
-    private void validate() {
-        if (llm == null) llm = new LlmConfig();
-        if (context == null) context = new ContextConfig();
-        if (context.getCompression() == null) context.setCompression(new ContextConfig.Compression());
-        if (loop == null) loop = new LoopConfig();
-        if (loopDetect == null) loopDetect = new LoopDetectConfig();
-        if (retry == null) retry = new RetryConfig();
-        if (storage == null) storage = new StorageConfig();
-        if (tools == null) tools = new ToolsConfig();
-        if (mcp == null) mcp = new McpConfig();
-        if (webSearch == null) webSearch = new WebSearchConfig();
-        if (mode == null) mode = new ModeConfig();
-        if (budget == null) budget = new BudgetConfig();
-    }
-
-    /** 对敏感字段（api_key）解析环境变量引用。 */
-    private void resolveEnvVars() {
-        if (llm != null) {
-            llm.apiKey = resolveEnv(llm.apiKey);
-        }
-        if (webSearch != null) {
-            webSearch.apiKey = resolveEnv(webSearch.apiKey);
-        }
-    }
-
-    /** 解析 ${VAR} 和 ${VAR:-default} 两种形式的环境变量引用。 */
-    static String resolveEnv(String value) {
-        if (value == null) return "";
-        if (!value.startsWith("${") || !value.endsWith("}")) return value;
-
-        String inner = value.substring(2, value.length() - 1);
-        String envName;
-        String defaultValue = null;
-
-        int sepIdx = inner.indexOf(":-");
-        if (sepIdx >= 0) {
-            envName = inner.substring(0, sepIdx);
-            defaultValue = inner.substring(sepIdx + 2);
-        } else {
-            envName = inner;
-        }
-
-        String envValue = System.getenv(envName);
-        if (envValue != null) return envValue;
-        if (defaultValue != null) return defaultValue;
-
-        log.warn("环境变量 '{}' 未设置，使用空字符串", envName);
-        return "";
-    }
+    private LlmConfig llm = new LlmConfig();
+    private ContextConfig context = new ContextConfig();
+    private LoopConfig loop = new LoopConfig();
+    private LoopDetectConfig loopDetect = new LoopDetectConfig();
+    private RetryConfig retry = new RetryConfig();
+    private StorageConfig storage = new StorageConfig();
+    private ToolsConfig tools = new ToolsConfig();
+    private McpConfig mcp = new McpConfig();
+    private WebSearchConfig webSearch = new WebSearchConfig();
+    private ModeConfig mode = new ModeConfig();
+    private BudgetConfig budget = new BudgetConfig();
 
     public LlmConfig getLlm() {
         return llm;
+    }
+
+    public void setLlm(LlmConfig llm) {
+        this.llm = llm;
     }
 
     public ContextConfig getContext() {
         return context;
     }
 
+    public void setContext(ContextConfig context) {
+        this.context = context;
+    }
+
     public LoopConfig getLoop() {
         return loop;
+    }
+
+    public void setLoop(LoopConfig loop) {
+        this.loop = loop;
     }
 
     public LoopDetectConfig getLoopDetect() {
         return loopDetect;
     }
 
+    public void setLoopDetect(LoopDetectConfig loopDetect) {
+        this.loopDetect = loopDetect;
+    }
+
     public RetryConfig getRetry() {
         return retry;
+    }
+
+    public void setRetry(RetryConfig retry) {
+        this.retry = retry;
     }
 
     public StorageConfig getStorage() {
         return storage;
     }
 
+    public void setStorage(StorageConfig storage) {
+        this.storage = storage;
+    }
+
     public ToolsConfig getTools() {
         return tools;
+    }
+
+    public void setTools(ToolsConfig tools) {
+        this.tools = tools;
     }
 
     public McpConfig getMcp() {
         return mcp;
     }
 
+    public void setMcp(McpConfig mcp) {
+        this.mcp = mcp;
+    }
+
     public WebSearchConfig getWebSearch() {
         return webSearch;
+    }
+
+    public void setWebSearch(WebSearchConfig webSearch) {
+        this.webSearch = webSearch;
     }
 
     /** 是否启用会话快照。 */
@@ -148,53 +103,25 @@ public class AgentConfig {
         return mode != null && mode.snapshotEnabled;
     }
 
-    public BudgetConfig getBudget() {
-        return budget;
-    }
-
-    public void setLlm(LlmConfig llm) {
-        this.llm = llm;
-    }
-
-    public void setContext(ContextConfig context) {
-        this.context = context;
-    }
-
-    public void setLoop(LoopConfig loop) {
-        this.loop = loop;
-    }
-
-    public void setLoopDetect(LoopDetectConfig loopDetect) {
-        this.loopDetect = loopDetect;
-    }
-
-    public void setRetry(RetryConfig retry) {
-        this.retry = retry;
-    }
-
-    public void setStorage(StorageConfig storage) {
-        this.storage = storage;
-    }
-
-    public void setTools(ToolsConfig tools) {
-        this.tools = tools;
-    }
-
-    public void setMcp(McpConfig mcp) {
-        this.mcp = mcp;
-    }
-
-    public void setWebSearch(WebSearchConfig webSearch) {
-        this.webSearch = webSearch;
+    public ModeConfig getMode() {
+        return mode;
     }
 
     public void setMode(ModeConfig mode) {
         this.mode = mode;
     }
 
+    public BudgetConfig getBudget() {
+        return budget;
+    }
+
     public void setBudget(BudgetConfig budget) {
         this.budget = budget;
     }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  内部配置类
+    // ════════════════════════════════════════════════════════════════════
 
     /** 运行模式配置。 */
     public static class ModeConfig {
@@ -217,6 +144,7 @@ public class AgentConfig {
         private double temperature = 0.7;
         private int timeout = 120;
         private int maxTokens = 12000;
+        private boolean streamEnabled = true;
 
         public String getProvider() {
             return provider;
@@ -272,6 +200,14 @@ public class AgentConfig {
 
         public void setMaxTokens(int v) {
             this.maxTokens = v;
+        }
+
+        public boolean isStreamEnabled() {
+            return streamEnabled;
+        }
+
+        public void setStreamEnabled(boolean v) {
+            this.streamEnabled = v;
         }
     }
 
@@ -515,7 +451,6 @@ public class AgentConfig {
         public void setCooldownTurns(int v) {
             this.cooldownTurns = v;
         }
-
     }
 
     public static class RetryConfig {
@@ -676,7 +611,7 @@ public class AgentConfig {
             return servers;
         }
 
-        /** Jackson 反序列化时不把 map key 注入 value 的 key 字段，这里补写。 */
+        /** Spring Boot 绑定时不把 map key 注入 value 的 key 字段，这里补写。 */
         public void setServers(Map<String, McpServerConfig> v) {
             this.servers = v;
             if (v != null) {

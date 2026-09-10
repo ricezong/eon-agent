@@ -1,6 +1,5 @@
 package cn.kong.eon.tool;
 
-import cn.kong.eon.model.ToolPermission;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;
 

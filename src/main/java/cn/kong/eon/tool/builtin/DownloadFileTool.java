@@ -1,7 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.model.SessionState;
-import cn.kong.eon.model.ToolPermission;
+import cn.kong.eon.session.SessionState;
+import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.tool.PathResolver;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
@@ -113,8 +113,9 @@ public class DownloadFileTool implements ToolExecutor {
 
             log.info("download_file 完成: {} ({} 字节)", localPath, bytesWritten);
 
-            return ToolOutcome.success("文件下载成功: " + fileName
-                    + "（" + formatSize(bytesWritten) + "）");
+            String sizeDesc = formatSize(bytesWritten);
+            String modelContent = "文件下载成功: " + fileName + "（" + sizeDesc + "）";
+            return ToolOutcome.successFile(modelContent, fileName, sizeDesc);
 
         } catch (java.net.ConnectException e) {
             log.error("download_file 连接失败: {}", e.getMessage());

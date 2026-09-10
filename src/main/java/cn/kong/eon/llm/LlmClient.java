@@ -2,33 +2,45 @@ package cn.kong.eon.llm;
 
 import cn.kong.eon.agent.context.LlmSupport;
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.model.TokenUsage;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.exception.NonRetriableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+
+import org.springframework.stereotype.Component;
 
 /**
  * LLM 客户端封装。基于 LangChain4j OpenAiChatModel，含指数退避重试。
+ * 支持同步与流式两种调用模式。
  */
+@Component
 public class LlmClient implements LlmSupport {
     private static final Logger log = LoggerFactory.getLogger(LlmClient.class);
 
-    private final ChatModel chatModel;
     private final AgentConfig.RetryConfig retryConfig;
+    private final OpenAiChatModel chatModel;
+    private final StreamingChatModel streamingChatModel;
+    private final boolean streamEnabled;
 
     public LlmClient(AgentConfig config) {
         AgentConfig.LlmConfig llmConfig = config.getLlm();
         this.retryConfig = config.getRetry();
+        this.streamEnabled = llmConfig.isStreamEnabled();
 
         this.chatModel = OpenAiChatModel.builder()
                 .baseUrl(llmConfig.getBaseUrl())
@@ -41,35 +53,43 @@ public class LlmClient implements LlmSupport {
                 .logResponses(false)
                 .build();
 
-        log.info("LlmClient 已初始化: provider={}, model={}, baseUrl={}",
-                llmConfig.getProvider(), llmConfig.getModelName(), llmConfig.getBaseUrl());
+        if (streamEnabled) {
+            this.streamingChatModel = OpenAiStreamingChatModel.builder()
+                    .baseUrl(llmConfig.getBaseUrl())
+                    .apiKey(llmConfig.getApiKey())
+                    .modelName(llmConfig.getModelName())
+                    .temperature(llmConfig.getTemperature())
+                    .maxTokens(llmConfig.getMaxTokens())
+                    .timeout(Duration.ofSeconds(llmConfig.getTimeout()))
+                    .build();
+            log.info("LlmClient 已初始化（流式模式）: provider={}, model={}",
+                    llmConfig.getProvider(), llmConfig.getModelName());
+        } else {
+            this.streamingChatModel = null;
+            log.info("LlmClient 已初始化（同步模式）: provider={}, model={}",
+                    llmConfig.getProvider(), llmConfig.getModelName());
+        }
     }
 
-    /** 调用 LLM，含指数退避重试，不可重试异常立即失败。 */
+    /** 是否启用流式。 */
+    public boolean isStreamEnabled() {
+        return streamEnabled;
+    }
+
+    /** 同步调用 LLM，含指数退避重试。 */
     public LlmResponse chat(List<ChatMessage> messages, List<ToolSpecification> tools) {
         int attempt = 0;
         Exception lastException = null;
 
         while (attempt < retryConfig.getAttempts()) {
             try {
-                ChatRequest.Builder requestBuilder = ChatRequest.builder()
-                        .messages(messages);
-
+                ChatRequest.Builder requestBuilder = ChatRequest.builder().messages(messages);
                 if (tools != null && !tools.isEmpty()) {
                     requestBuilder.toolSpecifications(tools);
                 }
-
-                ChatRequest request = requestBuilder.build();
-                ChatResponse response = chatModel.chat(request);
-
+                ChatResponse response = chatModel.chat(requestBuilder.build());
                 AiMessage aiMessage = response.aiMessage();
-                TokenUsage usage = new TokenUsage();
-                if (response.tokenUsage() != null) {
-                    usage.setPromptTokens(response.tokenUsage().inputTokenCount());
-                    usage.setCompletionTokens(response.tokenUsage().outputTokenCount());
-                    usage.setTotalTokens(response.tokenUsage().totalTokenCount());
-                }
-
+                TokenUsage usage = extractUsage(response);
                 String finishReason = response.finishReason() != null ? response.finishReason().name() : "STOP";
 
                 log.debug("LLM 响应: 文本长度={}, 工具调用={}, 用量={}",
@@ -80,7 +100,6 @@ public class LlmClient implements LlmSupport {
                 return LlmResponse.of(aiMessage, usage, finishReason);
 
             } catch (NonRetriableException e) {
-                // 不可重试异常（认证失败、请求格式错误等），立即失败
                 log.error("LLM 调用失败（不可重试）: {} - {}", e.getClass().getSimpleName(), e.getMessage());
                 throw new LlmStalledException("LLM 调用失败（不可重试）: " + e.getMessage());
             } catch (Exception e) {
@@ -88,11 +107,9 @@ public class LlmClient implements LlmSupport {
                 attempt++;
                 log.warn("LLM 调用失败（尝试 {}/{}）: {} - {}", attempt, retryConfig.getAttempts(),
                         e.getClass().getSimpleName(), e.getMessage());
-
                 if (attempt < retryConfig.getAttempts()) {
-                    long delay = calculateDelay(attempt);
                     try {
-                        Thread.sleep(delay);
+                        Thread.sleep(calculateDelay(attempt));
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("LLM 调用被中断", ie);
@@ -103,6 +120,75 @@ public class LlmClient implements LlmSupport {
 
         log.error("LLM 调用连续失败 {} 次，模型不可用", retryConfig.getAttempts(), lastException);
         throw new LlmStalledException("LLM 调用连续失败 " + retryConfig.getAttempts() + " 次，模型不可用");
+    }
+
+    /**
+     * 流式调用 LLM。
+     *
+     * @param messages       上下文消息
+     * @param tools          工具规格
+     * @param onTextDelta    文本增量回调
+     * @param onThinkingDelta thinking 增量回调
+     * @return 完整的 LLM 响应
+     */
+    public LlmResponse streamChat(List<ChatMessage> messages, List<ToolSpecification> tools,
+                                   Consumer<String> onTextDelta,
+                                   Consumer<String> onThinkingDelta) {
+        ChatRequest.Builder requestBuilder = ChatRequest.builder().messages(messages);
+        if (tools != null && !tools.isEmpty()) {
+            requestBuilder.toolSpecifications(tools);
+        }
+        ChatRequest request = requestBuilder.build();
+
+        CompletableFuture<LlmResponse> future = new CompletableFuture<>();
+        StringBuilder textBuilder = new StringBuilder();
+        AtomicReference<AiMessage> aiMessageRef = new AtomicReference<>();
+        AtomicReference<dev.langchain4j.model.output.TokenUsage> usageRef = new AtomicReference<>();
+        AtomicReference<String> finishReasonRef = new AtomicReference<>("STOP");
+
+        streamingChatModel.chat(request, new StreamingChatResponseHandler() {
+            @Override
+            public void onPartialResponse(String partialResponse) {
+                textBuilder.append(partialResponse);
+                if (onTextDelta != null) {
+                    onTextDelta.accept(partialResponse);
+                }
+            }
+
+            @Override
+            public void onCompleteResponse(ChatResponse completeResponse) {
+                AiMessage ai = completeResponse.aiMessage();
+                aiMessageRef.set(ai);
+                usageRef.set(completeResponse.tokenUsage());
+                if (completeResponse.finishReason() != null) {
+                    finishReasonRef.set(completeResponse.finishReason().name());
+                }
+                // 如果有工具调用但没文本，onPartialResponse 不会被调用
+                if (ai.text() != null && !ai.text().isBlank() && onTextDelta != null) {
+                    // 已通过增量推送，不需要再发
+                }
+
+                TokenUsage usage = new TokenUsage();
+                var rawUsage = usageRef.get();
+                if (rawUsage != null) {
+                    usage.setPromptTokens(rawUsage.inputTokenCount());
+                    usage.setCompletionTokens(rawUsage.outputTokenCount());
+                    usage.setTotalTokens(rawUsage.totalTokenCount());
+                }
+                future.complete(LlmResponse.of(ai, usage, finishReasonRef.get()));
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                future.completeExceptionally(error);
+            }
+        });
+
+        try {
+            return future.get(retryConfig.getAttempts() * 30L, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new LlmStalledException("LLM 流式调用失败: " + e.getMessage());
+        }
     }
 
     /** 无工具调用，返回模型文本回复。 */
@@ -117,5 +203,15 @@ public class LlmClient implements LlmSupport {
         long base = (long) (retryConfig.getMinDelayMs() * Math.pow(2, attempt - 1));
         long jitter = (long) (base * retryConfig.getJitter() * (Math.random() - 0.5) * 2);
         return Math.min(retryConfig.getMaxDelayMs(), base + jitter);
+    }
+
+    private static TokenUsage extractUsage(ChatResponse response) {
+        TokenUsage usage = new TokenUsage();
+        if (response.tokenUsage() != null) {
+            usage.setPromptTokens(response.tokenUsage().inputTokenCount());
+            usage.setCompletionTokens(response.tokenUsage().outputTokenCount());
+            usage.setTotalTokens(response.tokenUsage().totalTokenCount());
+        }
+        return usage;
     }
 }

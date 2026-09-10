@@ -1,8 +1,8 @@
 package cn.kong.eon.agent.context;
 
-import cn.kong.eon.config.ObjectMapperConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -10,16 +10,22 @@ import java.util.Map;
 /**
  * 内容压缩。两种手法：headTail 面向普通文本，skeleton 面向工具参数 JSON。
  */
-public final class ContentTrimmer {
+@Component
+public class ContentTrimmer {
 
     /** 参数中超过该长度的字符串字段才被视为大字段并替换。 */
     private static final int LONG_FIELD_CHARS = 200;
 
-    private static final ObjectMapper objectMapper = ObjectMapperConfig.getObjectMapper();
+    private final ObjectMapper objectMapper;
 
-    public ContentTrimmer() {}
+    /** Spring 构造注入 ObjectMapper。 */
+    public ContentTrimmer(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
-    // ═══════════════ 普通文本 ═══════════════
+    // ═══════════════════════════════════════════════════════════════
+    //  普通文本
+    // ═══════════════════════════════════════════════════════════════
 
     /**
      * 头尾保留截断：保留开头与结尾，中段以省略号替代。
@@ -38,7 +44,9 @@ public final class ContentTrimmer {
                 + content.substring(content.length() - tailChars);
     }
 
-    // ═══════════════ 工具参数 JSON ═══════════════
+    // ═══════════════════════════════════════════════════════════════
+    //  工具参数 JSON
+    // ═══════════════════════════════════════════════════════════════
 
     /**
      * 参数骨架化：把 JSON 中过长的字符串字段替换为一行说明，其余字段与结构原样保留。

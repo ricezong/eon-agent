@@ -1,7 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.model.SessionState;
-import cn.kong.eon.model.ToolPermission;
+import cn.kong.eon.session.SessionState;
+import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -45,7 +45,7 @@ public class ReadFileTool implements ToolExecutor {
                 return ToolOutcome.failure("找不到 artifact 引用: " + refId);
             }
             log.info("read_file: artifact://{} ({} 字符)", refId, content.length());
-            return paginate(content, offset, limit);
+            return paginate(content, offset, limit, refId);
         }
 
         PathResolver resolver = context.pathResolver();
@@ -76,11 +76,22 @@ public class ReadFileTool implements ToolExecutor {
     /**
      * 行分页：offset 从 1 开始，limit 上限 DEFAULT_LIMIT。截断时附带页脚提示。
      */
-    private ToolOutcome paginate(String content, Integer offset, Integer limit) {
+        ToolOutcome paginate(String content, Integer offset, Integer limit) {
+        return paginate(content, offset, limit, null);
+    }
+
+    /**
+     * 行分页：offset 从 1 开始，limit 上限 DEFAULT_LIMIT。截断时附带页脚提示。
+     * artifactId 非空时，structuredContent 为 artifact 类型，前端可点击展开原文。
+     */
+    private ToolOutcome paginate(String content, Integer offset, Integer limit, String artifactId) {
         String[] lines = content.split("\n", -1);
         int totalLines = lines.length;
 
         if (totalLines == 1 && lines[0].isEmpty()) {
+            if (artifactId != null) {
+                return ToolOutcome.successArtifact("内容为空。", artifactId);
+            }
             return ToolOutcome.success("内容为空。");
         }
 
@@ -90,7 +101,11 @@ public class ReadFileTool implements ToolExecutor {
 
         if (startLine > totalLines) {
             log.info("read_file: offset {} 超出总行数 {}", startLine, totalLines);
-            return ToolOutcome.success("起始行 " + startLine + " 超出总行数（共 " + totalLines + " 行）。");
+            String msg = "起始行 " + startLine + " 超出总行数（共 " + totalLines + " 行）。";
+            if (artifactId != null) {
+                return ToolOutcome.successArtifact(msg, artifactId);
+            }
+            return ToolOutcome.success(msg);
         }
 
         int count = endLine - startLine + 1;
@@ -104,6 +119,9 @@ public class ReadFileTool implements ToolExecutor {
         }
 
         log.info("read_file: 第 {}-{} 行，共 {} 行", startLine, endLine, totalLines);
+        if (artifactId != null) {
+            return ToolOutcome.successArtifact(result, artifactId);
+        }
         return ToolOutcome.success(result);
     }
 

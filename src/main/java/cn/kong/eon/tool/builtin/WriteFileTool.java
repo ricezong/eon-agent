@@ -1,7 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.model.SessionState;
-import cn.kong.eon.model.ToolPermission;
+import cn.kong.eon.session.SessionState;
+import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
@@ -49,7 +49,9 @@ public class WriteFileTool implements ToolExecutor {
             int lineCount = contents.split("\n", -1).length;
             log.info("write: {} ({} 行, {} 字符)", filePath, lineCount, contents.length());
 
-            return ToolOutcome.success("文件写入成功: " + filePath + "（" + lineCount + " 行）");
+            String modelContent = "文件写入成功: " + filePath + "（" + lineCount + " 行，" + contents.length() + " 字符）";
+            String sizeDesc = lineCount + " 行, " + contents.length() + " 字符";
+            return ToolOutcome.successFile(modelContent, filePath, sizeDesc);
 
         } catch (IOException e) {
             log.error("write 失败: {}", e.getMessage());

@@ -1,5 +1,7 @@
-package cn.kong.eon.model;
+package cn.kong.eon.store;
 
+import cn.kong.eon.agent.context.CompressionState;
+import cn.kong.eon.llm.TokenUsage;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.List;

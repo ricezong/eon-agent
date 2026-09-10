@@ -5,7 +5,7 @@ import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.stop.StopCategory;
 import cn.kong.eon.agent.exec.ToolHealthTracker;
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.model.SessionState;
+import cn.kong.eon.session.SessionState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

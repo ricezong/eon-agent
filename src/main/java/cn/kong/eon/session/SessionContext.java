@@ -15,23 +15,22 @@ import cn.kong.eon.agent.hook.premodel.BudgetHook;
 import cn.kong.eon.agent.hook.premodel.ContextCompressionHook;
 import cn.kong.eon.agent.hook.premodel.TodoHook;
 import cn.kong.eon.agent.hook.pretool.GateHook;
-import cn.kong.eon.agent.turn.Slf4jTurnListener;
-import cn.kong.eon.agent.turn.TurnListener;
+import cn.kong.eon.agent.event.Slf4jTurnListener;
+import cn.kong.eon.agent.event.TurnListener;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
-import cn.kong.eon.model.RestoreMode;
-import cn.kong.eon.model.SessionSnapshot;
-import cn.kong.eon.model.SessionState;
+import cn.kong.eon.store.RestoreMode;
+import cn.kong.eon.store.SessionSnapshot;
 import cn.kong.eon.store.ArtifactStore;
 import cn.kong.eon.store.JsonlStore;
 import cn.kong.eon.store.MemoryStore;
 import cn.kong.eon.store.SessionSnapshotStore;
 import cn.kong.eon.store.SessionRegistry.SessionSummary;
 import cn.kong.eon.store.TodoStore;
-import cn.kong.eon.tool.CliInteractionCallback;
 import cn.kong.eon.tool.PathResolver;
 import cn.kong.eon.tool.ToolContext;
 import cn.kong.eon.tool.ToolRegistry;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,6 +39,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -57,7 +57,7 @@ public class SessionContext {
     private final MemoryStore memoryStore;
     private final ContentTrimmer compressor;
     private final String systemPrompt;
-    private final CliInteractionCallback cliInteractionCallback;
+    private final ObjectMapper objectMapper;
 
     // ── 会话级组件
     private final String sessionId;
@@ -75,18 +75,10 @@ public class SessionContext {
     private final TodoSnapshotHook todoSnapshotHook;
     private final EonAgent agent;
     private final ToolContext toolContext;
+    private final List<TurnListener> externalListeners;
 
     /**
-     * 创建会话上下文。
-     *
-     * @param appConfig       应用配置
-     * @param llmClient       LLM 客户端（应用级，复用）
-     * @param toolRegistry    工具注册表（应用级，复用）
-     * @param memoryStore     记忆存储（应用级，复用）
-     * @param compressor      内容裁剪器（应用级，复用）
-     * @param systemPrompt    系统提示词（应用级，复用）
-     * @param cliCallback     CLI 交互回调（应用级，复用）
-     * @param resumedSession  恢复的会话摘要，新会话为 null
+     * 创建会话上下文（带外部 TurnListener 和 ObjectMapper 注入）。
      */
     public SessionContext(AgentConfig appConfig,
                           LlmClient llmClient,
@@ -94,16 +86,18 @@ public class SessionContext {
                           MemoryStore memoryStore,
                           ContentTrimmer compressor,
                           String systemPrompt,
-                          CliInteractionCallback cliCallback,
-                          SessionSummary resumedSession) {
+                          SessionSummary resumedSession,
+                          List<TurnListener> externalListeners,
+                          ObjectMapper objectMapper) {
         this.config = appConfig;
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.memoryStore = memoryStore;
         this.compressor = compressor;
         this.systemPrompt = systemPrompt;
-        this.cliInteractionCallback = cliCallback;
         this.resumedSession = resumedSession;
+        this.externalListeners = externalListeners != null ? externalListeners : List.of();
+        this.objectMapper = objectMapper;
 
         // ── 1. 会话 ID 与目录
         this.sessionId = resumedSession != null ? resumedSession.sessionId() : generateSessionId();
@@ -118,7 +112,7 @@ public class SessionContext {
         // ── 2. 存储
         this.todoStore = new TodoStore();
         this.artifactStore = new ArtifactStore(sessionDir.resolve("artifacts"));
-        this.snapshotStore = new SessionSnapshotStore(sessionDir.resolve("session.json"));
+        this.snapshotStore = new SessionSnapshotStore(sessionDir.resolve("session.json"), objectMapper);
         this.contextPipeline = createContextPipeline();
 
         // ── 3. 快照 → 回放起点
@@ -135,7 +129,7 @@ public class SessionContext {
 
         // ── 4. JsonlStore（回放）
         Path jsonlPath = sessionDir.resolve("transcript.jsonl");
-        this.jsonlStore = new JsonlStore(jsonlPath, contextPipeline, replayFrom);
+        this.jsonlStore = new JsonlStore(jsonlPath, contextPipeline, replayFrom, objectMapper);
         this.transcriptPath = jsonlPath.toAbsolutePath().toString();
         this.sessionState = SessionState.create(sessionId, "");
         if (snapshot != null) {
@@ -164,7 +158,7 @@ public class SessionContext {
         // ── 6. 工具上下文
         this.toolContext = new ToolContext(
                 todoStore, artifactStore, memoryStore,
-                jsonlStore, snapshotStore, pathResolver, cliInteractionCallback);
+                jsonlStore, snapshotStore, pathResolver, null);
 
         // ── 7. 运行时组件
         var ldc = config.getLoopDetect();
@@ -173,15 +167,19 @@ public class SessionContext {
         this.todoSnapshotHook = new TodoSnapshotHook(config, snapshotStore, todoStore);
         this.compressionPolicy = createCompressionPolicy();
 
-        List<TurnListener> listeners = List.of(new Slf4jTurnListener());
+        // 组装 listeners：Slf4j + 外部 SSE listeners
+        List<TurnListener> listeners = new ArrayList<>();
+        listeners.add(new Slf4jTurnListener());
+        listeners.addAll(externalListeners);
+
         this.agent = new EonAgent(
                 config, llmClient, toolRegistry,
                 jsonlStore, systemPrompt,
-                toolContext, tracker, listeners);
+                toolContext, tracker, listeners, objectMapper);
         registerHooks();
 
-        log.info("会话 {} 已就绪: {} 个工具, {} 个 hook",
-                sessionId, toolRegistry.getAllToolNames().size(), agent.getHookCount());
+        log.info("会话 {} 已就绪: {} 个工具, {} 个 hook, {} 个 listener",
+                sessionId, toolRegistry.getAllToolNames().size(), agent.getHookCount(), listeners.size());
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -212,10 +210,19 @@ public class SessionContext {
     //  会话级资源关闭
     // ═══════════════════════════════════════════════════════════════════
 
-    /** 关闭会话级资源（线程池等），不关闭应用级资源（工具、MCP）。 */
     public void close() {
         agent.shutdown();
         log.info("会话 {} 资源已释放", sessionId);
+    }
+
+    /** 动态注册 TurnListener（用于 SSE 推送）。 */
+    public void addTurnListener(TurnListener listener) {
+        agent.addListener(listener);
+    }
+
+    /** 动态移除 TurnListener。 */
+    public void removeTurnListener(TurnListener listener) {
+        agent.removeListener(listener);
     }
 
     // ═══════════════════════════════════════════════════════════════════

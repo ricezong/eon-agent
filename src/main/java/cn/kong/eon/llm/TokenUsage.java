@@ -1,4 +1,4 @@
-package cn.kong.eon.model;
+package cn.kong.eon.llm;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 

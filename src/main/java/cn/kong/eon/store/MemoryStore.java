@@ -1,8 +1,9 @@
 package cn.kong.eon.store;
 
-import cn.kong.eon.config.ObjectMapperConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,15 +19,17 @@ import java.util.UUID;
 /**
  * 跨会话记忆存储。记忆文件存储在 {storage.base_dir}/memories/ 下，跨会话共享。
  */
+@Component
 public class MemoryStore {
     private static final Logger log = LoggerFactory.getLogger(MemoryStore.class);
 
     private final Path memoryDir;
     private final ObjectMapper mapper;
 
-    public MemoryStore(Path baseDir) {
-        this.memoryDir = baseDir.resolve("memories");
-        this.mapper = ObjectMapperConfig.getObjectMapper().copy().enable(SerializationFeature.INDENT_OUTPUT);
+    /** 带 ObjectMapper 注入的构造函数。 */
+    public MemoryStore(@Value("${eon.storage.base_dir:./data}") String baseDir, ObjectMapper objectMapper) {
+        this.memoryDir = Path.of(baseDir).toAbsolutePath().resolve("memories");
+        this.mapper = objectMapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
         try {
             Files.createDirectories(memoryDir);
         } catch (IOException e) {

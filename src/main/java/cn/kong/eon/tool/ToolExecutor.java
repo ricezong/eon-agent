@@ -1,6 +1,6 @@
 package cn.kong.eon.tool;
 
-import cn.kong.eon.model.SessionState;
+import cn.kong.eon.session.SessionState;
 
 import java.util.Map;
 

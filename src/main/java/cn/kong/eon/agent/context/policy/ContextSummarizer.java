@@ -5,6 +5,7 @@ import cn.kong.eon.agent.context.LlmSupport;
 import cn.kong.eon.agent.context.block.BlockKind;
 import cn.kong.eon.agent.context.block.ContextBlock;
 import cn.kong.eon.config.AgentConfig;
+import cn.kong.eon.llm.LlmStalledException;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -196,8 +197,12 @@ public class ContextSummarizer {
         try {
             String summary = llmSupport.complete(messages);
             return (summary != null && !summary.isBlank()) ? summary : null;
+        } catch (LlmStalledException e) {
+            log.error("[Summary] LLM 不可用（{}），第 {}/{} 段跳过: {}",
+                    e.getMessage(), index, total, e.getMessage());
+            return null;
         } catch (Exception e) {
-            log.error("[Summary] Summarize 失败: {}", e.getMessage());
+            log.error("[Summary] 第 {}/{} 段摘要异常: {}", index, total, e.getMessage());
             return null;
         }
     }

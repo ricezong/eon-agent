@@ -1,16 +1,16 @@
 package cn.kong.eon.agent.stop;
 
-import cn.kong.eon.agent.turn.TurnEvent;
-import cn.kong.eon.agent.turn.event.TaskStopped;
+import cn.kong.eon.agent.event.TurnEvent;
+import cn.kong.eon.agent.event.SessionStatus;
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.model.SessionState;
+import cn.kong.eon.session.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.function.Consumer;
 
 /**
- * 停止处理器。发出 TaskStopped 事件并返回终止输出文本。
+ * 停止处理器。发出 SessionStatus(terminated) 事件并返回终止输出文本。
  */
 public class StopHandler {
     private static final Logger log = LoggerFactory.getLogger(StopHandler.class);
@@ -28,14 +28,11 @@ public class StopHandler {
     }
 
     /**
-     * 统一终止入口。发出 TaskStopped 事件，拼终止原因 + 消耗统计。
-     *
-     * @param message 已由 {@link StopCategory#format} 生成的终止描述
+     * 统一终止入口。发出 SessionStatus(terminated) 事件，拼终止原因 + 消耗统计。
      */
     public String forceTerminate(SessionState state, StopCategory category, String message) {
         log.warn("[停止] {} : {}", category.name(), message);
-        emit(TaskStopped.now(category.name(), message, state.getTurnCount(),
-                state.getUsageAccum().getTotalTokens()));
+        emit(SessionStatus.terminated(category.name() + ": " + message));
         return "任务终止: " + message + "\n"
                 + "消耗: " + state.getUsageAccum().getTotalTokens()
                 + " tokens, " + state.getTurnCount() + " 轮\n";

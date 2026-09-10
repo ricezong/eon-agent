@@ -8,8 +8,8 @@ import cn.kong.eon.agent.context.policy.CompressionPolicy;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.stop.StopCategory;
-import cn.kong.eon.model.CompressionState;
-import cn.kong.eon.model.SessionState;
+import cn.kong.eon.agent.context.CompressionState;
+import cn.kong.eon.session.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

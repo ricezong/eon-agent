@@ -2,8 +2,8 @@ package cn.kong.eon.agent.hook;
 
 import cn.kong.eon.agent.context.ContextBuilder;
 import cn.kong.eon.agent.stop.StopFunction;
-import cn.kong.eon.agent.turn.TurnOutcome;
-import cn.kong.eon.model.SessionState;
+import cn.kong.eon.agent.LoopAction;
+import cn.kong.eon.session.SessionState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 
 import java.util.List;
@@ -19,8 +19,8 @@ import java.util.List;
 public class HookDispatcher {
 
     /** 调度 PreModel Hook。 */
-    public static TurnOutcome dispatchPreModel(List<Hook.PreModelHook> hooks, SessionState state,
-                                               ContextBuilder ctx, StopFunction stopFn) {
+    public static LoopAction dispatchPreModel(List<Hook.PreModelHook> hooks, SessionState state,
+                                              ContextBuilder ctx, StopFunction stopFn) {
         for (Hook.PreModelHook hook : hooks) {
             if (!hook.active(state)) {
                 continue;
@@ -30,33 +30,33 @@ public class HookDispatcher {
                 continue;
             }
             String output = stopFn.stop(state, result.getCategory(), result.getMessage());
-            return new TurnOutcome.Exit(output);
+            return new LoopAction.Exit(output);
         }
-        return new TurnOutcome.Continue();
+        return new LoopAction.Continue();
     }
 
     /** 调度 PostModel Hook。 */
-    public static TurnOutcome dispatchPostModel(List<Hook.PostModelHook> hooks, SessionState state,
-                                                StopFunction stopFn) {
+    public static LoopAction dispatchPostModel(List<Hook.PostModelHook> hooks, SessionState state,
+                                               StopFunction stopFn) {
         for (Hook.PostModelHook hook : hooks) {
             if (!hook.active(state)) {
                 continue;
             }
             HookResult result = hook.afterModelCall(state);
             if (result.isSkip()) {
-                return new TurnOutcome.Skip();
+                return new LoopAction.Skip();
             }
             if (!result.isStop()) {
                 continue;
             }
             String output = stopFn.stop(state, result.getCategory(), result.getMessage());
-            return new TurnOutcome.Exit(output);
+            return new LoopAction.Exit(output);
         }
-        return new TurnOutcome.Continue();
+        return new LoopAction.Continue();
     }
 
     /** 调度 PreTool Hook。 */
-    public static TurnOutcome dispatchPreTool(List<Hook.PreToolHook> hooks, SessionState state,
+    public static LoopAction dispatchPreTool(List<Hook.PreToolHook> hooks, SessionState state,
                                              List<ToolExecutionRequest> requests, StopFunction stopFn) {
         for (Hook.PreToolHook hook : hooks) {
             if (!hook.active(state)) {
@@ -67,14 +67,14 @@ public class HookDispatcher {
                 continue;
             }
             String output = stopFn.stop(state, result.getCategory(), result.getMessage());
-            return new TurnOutcome.Exit(output);
+            return new LoopAction.Exit(output);
         }
-        return new TurnOutcome.Continue();
+        return new LoopAction.Continue();
     }
 
     /** 调度 PostTool Hook。 */
-    public static TurnOutcome dispatchPostTool(List<Hook.PostToolHook> hooks, SessionState state,
-                                               String toolName, boolean success, StopFunction stopFn) {
+    public static LoopAction dispatchPostTool(List<Hook.PostToolHook> hooks, SessionState state,
+                                              String toolName, boolean success, StopFunction stopFn) {
         for (Hook.PostToolHook hook : hooks) {
             if (!hook.active(state)) {
                 continue;
@@ -84,8 +84,8 @@ public class HookDispatcher {
                 continue;
             }
             String output = stopFn.stop(state, result.getCategory(), result.getMessage());
-            return new TurnOutcome.Exit(output);
+            return new LoopAction.Exit(output);
         }
-        return new TurnOutcome.Continue();
+        return new LoopAction.Continue();
     }
 }

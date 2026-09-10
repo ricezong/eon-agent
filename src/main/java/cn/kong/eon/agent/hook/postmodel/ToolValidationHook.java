@@ -2,7 +2,7 @@ package cn.kong.eon.agent.hook.postmodel;
 
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
-import cn.kong.eon.model.SessionState;
+import cn.kong.eon.session.SessionState;
 import cn.kong.eon.tool.ToolRegistry;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;

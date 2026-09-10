@@ -1,10 +1,11 @@
 package cn.kong.eon.store;
 
-import cn.kong.eon.config.ObjectMapperConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -25,6 +26,7 @@ import java.util.stream.Stream;
  * 数据源全部是磁盘产物（不参与写入，软删除标记除外）：
  * 最后活跃时间取账本 mtime，标题取首条用户消息，消息数/快照/摘要预览供列表展示。
  */
+@Component
 public class SessionRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(SessionRegistry.class);
@@ -54,10 +56,19 @@ public class SessionRegistry {
     ) {}
 
     private final Path baseDir;
-    private static final ObjectMapper mapper = ObjectMapperConfig.getObjectMapper();
+    private final ObjectMapper mapper;
 
-    public SessionRegistry(Path baseDir) {
-        this.baseDir = baseDir;
+    /** 带 ObjectMapper 注入的构造函数。 */
+    public SessionRegistry(
+            @org.springframework.beans.factory.annotation.Value("${eon.storage.base_dir:./data}") String baseDir,
+            ObjectMapper objectMapper) {
+        this.baseDir = Path.of(baseDir).toAbsolutePath().normalize();
+        this.mapper = objectMapper;
+        try {
+            Files.createDirectories(this.baseDir);
+        } catch (IOException e) {
+            throw new RuntimeException("创建存储根目录失败: " + this.baseDir, e);
+        }
     }
 
     /** 列出未删除的会话，按最后活跃时间倒序。 */
