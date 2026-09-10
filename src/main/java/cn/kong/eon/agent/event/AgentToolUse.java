@@ -3,14 +3,13 @@ package cn.kong.eon.agent.event;
 import java.time.Instant;
 
 /**
- * 模型请求调用工具事件。含 tool_use.id/name/input 与 evaluated_permission。
+ * 模型请求调用工具事件。含 tool_use.id/name/input。
  */
 public record AgentToolUse(
         String turnId,
         String toolUseId,
         String name,
         String input,
-        String evaluatedPermission,
         Instant timestamp
 ) implements TurnEvent {
 
@@ -24,8 +23,7 @@ public record AgentToolUse(
         return visitor.visitToolUse(this);
     }
 
-    public static AgentToolUse now(String turnId, String toolUseId, String name,
-                                   String input, String evaluatedPermission) {
-        return new AgentToolUse(turnId, toolUseId, name, input, evaluatedPermission, Instant.now());
+    public static AgentToolUse now(String turnId, String toolUseId, String name, String input) {
+        return new AgentToolUse(turnId, toolUseId, name, input, Instant.now());
     }
 }

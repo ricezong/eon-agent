@@ -33,7 +33,7 @@ eon:
     recency_filter: "py"                    # 工具未传 recency_filter 时的默认过滤：pd/pw/pm/py
 
   mode:
-    snapshot_enabled: true                  # 启用会话快照（todo_write 成功时落盘 session.json）
+    snapshot_enabled: true                  # 启用会话快照（todo_write 成功时落盘 state.json）
 
   context:
     max_tokens: 200000                      # 上下文窗口大小（200K）
@@ -76,7 +76,8 @@ eon:
     jitter: 0.2                             # 抖动系数
 
   storage:
-    base_dir: "./data"                      # 会话数据根目录: base_dir/{sessionId}/
+    base_dir: "/home/workspace/sessions"      # 会话数据根目录: base_dir/{sessionId}/
+    db_path: "/home/workspace/sessions/eon.db" # SQLite 索引数据库路径
 
   tools:
     whitelist:                              # 允许注册的本地工具白名单

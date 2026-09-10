@@ -38,8 +38,7 @@ public class Slf4jTurnListener implements TurnListener {
 
         @Override
         public Void visitToolUse(AgentToolUse e) {
-            log.info("│ agent.tool_use: {} perm={} input={}", e.name(), e.evaluatedPermission(),
-                    clip(e.input(), 80));
+            log.info("│ agent.tool_use: {} input={}", e.name(), clip(e.input(), 80));
             return null;
         }
 

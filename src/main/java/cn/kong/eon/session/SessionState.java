@@ -24,6 +24,8 @@ public class SessionState {
     private CompressionState compressionState;
     private List<String> nudges;
     private String lastAssistantText;
+    /** 当前轮 LLM 输出的 thinking（推理链），不进入上下文窗口 */
+    private transient String lastThinking;
     // 运行时临时字段（不持久化）
     private transient List<ChatMessage> currentMessages;
     private transient LlmResponse lastResponse;
@@ -61,6 +63,7 @@ public class SessionState {
         this.turnCount = 0;
         this.nudges.clear();
         this.lastAssistantText = null;
+        this.lastThinking = null;
         this.pendingToolCalls = new ArrayList<>();
         this.lastToolResults = new ArrayList<>();
         this.currentMessages = null;
@@ -177,5 +180,13 @@ public class SessionState {
 
     public String getMessageId() {
         return messageId;
+    }
+
+    public String getLastThinking() {
+        return lastThinking;
+    }
+
+    public void setLastThinking(String lastThinking) {
+        this.lastThinking = lastThinking;
     }
 }

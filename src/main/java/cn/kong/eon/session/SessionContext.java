@@ -21,7 +21,7 @@ import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.store.RestoreMode;
 import cn.kong.eon.store.SessionSnapshot;
-import cn.kong.eon.store.ArtifactStore;
+import cn.kong.eon.store.ToolResultStore;
 import cn.kong.eon.store.JsonlStore;
 import cn.kong.eon.store.MemoryStore;
 import cn.kong.eon.store.SessionSnapshotStore;
@@ -37,8 +37,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -63,7 +61,7 @@ public class SessionContext {
     private final String sessionId;
     private final SessionSummary resumedSession;
     private final TodoStore todoStore;
-    private final ArtifactStore artifactStore;
+    private final ToolResultStore toolResultStore;
     private final SessionSnapshotStore snapshotStore;
     private final ContextPipeline contextPipeline;
     private final JsonlStore jsonlStore;
@@ -109,8 +107,8 @@ public class SessionContext {
 
         // ── 2. 存储
         this.todoStore = new TodoStore();
-        this.artifactStore = new ArtifactStore(sessionDir.resolve("artifacts"));
-        this.snapshotStore = new SessionSnapshotStore(sessionDir.resolve("session.json"), objectMapper);
+        this.toolResultStore = new ToolResultStore(sessionDir.resolve("tool-results"));
+        this.snapshotStore = new SessionSnapshotStore(sessionDir.resolve("state.json"), objectMapper);
         this.contextPipeline = createContextPipeline();
 
         // ── 3. 快照 → 回放起点
@@ -144,18 +142,12 @@ public class SessionContext {
             log.info("会话 {} 已初始化, transcript: {}", sessionId, transcriptPath);
         }
 
-        // ── 5. 工作区
-        Path workspaceDir = sessionDir.resolve("workspace");
-        try {
-            Files.createDirectories(workspaceDir);
-        } catch (IOException e) {
-            throw new RuntimeException("创建工作区目录失败: " + workspaceDir, e);
-        }
-        PathResolver pathResolver = new PathResolver(workspaceDir.toAbsolutePath().toString(), config.getTools().isSandboxEnabled());
+        // ── 5. 工作区（按用途拆分子目录）
+        PathResolver pathResolver = createWorkspace(sessionDir);
 
         // ── 6. 工具上下文
         this.toolContext = new ToolContext(
-                todoStore, artifactStore, memoryStore,
+                todoStore, toolResultStore, memoryStore,
                 jsonlStore, snapshotStore, pathResolver, null);
 
         // ── 7. 运行时组件
@@ -237,11 +229,22 @@ public class SessionContext {
     //  内部装配
     // ═══════════════════════════════════════════════════════════════════
 
+    private PathResolver createWorkspace(Path sessionDir) {
+        for (String sub : List.of("scripts", "download", "upload", "skills", "tool-results")) {
+            try {
+                Files.createDirectories(sessionDir.resolve(sub));
+            } catch (IOException e) {
+                throw new RuntimeException("创建工作区子目录失败: " + sub, e);
+            }
+        }
+        return new PathResolver(sessionDir.toAbsolutePath().toString(), config.getTools().isSandboxEnabled());
+    }
+
     private ContextPipeline createContextPipeline() {
         var ctx = config.getContext();
         log.info("入站管线已装配 (落盘阈值 {} 字符, 保留 {} 字符)",
                 ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
-        return new ContextPipeline(compressor, artifactStore,
+        return new ContextPipeline(compressor, toolResultStore,
                 ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
     }
 
@@ -285,7 +288,6 @@ public class SessionContext {
     }
 
     private static String generateSessionId() {
-        return "eon_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-                + "_" + UUID.randomUUID().toString().substring(0, 6);
+        return UUID.randomUUID().toString();
     }
 }

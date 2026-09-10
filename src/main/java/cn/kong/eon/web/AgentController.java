@@ -1,6 +1,8 @@
 package cn.kong.eon.web;
 
 import cn.kong.eon.app.AgentBootstrap;
+import cn.kong.eon.app.AgentChatRequest;
+import cn.kong.eon.app.RunResult;
 import cn.kong.eon.agent.event.TurnListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -17,7 +19,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Agent HTTP/SSE 控制器。提供对话、会话管理、中断等接口。
+ * Agent HTTP/SSE 控制器。提供对话、会话管理、中断接口。
  */
 @RestController
 @RequestMapping("/api")
@@ -42,11 +44,13 @@ public class AgentController {
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * 发送消息并流式接收 Agent 响应。
+     * 发送消息并流式接收 Agent 响应（唯一对话入口）。
+     * <p>
+     * sessionId 为空时自动创建新会话，非空时恢复已有会话。
      * SSE 事件流：agent.delta → agent.thinking → agent.message → agent.tool_use → agent.tool_result → session.usage → session.status
      */
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chat(@RequestBody ChatRequest request) {
+    public SseEmitter chat(@RequestBody AgentChatRequest request) {
         SseEmitter emitter = new SseEmitter(300_000L); // 5 分钟超时
 
         sseExecutor.execute(() -> {
@@ -54,8 +58,9 @@ public class AgentController {
                 List<TurnListener> listeners = new ArrayList<>();
                 listeners.add(new SseTurnListener(emitter, objectMapper));
 
-                String output = app.run(request.message(), listeners);
-                emitter.send(SseEmitter.event().name("agent.message.final").data(output));
+                RunResult result = app.run(request, listeners);
+                emitter.send(SseEmitter.event().name("agent.message.final")
+                        .data(Map.of("content", result.content(), "session_id", result.sessionId())));
                 emitter.complete();
             } catch (Exception e) {
                 log.error("SSE 对话失败", e);
@@ -71,16 +76,11 @@ public class AgentController {
         return emitter;
     }
 
-    /**
-     * 中断当前任务。
-     */
+    /** 中断指定会话的当前任务。 */
     @PostMapping("/interrupt")
-    public Map<String, Object> interrupt() {
-        if (app.isSessionInitialized() && app.getSession() != null) {
-            app.getSession().getSessionState().requestInterrupt();
-            return Map.of("status", "interrupted");
-        }
-        return Map.of("status", "no_session");
+    public Map<String, Object> interrupt(@RequestBody InterruptRequest request) {
+        boolean interrupted = app.interrupt(request.sessionId());
+        return Map.of("status", interrupted ? "interrupted" : "no_session");
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -89,8 +89,9 @@ public class AgentController {
 
     /** 列出历史会话。 */
     @GetMapping("/sessions")
-    public List<SessionListItem> listSessions() {
-        var sessions = app.getSessionRegistry().list();
+    public List<SessionListItem> listSessions(
+            @RequestParam(required = false, defaultValue = "default") String userId) {
+        var sessions = app.getSessionRegistry().list(userId);
         List<SessionListItem> result = new ArrayList<>();
         for (int i = 0; i < sessions.size(); i++) {
             var s = sessions.get(i);
@@ -99,80 +100,41 @@ public class AgentController {
                     s.sessionId(),
                     s.title(),
                     s.messageCount(),
-                    s.hasSnapshot(),
-                    s.lastActivityAt().toString(),
-                    s.summaryPreview()
+                    s.lastActivityAt().toString()
             ));
         }
         return result;
     }
 
-    /** 恢复会话。 */
-    @PostMapping("/sessions/resume")
-    public Map<String, Object> resumeSession(@RequestBody ResumeRequest request) {
-        try {
-            app.switchSession(request.selector());
-            return Map.of("status", "ok", "session_id", app.getSession().getSessionId());
-        } catch (Exception e) {
-            return Map.of("status", "error", "message", e.getMessage());
-        }
+    /** 删除会话（硬删除：SQLite 记录 + 会话目录）。 */
+    @DeleteMapping("/sessions/{sessionId}")
+    public Map<String, Object> deleteSession(@PathVariable String sessionId,
+            @RequestParam(required = false, defaultValue = "default") String userId) {
+        boolean deleted = app.getSessionRegistry().delete(userId, sessionId);
+        return Map.of("status", deleted ? "deleted" : "not_found", "session_id", sessionId);
     }
 
-    /** 新建会话。 */
-    @PostMapping("/sessions/new")
-    public Map<String, Object> newSession() {
-        app.newSession();
-        return Map.of("status", "ok", "session_id", app.getSession().getSessionId());
-    }
-
-    /** 删除会话。 */
-    @DeleteMapping("/sessions/{selector}")
-    public Map<String, Object> deleteSession(@PathVariable String selector) {
-        app.getSessionRegistry().delete(selector);
-        return Map.of("status", "deleted", "selector", selector);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    //  工具列表
-    // ═══════════════════════════════════════════════════════════════════
-
-    @GetMapping("/tools")
-    public List<ToolListItem> listTools() {
-        var names = app.getToolRegistry().getAllToolNames();
-        List<ToolListItem> result = new ArrayList<>();
-        for (String name : names) {
-            var desc = app.getToolRegistry().get(name);
-            result.add(new ToolListItem(
-                    name,
-                    app.getToolRegistry().getPermission(name).name(),
-                    app.getToolRegistry().isMcpTool(name),
-                    desc != null ? desc.getDescription() : ""
-            ));
-        }
-        return result;
+    /**
+     * 恢复会话
+     */
+    @GetMapping("/sessions/{sessionId}")
+    public List<Map<String, Object>> getSession(@PathVariable String sessionId) {
+        var transcriptPath = app.getTranscriptPath(sessionId);
+        TranscriptReplayer replayer = new TranscriptReplayer(objectMapper);
+        return replayer.replay(transcriptPath);
     }
 
     // ═══════════════════════════════════════════════════════════════════
     //  请求/响应 DTO
     // ═══════════════════════════════════════════════════════════════════
 
-    public record ChatRequest(String message) {}
-    public record ResumeRequest(String selector) {}
+    public record InterruptRequest(String sessionId) {}
 
     public record SessionListItem(
             int index,
             String sessionId,
             String title,
             long messageCount,
-            boolean hasSnapshot,
-            String lastActivityAt,
-            String summaryPreview
-    ) {}
-
-    public record ToolListItem(
-            String name,
-            String permission,
-            boolean isMcp,
-            String description
+            String lastActivityAt
     ) {}
 }

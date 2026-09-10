@@ -4,6 +4,7 @@ import cn.kong.eon.agent.context.ContentTrimmer;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.session.SessionContext;
+import cn.kong.eon.session.SessionState;
 import cn.kong.eon.tool.mcp.McpClientManager;
 import cn.kong.eon.store.SessionRegistry;
 import cn.kong.eon.store.SessionRegistry.SessionSummary;
@@ -22,13 +23,16 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import cn.kong.eon.agent.event.TurnListener;
 
 /**
  * 应用级容器。管理 LlmClient、ToolRegistry、MCP 连接等重资源，构造一次不随会话切换重建。
- * 会话级组件委托给 {@link SessionContext}。
+ * 会话级组件委托给 {@link SessionContext}，按 sessionId 创建/恢复，运行结束后释放。
  */
 @Component
 public class AgentBootstrap {
@@ -49,8 +53,8 @@ public class AgentBootstrap {
     /** MCP 客户端列表 */
     private final List<McpClientManager> mcpClients = new ArrayList<>();
 
-    // ── 会话级组件
-    private volatile SessionContext session;
+    /** 运行中的会话上下文（sessionId → SessionContext），用于 interrupt */
+    private final ConcurrentHashMap<String, SessionContext> activeSessions = new ConcurrentHashMap<>();
 
     public AgentBootstrap(AgentConfig config,
                           ObjectMapper objectMapper,
@@ -82,68 +86,61 @@ public class AgentBootstrap {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    //  会话管理
+    //  对话
     // ═══════════════════════════════════════════════════════════════════
 
-    /** 运行一轮对话，首次调用时自动初始化会话。 */
-    public synchronized String run(String userInput) {
-        return run(userInput, List.of());
-    }
+    /**
+     * 运行一轮对话。
+     * sessionId 为空时新建会话（写入索引），非空时从索引恢复（回放 transcript）。
+     */
+    public RunResult run(AgentChatRequest request, List<TurnListener> externalListeners) {
+        String sessionId = request.sessionId();
+        String userId = request.userId() != null ? request.userId() : "default";
+        boolean isNew = sessionId == null || sessionId.isBlank();
 
-    /** 运行一轮对话，带外部 TurnListener 用于 SSE 推送。 */
-    public synchronized String run(String userInput, List<TurnListener> externalListeners) {
-        if (userInput == null || userInput.isBlank()) {
-            return "输入不能为空。";
-        }
-        if (session == null) {
-            session = createSession(null, externalListeners);
-        } else {
-            // 动态注册外部 listener
-            for (TurnListener l : externalListeners) {
-                session.addTurnListener(l);
+        SessionSummary resumed = null;
+        if (!isNew) {
+            Optional<SessionSummary> found = sessionRegistry.find(userId, sessionId);
+            if (found.isEmpty()) {
+                throw new IllegalArgumentException("会话不存在: " + sessionId);
             }
+            resumed = found.get();
         }
+
+        SessionContext session = createSession(resumed, externalListeners);
+        String actualSessionId = session.getSessionId();
+        activeSessions.put(actualSessionId, session);
+
+        if (isNew) {
+            sessionRegistry.insert(actualSessionId, userId, deriveTitle(request.message()));
+        }
+
         try {
-            return session.run(userInput);
+            String output = session.run(request.message());
+            return new RunResult(output, actualSessionId);
         } finally {
-            // 运行结束后移除外部 listener（SSE 连接已关闭）
-            for (TurnListener l : externalListeners) {
-                session.removeTurnListener(l);
-            }
-        }
-    }
-
-    public synchronized boolean isSessionInitialized() {
-        return session != null;
-    }
-
-    /** 切换会话。 */
-    public synchronized void switchSession(String resumeSelector) {
-        if (session != null) {
+            activeSessions.remove(actualSessionId);
             session.close();
-            session = null;
         }
-        SessionSummary resumed = resolveResumed(resumeSelector);
-        this.session = createSession(resumed, List.of());
-        log.info("AgentBootstrap 会话已切换: {}", session.getSessionId());
     }
 
-    /** 新建会话。 */
-    public synchronized void newSession() {
+    /** 中断指定会话。 */
+    public boolean interrupt(String sessionId) {
+        SessionContext session = activeSessions.get(sessionId);
         if (session != null) {
-            session.close();
-            session = null;
+            session.getSessionState().requestInterrupt();
+            return true;
         }
-        this.session = createSession(null, List.of());
-        log.info("AgentBootstrap 新会话已创建: {}", session.getSessionId());
+        return false;
     }
 
     @PreDestroy
-    public synchronized void shutdown() {
+    public void shutdown() {
         log.info("正在关闭 AgentBootstrap...");
-        if (session != null) {
+        for (SessionContext session : activeSessions.values()) {
             session.close();
         }
+        activeSessions.clear();
         toolRegistry.closeAll();
         for (McpClientManager mcp : mcpClients) {
             mcp.close();
@@ -155,14 +152,25 @@ public class AgentBootstrap {
     //  Getter
     // ═══════════════════════════════════════════════════════════════════
 
-    public SessionContext getSession() { return session; }
     public SessionRegistry getSessionRegistry() { return sessionRegistry; }
-    public ToolRegistry getToolRegistry() { return toolRegistry; }
-    public AgentConfig getConfig() { return config; }
+
+    /** 获取指定会话的账本路径（不需要会话已加载）。 */
+    public Path getTranscriptPath(String sessionId) {
+        return Path.of(config.getStorage().getBaseDir())
+                .toAbsolutePath().normalize()
+                .resolve(sessionId)
+                .resolve("transcript.jsonl");
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     //  内部装配
     // ═══════════════════════════════════════════════════════════════════
+
+    /** 从用户输入派生会话标题（前 10 字符）。 */
+    private static String deriveTitle(String userInput) {
+        if (userInput == null) return "新会话";
+        return userInput.length() <= 10 ? userInput : userInput.substring(0, 10);
+    }
 
     /** 创建会话上下文，注入应用级依赖。 */
     private SessionContext createSession(SessionSummary resumedSession, List<TurnListener> externalListeners) {
@@ -183,17 +191,6 @@ public class AgentBootstrap {
         }
         log.error("系统提示词未找到，使用空提示词");
         return "";
-    }
-
-    public SessionSummary resolveResumed(String selector) {
-        if (selector == null || selector.isBlank()) return null;
-        var found = "last".equalsIgnoreCase(selector)
-                ? sessionRegistry.last()
-                : sessionRegistry.find(selector);
-        if (found.isEmpty()) {
-            throw new IllegalArgumentException("未找到会话: " + selector);
-        }
-        return found.get();
     }
 
     private ToolRegistry createToolRegistry() {

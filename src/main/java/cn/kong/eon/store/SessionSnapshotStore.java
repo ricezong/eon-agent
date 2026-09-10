@@ -15,7 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 会话快照存储。快照落盘与读回，单个 session.json 覆盖写。
+ * 会话快照存储。快照落盘与读回，单个 state.json 覆盖写。
  * 摘要与压缩水位线同取自一份 CompressionState，恢复时拼起来内容完整。
  */
 public class SessionSnapshotStore {

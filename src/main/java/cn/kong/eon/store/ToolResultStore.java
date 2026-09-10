@@ -10,16 +10,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Artifact 存储。大文本工具结果落盘，上下文只保留引用。
- * refId 与文件名由消息序号确定性派生（art_m00042_source.txt），
+ * 工具结果存储。大文本工具结果落盘，上下文只保留引用。
+ * refId 与文件名由消息序号确定性派生（tool-result_00042_read_file.txt），
  * 回放与常规写入共用路径，重复落盘为幂等覆盖。
  */
-public class ArtifactStore implements StoreSupport {
-    private static final Logger log = LoggerFactory.getLogger(ArtifactStore.class);
+public class ToolResultStore implements StoreSupport {
+    private static final Logger log = LoggerFactory.getLogger(ToolResultStore.class);
 
     private final Path artifactDir;
 
-    public ArtifactStore(Path artifactDir) {
+    public ToolResultStore(Path artifactDir) {
         this.artifactDir = artifactDir;
         try {
             Files.createDirectories(artifactDir);
@@ -31,7 +31,7 @@ public class ArtifactStore implements StoreSupport {
     /** 保存大文本为 artifact，返回引用。 */
     @Override
     public ArtifactRef save(String source, String content, int messageSeq) {
-        String refId = String.format("art_m%05d", messageSeq);
+        String refId = String.format("tool-result_%05d", messageSeq);
         Path filePath = artifactDir.resolve(refId + "_" + source + ".txt");
 
         try {

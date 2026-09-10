@@ -215,6 +215,7 @@ public class EonAgent {
 
             String thought = response.aiMessage().text() != null ? response.aiMessage().text() : "";
             state.setLastAssistantText(thought);
+            state.setLastThinking(response.aiMessage().thinking());
             List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
 
             // ── 阶段 4：PostModel Hooks ──

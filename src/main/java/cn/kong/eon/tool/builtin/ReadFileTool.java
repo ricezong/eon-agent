@@ -40,7 +40,7 @@ public class ReadFileTool implements ToolExecutor {
         // artifact:// 引用：从 ArtifactStore 读取后分页返回，避免全文一次性进入上下文
         if (targetFile.startsWith(ARTIFACT_PREFIX)) {
             String refId = targetFile.substring(ARTIFACT_PREFIX.length()).trim();
-            String content = context.artifactStore().readContent(refId);
+            String content = context.toolResultStore().readContent(refId);
             if (content == null) {
                 return ToolOutcome.failure("找不到 artifact 引用: " + refId);
             }
@@ -133,7 +133,7 @@ public class ReadFileTool implements ToolExecutor {
             "且同样支持 offset/limit 分页；内容较大时请分段读取，不要期望一次拿到全部。"
     })
     public String readFile(
-            @P(name = "target_file", description = "要读取的文件路径（相对于工作目录，可直接传文件名），或 artifact://art_m00042 形式的引用。") String target_file,
+            @P(name = "target_file", description = "要读取的文件路径（相对于工作目录，可直接传文件名），或 artifact://tool-result_00042 形式的引用。") String target_file,
             @P(name = "offset", description = "从第几行开始读取（从 1 开始计数）。不指定则从头读取。", required = false) Integer offset,
             @P(name = "limit", description = "最多读取多少行。不指定则按默认上限读取。", required = false) Integer limit
     ) {

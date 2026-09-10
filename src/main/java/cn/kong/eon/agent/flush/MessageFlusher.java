@@ -1,8 +1,9 @@
 package cn.kong.eon.agent.flush;
 
-import cn.kong.eon.session.SessionState;
 import cn.kong.eon.agent.exec.ToolExecResult;
+import cn.kong.eon.session.SessionState;
 import cn.kong.eon.store.JsonlStore;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 
@@ -38,25 +39,38 @@ public class MessageFlusher {
 
         List<ToolExecResult> toolResults = state.getLastToolResults();
         Set<String> succeeded = succeededIds(toolResults);
+        String thinking = state.getLastThinking();
+        AiMessage aiMsg = buildAiMessage(assistantText, pendingCalls, hasText, thinking);
+        jsonlStore.append(aiMsg, succeeded);
 
-        // 仅当有文本或工具调用时才回填 AiMessage
-        if (hasText || hasCalls) {
-            AiMessage aiMsg = hasText
-                    ? AiMessage.from(assistantText, pendingCalls)
-                    : AiMessage.from(pendingCalls);
-            jsonlStore.append(aiMsg, succeeded);
-        }
 
         if (toolResults != null) {
             for (ToolExecResult result : toolResults) {
                 ToolExecutionResultMessage toolResultMsg = ToolExecutionResultMessage.from(result.toolCallId(), result.toolName(), result.content());
-                jsonlStore.append(toolResultMsg, succeeded);
+                jsonlStore.append(toolResultMsg, succeeded, result.structuredContent());
             }
         }
 
         state.setPendingToolCalls(null);
         state.setLastToolResults(null);
         state.setLastAssistantText(null);
+        state.setLastThinking(null);
+    }
+
+    /** 构建 AiMessage，携带 thinking 用于账本持久化。 */
+    private static AiMessage buildAiMessage(String text, List<ToolExecutionRequest> calls,
+                                             boolean hasText, String thinking) {
+        var builder = AiMessage.builder();
+        if (hasText) {
+            builder.text(text);
+        }
+        if (calls != null && !calls.isEmpty()) {
+            builder.toolExecutionRequests(calls);
+        }
+        if (thinking != null && !thinking.isBlank()) {
+            builder.thinking(thinking);
+        }
+        return builder.build();
     }
 
     /** 从工具执行结果中提取成功的调用 id 集合。 */

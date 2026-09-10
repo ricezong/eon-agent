@@ -1,6 +1,6 @@
 package cn.kong.eon.tool;
 
-import cn.kong.eon.store.ArtifactStore;
+import cn.kong.eon.store.ToolResultStore;
 import cn.kong.eon.store.JsonlStore;
 import cn.kong.eon.store.MemoryStore;
 import cn.kong.eon.store.SessionSnapshotStore;
@@ -11,7 +11,7 @@ import cn.kong.eon.store.TodoStore;
  */
 public record ToolContext(
         TodoStore todoStore,
-        ArtifactStore artifactStore,
+        ToolResultStore toolResultStore,
         MemoryStore memoryStore,
         JsonlStore jsonlStore,
         SessionSnapshotStore snapshotStore,
@@ -21,7 +21,7 @@ public record ToolContext(
 
     /** 返回替换了 interactionCallback 的新实例。 */
     public ToolContext withInteractionCallback(InteractionCallback callback) {
-        return new ToolContext(todoStore, artifactStore, memoryStore,
+        return new ToolContext(todoStore, toolResultStore, memoryStore,
                 jsonlStore, snapshotStore, pathResolver, callback);
     }
 }

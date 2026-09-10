@@ -3,6 +3,7 @@ package cn.kong.eon.store;
 import cn.kong.eon.agent.context.ContextWindow;
 import cn.kong.eon.agent.context.pipeline.ContextPipeline;
 import cn.kong.eon.agent.context.block.ContextBlock;
+import cn.kong.eon.agent.event.StructuredContent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
@@ -50,9 +51,17 @@ public class JsonlStore {
      * 追加消息：入站管线处置 → 内存窗口 → 磁盘账本。
      */
     public synchronized void append(ChatMessage message, Set<String> succeededToolCalls) {
+        append(message, succeededToolCalls, null);
+    }
+
+    /**
+     * 追加消息（带结构化内容）：入站管线处置 → 内存窗口 → 磁盘账本。
+     */
+    public synchronized void append(ChatMessage message, Set<String> succeededToolCalls,
+                                    StructuredContent structuredContent) {
         List<ContextBlock> blocks = pipeline.ingest(message, succeededToolCalls, messageCount);
         window.addAll(blocks);
-        appendToLedger(message, succeededToolCalls);
+        appendToLedger(message, succeededToolCalls, structuredContent);
         messageCount++;
     }
 
@@ -67,11 +76,13 @@ public class JsonlStore {
     }
 
     /** 追加 JSON 到磁盘账本。 */
-    private void appendToLedger(ChatMessage message, Set<String> succeededToolCalls) {
+    private void appendToLedger(ChatMessage message, Set<String> succeededToolCalls,
+                                StructuredContent structuredContent) {
         try {
             SerializedMessage sm = SerializedMessage.from(message);
             if (message instanceof ToolExecutionResultMessage m) {
                 sm.success = succeededToolCalls.contains(m.id());
+                sm.structuredContent = structuredContent;
             }
             Files.writeString(jsonlFile, mapper.writeValueAsString(sm) + "\n",
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
@@ -124,9 +135,13 @@ public class JsonlStore {
         public String name;           // UserMessage 的 name 属性
         public String toolCallId;
         public String toolName;
-        /** 工具结果是否执行成功（仅 tool 行），回放时据此还原格式化中的执行状态 */
+        /** 工具结果是否执行成功（仅 tool 行） */
         public Boolean success;
+        /** 工具结果的结构化展示内容（仅 tool 行） */
+        public StructuredContent structuredContent;
         public List<ToolCallRef> toolCalls;
+        /** AI 消息的 thinking（推理链），不进入上下文窗口 */
+        public String thinking;
 
         public SerializedMessage() {
         }
@@ -144,6 +159,7 @@ public class JsonlStore {
             } else if (msg instanceof AiMessage m) {
                 sm.type = "ai";
                 sm.content = m.text();
+                sm.thinking = m.thinking();
                 if (m.hasToolExecutionRequests()) {
                     sm.toolCalls = new ArrayList<>();
                     for (var ter : m.toolExecutionRequests()) {
@@ -174,7 +190,7 @@ public class JsonlStore {
                     yield um;
                 }
                 case "ai" -> {
-                    AiMessage ai;
+                    var builder = AiMessage.builder();
                     if (toolCalls != null && !toolCalls.isEmpty()) {
                         List<ToolExecutionRequest> requests = new ArrayList<>();
                         for (ToolCallRef ref : toolCalls) {
@@ -184,13 +200,11 @@ public class JsonlStore {
                                     .arguments(ref.arguments)
                                     .build());
                         }
-                        ai = content != null
-                                ? AiMessage.from(content, requests)
-                                : AiMessage.from(requests);
-                    } else {
-                        ai = AiMessage.from(content != null ? content : "");
+                        builder.toolExecutionRequests(requests);
                     }
-                    yield ai;
+                    if (content != null) builder.text(content);
+                    if (thinking != null && !thinking.isBlank()) builder.thinking(thinking);
+                    yield builder.build();
                 }
                 case "tool" ->
                         ToolExecutionResultMessage.from(toolCallId, toolName != null ? toolName : "unknown", content != null ? content : "");

@@ -490,7 +490,8 @@ public class AgentConfig {
     }
 
     public static class StorageConfig {
-        private String baseDir = "./data";
+        private String baseDir = "/home/workspace/sessions";
+        private String dbPath = "/home/workspace/sessions/eon.db";
 
         public String getBaseDir() {
             return baseDir;
@@ -498,6 +499,14 @@ public class AgentConfig {
 
         public void setBaseDir(String v) {
             this.baseDir = v;
+        }
+
+        public String getDbPath() {
+            return dbPath;
+        }
+
+        public void setDbPath(String v) {
+            this.dbPath = v;
         }
     }
 

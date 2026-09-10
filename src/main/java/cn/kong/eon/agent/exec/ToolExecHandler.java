@@ -27,9 +27,7 @@ import java.util.function.Consumer;
 public class ToolExecHandler {
     private static final Logger log = LoggerFactory.getLogger(ToolExecHandler.class);
 
-    private static final int ARGS_SUMMARY_LIMIT = 80;
-
-    /** 串行豁免清单：顺序敏感或交互互斥的工具强制串行。 */
+    /** 顺序敏感或交互互斥的工具强制串行。 */
     private static final Set<String> SERIAL_ONLY = Set.of("todo_write", "AskQuestion");
 
     private final ToolRegistry toolRegistry;
@@ -115,9 +113,7 @@ public class ToolExecHandler {
         String turnId = state.getTurnId();
 
         // 发出 agent.tool_use 事件
-        String perm = toolRegistry.getPermission(req.name()) != null
-                ? toolRegistry.getPermission(req.name()).name() : "UNKNOWN";
-        emit(AgentToolUse.now(turnId, req.id(), req.name(), req.arguments(), perm));
+        emit(AgentToolUse.now(turnId, req.id(), req.name(), req.arguments()));
 
         // 熔断拦截
         if (tracker.isTripped(req.name())) {
@@ -133,7 +129,7 @@ public class ToolExecHandler {
         emit(AgentToolResult.now(turnId, req.id(), req.name(),
                 outcome.content(), outcome.structuredContent(), outcome.success()));
 
-        return ToolExecResult.of(req.id(), req.name(), outcome, outcome.content());
+        return ToolExecResult.of(req.id(), req.name(), outcome, outcome.content(), outcome.structuredContent());
     }
 
     /** 合成错误结果（用于异常隔离）。 */
@@ -144,7 +140,7 @@ public class ToolExecHandler {
         emit(AgentToolResult.now(turnId, req.id(), req.name(),
                 outcome.content(), outcome.structuredContent(), false));
 
-        return ToolExecResult.of(req.id(), req.name(), outcome, outcome.content());
+        return ToolExecResult.of(req.id(), req.name(), outcome, outcome.content(), outcome.structuredContent());
     }
 
     // ═══════════════════ 工具方法 ═══════════════════
