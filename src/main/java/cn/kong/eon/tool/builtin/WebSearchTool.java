@@ -40,12 +40,6 @@ public class WebSearchTool implements ToolExecutor {
     private final String defaultRecencyFilter;
 
     public WebSearchTool(String apiKey, String searchSource, int defaultTopK, String defaultRecencyFilter,
-                         HttpClient httpClient) {
-        this(apiKey, searchSource, defaultTopK, defaultRecencyFilter, httpClient, null);
-    }
-
-    /** 完整构造函数，注入 ObjectMapper。 */
-    public WebSearchTool(String apiKey, String searchSource, int defaultTopK, String defaultRecencyFilter,
                          HttpClient httpClient, ObjectMapper objectMapper) {
         this.apiKey = apiKey != null ? apiKey : "";
         this.searchSource = searchSource;
@@ -70,15 +64,6 @@ public class WebSearchTool implements ToolExecutor {
         return null;
     }
 
-    public static ToolDescriptor descriptor(String apiKey, String searchSource, int defaultTopK,
-                                            String defaultRecencyFilter,
-                                            HttpClient httpClient) {
-        return ToolDescriptor.fromAnnotated(
-                new WebSearchTool(apiKey, searchSource, defaultTopK, defaultRecencyFilter, httpClient),
-                ToolPermission.READONLY);
-    }
-
-    /** 带 ObjectMapper 注入的 descriptor 工厂方法。 */
     public static ToolDescriptor descriptor(String apiKey, String searchSource, int defaultTopK,
                                             String defaultRecencyFilter,
                                             HttpClient httpClient, ObjectMapper objectMapper) {

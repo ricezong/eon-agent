@@ -26,7 +26,6 @@ public class MemoryStore {
     private final Path memoryDir;
     private final ObjectMapper mapper;
 
-    /** 带 ObjectMapper 注入的构造函数。 */
     public MemoryStore(@Value("${eon.storage.base_dir:./data}") String baseDir, ObjectMapper objectMapper) {
         this.memoryDir = Path.of(baseDir).toAbsolutePath().resolve("memories");
         this.mapper = objectMapper.copy().enable(SerializationFeature.INDENT_OUTPUT);

@@ -4,9 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * SLF4J 日志监听器。将事件转为可读日志输出，保持后端观测能力。
- * SSE 推送到前端后仍可保留此监听器做后端观测。
- * 使用访问者模式分发事件类型。
+ * SLF4J 日志监听器。将事件转为可读日志输出。
  */
 public class Slf4jTurnListener implements TurnListener {
     private static final Logger log = LoggerFactory.getLogger(Slf4jTurnListener.class);
@@ -16,7 +14,7 @@ public class Slf4jTurnListener implements TurnListener {
         event.accept(new Slf4jEventLogger());
     }
 
-    /** SLF4J 日志 Visitor。 */
+    /** 日志格式化 Visitor。 */
     private static class Slf4jEventLogger implements TurnEventVisitor<Void> {
 
         @Override

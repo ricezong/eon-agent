@@ -77,9 +77,7 @@ public class SessionContext {
     private final ToolContext toolContext;
     private final List<TurnListener> externalListeners;
 
-    /**
-     * 创建会话上下文（带外部 TurnListener 和 ObjectMapper 注入）。
-     */
+    /** 创建会话上下文，注入应用级依赖。 */
     public SessionContext(AgentConfig appConfig,
                           LlmClient llmClient,
                           ToolRegistry toolRegistry,
@@ -215,7 +213,7 @@ public class SessionContext {
         log.info("会话 {} 资源已释放", sessionId);
     }
 
-    /** 动态注册 TurnListener（用于 SSE 推送）。 */
+    /** 动态注册 TurnListener。 */
     public void addTurnListener(TurnListener listener) {
         agent.addListener(listener);
     }

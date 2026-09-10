@@ -28,7 +28,6 @@ public class TodoWriteTool implements ToolExecutor {
 
     private final ObjectMapper objectMapper;
 
-    /** 构造注入 ObjectMapper。 */
     public TodoWriteTool(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }

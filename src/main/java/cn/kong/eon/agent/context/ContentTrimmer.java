@@ -18,7 +18,6 @@ public class ContentTrimmer {
 
     private final ObjectMapper objectMapper;
 
-    /** Spring 构造注入 ObjectMapper。 */
     public ContentTrimmer(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }

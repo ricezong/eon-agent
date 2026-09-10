@@ -7,15 +7,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * 线程池配置。通过 Spring Bean 管理线程池生命周期，
- * 避免手动创建导致资源泄漏。
+ * 线程池配置。
  */
 @Configuration
 public class ExecutorConfig {
 
     /**
-     * SSE 异步推送线程池。用于 AgentController 的 SSE 流式响应。
-     * destroyMethod = "shutdown" 确保容器关闭时线程池被正确关闭。
+     * SSE 推送线程池。destroyMethod = "shutdown" 确保容器关闭时正确释放。
      */
     @Bean(name = "sseExecutor", destroyMethod = "shutdown")
     public ExecutorService sseExecutor() {

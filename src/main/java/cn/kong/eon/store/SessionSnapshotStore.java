@@ -24,11 +24,9 @@ public class SessionSnapshotStore {
     private final Path file;
     private final ObjectMapper mapper;
 
-    /** 带 ObjectMapper 注入的构造函数。 */
     public SessionSnapshotStore(Path sessionFile, ObjectMapper objectMapper) {
         this.file = sessionFile;
         this.mapper = objectMapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
-        this.mapper.findAndRegisterModules();
     }
 
     /**

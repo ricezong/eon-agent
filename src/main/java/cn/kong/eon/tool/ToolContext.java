@@ -19,7 +19,7 @@ public record ToolContext(
         InteractionCallback interactionCallback
 ) {
 
-    /** 返回替换了 interactionCallback 的新实例（其他字段不变）。 */
+    /** 返回替换了 interactionCallback 的新实例。 */
     public ToolContext withInteractionCallback(InteractionCallback callback) {
         return new ToolContext(todoStore, artifactStore, memoryStore,
                 jsonlStore, snapshotStore, pathResolver, callback);

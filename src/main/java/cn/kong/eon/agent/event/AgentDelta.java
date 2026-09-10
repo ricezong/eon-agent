@@ -4,8 +4,6 @@ import java.time.Instant;
 
 /**
  * 实时增量事件。只在流式模式出现，历史列表不保留。
- * 按 kind 分 text/thinking/tool_use，把 delta 或 inputDelta 追加，
- * 收到完整事件（agent.thinking/agent.message/agent.tool_use）后替换增量。
  */
 public record AgentDelta(
         String turnId,

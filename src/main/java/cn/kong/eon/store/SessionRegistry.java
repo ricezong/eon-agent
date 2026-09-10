@@ -58,7 +58,6 @@ public class SessionRegistry {
     private final Path baseDir;
     private final ObjectMapper mapper;
 
-    /** 带 ObjectMapper 注入的构造函数。 */
     public SessionRegistry(
             @org.springframework.beans.factory.annotation.Value("${eon.storage.base_dir:./data}") String baseDir,
             ObjectMapper objectMapper) {

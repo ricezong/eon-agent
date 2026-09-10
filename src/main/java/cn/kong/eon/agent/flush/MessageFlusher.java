@@ -11,9 +11,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 消息回填器。将 AI 消息和工具结果回填到上下文，清理会话临时状态。
- * 所有回填都经过 {@link JsonlStore#append} → 入站管线，不存在绕过关卡的路径。
- * 工具结果以原始输出回填，落盘与格式化交给入站规则完成。
+ * 消息回填器。将 AI 消息和工具结果回填到上下文，清理临时状态。
+ * 工具结果以原始输出回填，落盘与格式化交给入站管线。
  */
 public class MessageFlusher {
     private final JsonlStore jsonlStore;
@@ -22,10 +21,7 @@ public class MessageFlusher {
         this.jsonlStore = jsonlStore;
     }
 
-    /**
-     * 回填 AI 消息和工具结果，清理临时状态。
-     * 成功调用 id 集合随消息一起进账本，回放时据此还原工具结果的执行状态。
-     */
+    /** 回填 AI 消息和工具结果，清理临时状态。 */
     public void flush(SessionState state) {
         String assistantText = state.getLastAssistantText();
         var pendingCalls = state.getPendingToolCalls();

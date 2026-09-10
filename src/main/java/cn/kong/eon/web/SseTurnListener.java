@@ -12,7 +12,6 @@ import java.util.Map;
 
 /**
  * SSE 事件监听器。将 TurnEvent 序列化为 SSE 帧推送到前端。
- * 使用访问者模式分发事件类型，新增事件类型只需扩展 TurnEventVisitor。
  */
 public class SseTurnListener implements TurnListener {
     private static final Logger log = LoggerFactory.getLogger(SseTurnListener.class);
@@ -20,7 +19,6 @@ public class SseTurnListener implements TurnListener {
     private final SseEmitter emitter;
     private final ObjectMapper mapper;
 
-    /** 带 ObjectMapper 注入的构造函数。 */
     public SseTurnListener(SseEmitter emitter, ObjectMapper objectMapper) {
         this.emitter = emitter;
         this.mapper = objectMapper;
@@ -41,7 +39,7 @@ public class SseTurnListener implements TurnListener {
         }
     }
 
-    /** SSE 事件格式化 Visitor，将事件转为前端所需的 Map 结构。 */
+    /** SSE 事件格式化 Visitor。 */
     private static class SseEventFormatter implements TurnEventVisitor<Map<String, Object>> {
 
         @Override

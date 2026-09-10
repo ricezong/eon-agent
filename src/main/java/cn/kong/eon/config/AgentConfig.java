@@ -6,10 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.util.*;
 
 /**
- * Agent 配置。通过 Spring Boot {@code @ConfigurationProperties(prefix = "eon")} 自动绑定
- * application.yml 中的 {@code eon.*} 配置项。
- * <p>
- * 环境变量引用 {@code ${VAR}} / {@code ${VAR:-default}} 由 Spring Boot 原生占位符机制处理。
+ * Agent 配置。通过 {@code @ConfigurationProperties(prefix = "eon")} 绑定 application.yml。
  */
 @ConfigurationProperties(prefix = "eon")
 public class AgentConfig {

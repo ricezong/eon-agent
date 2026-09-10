@@ -40,7 +40,6 @@ public class ToolExecHandler {
 
     private final ObjectMapper objectMapper;
 
-    /** 带 ObjectMapper 注入的构造函数。 */
     public ToolExecHandler(ToolRegistry toolRegistry,
                            ToolContext toolContext,
                            Consumer<TurnEvent> emitter,

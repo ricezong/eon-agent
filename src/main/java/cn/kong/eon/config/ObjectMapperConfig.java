@@ -8,8 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 /**
- * Jackson ObjectMapper 配置。通过 Spring {@code @Bean} 注册，
- * 可通过构造函数注入到需要序列化/反序列化的组件。
+ * Jackson ObjectMapper 单例配置。
  */
 @Configuration
 public class ObjectMapperConfig {

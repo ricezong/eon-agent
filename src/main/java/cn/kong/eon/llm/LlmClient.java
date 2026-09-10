@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -184,10 +185,18 @@ public class LlmClient implements LlmSupport {
             }
         });
 
+        long timeoutSeconds = retryConfig.getAttempts() * 30L;
         try {
-            return future.get(retryConfig.getAttempts() * 30L, TimeUnit.SECONDS);
+            return future.get(timeoutSeconds, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            throw new LlmStalledException("LLM 流式调用超时（" + timeoutSeconds + "s 无响应）");
         } catch (Exception e) {
-            throw new LlmStalledException("LLM 流式调用失败: " + e.getMessage());
+            String msg = e.getMessage();
+            if (msg == null || msg.isBlank()) {
+                msg = e.getClass().getSimpleName();
+            }
+            throw new LlmStalledException("LLM 流式调用失败: " + msg);
         }
     }
 

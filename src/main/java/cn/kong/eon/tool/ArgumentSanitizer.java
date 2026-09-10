@@ -18,7 +18,6 @@ public class ArgumentSanitizer {
 
     private final ObjectMapper objectMapper;
 
-    /** 构造注入 ObjectMapper。 */
     public ArgumentSanitizer(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }

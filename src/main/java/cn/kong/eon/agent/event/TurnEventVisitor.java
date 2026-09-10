@@ -1,10 +1,7 @@
 package cn.kong.eon.agent.event;
 
 /**
- * 事件访问者接口。按事件具体类型分发，避免 instanceof 链。
- * 每新增事件类型只需在此接口增加一个 visit 方法并在事件类中实现 accept。
- *
- * @param <T> 返回值类型
+ * 事件访问者接口。新增事件类型时增加 visit 方法并在事件类中实现 accept。
  */
 public interface TurnEventVisitor<T> {
 
@@ -24,6 +21,6 @@ public interface TurnEventVisitor<T> {
 
     T visitError(SessionError e);
 
-    /** 未知事件类型的兜底处理。 */
+    /** 未知事件类型兜底。 */
     T visitUnknown(TurnEvent e);
 }

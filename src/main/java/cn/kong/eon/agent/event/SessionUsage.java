@@ -4,7 +4,6 @@ import java.time.Instant;
 
 /**
  * 本轮聚合的 token 用量统计事件。
- * 建议固定在 agent.message 后、session.status=idle 前一次性下发。
  */
 public record SessionUsage(
         String turnId,

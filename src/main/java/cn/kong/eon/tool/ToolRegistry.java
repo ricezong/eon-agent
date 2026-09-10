@@ -23,7 +23,6 @@ public class ToolRegistry {
     private final Map<String, McpClientManager> mcpToolSources = new HashMap<>();
     private final Map<String, ToolSpecification> mcpToolSpecs = new HashMap<>();
 
-    /** 带 ObjectMapper 注入的构造函数。 */
     public ToolRegistry(Set<String> whitelist, ObjectMapper objectMapper) {
         this.whitelist = whitelist != null ? whitelist : new HashSet<>();
         this.objectMapper = objectMapper;

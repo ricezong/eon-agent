@@ -32,7 +32,6 @@ public class JsonlStore {
     /** 下一条消息的序号，等于账本当前行数 */
     private int messageCount = 0;
 
-    /** 带 ObjectMapper 注入的构造函数。 */
     public JsonlStore(Path jsonlFile, ContextPipeline pipeline, int replayFrom, ObjectMapper objectMapper) {
         this.jsonlFile = jsonlFile;
         this.mapper = objectMapper;

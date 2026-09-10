@@ -12,9 +12,12 @@ import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import cn.kong.eon.agent.event.StructuredContent;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -28,8 +31,9 @@ public class ListDirTool implements ToolExecutor {
     @Override
     public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
         String targetDir = (String) arguments.get("target_directory");
-        if (targetDir == null || targetDir.isBlank()) {
-            return ToolOutcome.failure("缺少 'target_directory' 参数");
+        boolean defaulted = targetDir == null || targetDir.isBlank();
+        if (defaulted) {
+            targetDir = ".";
         }
 
         PathResolver resolver = context.pathResolver();
@@ -48,29 +52,38 @@ public class ListDirTool implements ToolExecutor {
         }
 
         try (Stream<Path> stream = Files.list(dirPath)) {
-            StringBuilder sb = new StringBuilder();
-            sb.append("目录内容 ").append(targetDir).append(":\n\n");
-
             List<Path> entries = stream
                     .filter(p -> !isDotFile(p))
                     .sorted()
                     .toList();
+
+            List<StructuredContent.DirEntry> dirEntries = new ArrayList<>();
+            StringBuilder sb = new StringBuilder();
+            sb.append("目录内容 ").append(dirPath).append(":\n\n");
 
             for (Path entry : entries) {
                 String name = entry.getFileName().toString();
                 boolean isDir = Files.isDirectory(entry);
                 if (isDir) {
                     sb.append("[目录]  ").append(name).append("/\n");
+                    dirEntries.add(StructuredContent.DirEntry.dir(name));
                 } else {
                     long size = Files.size(entry);
-                    sb.append("[文件] ").append(name).append(" (").append(formatSize(size)).append(")\n");
+                    String sizeStr = formatSize(size);
+                    sb.append("[文件] ").append(name).append(" (").append(sizeStr).append(")\n");
+                    dirEntries.add(StructuredContent.DirEntry.file(name, sizeStr));
                 }
             }
 
-            sb.append("\n").append(entries.size()).append(" 个条目");
-            log.info("list_dir: {} ({} 个条目)", targetDir, entries.size());
+            if (entries.isEmpty()) {
+                sb.append("（空目录）\n");
+            }
 
-            return ToolOutcome.success(sb.toString());
+            sb.append("\n").append(entries.size()).append(" 个条目");
+            log.info("list_dir: {} ({} 个条目)", dirPath, entries.size());
+
+            return ToolOutcome.success(sb.toString(),
+                    StructuredContent.dirList(dirPath.toString(), dirEntries));
 
         } catch (IOException e) {
             log.error("list_dir 失败: {}", e.getMessage());
@@ -97,7 +110,7 @@ public class ListDirTool implements ToolExecutor {
             "返回文件名、类型和大小信息。"
     })
     public String listDir(
-            @P(name = "target_directory", description = "要浏览的目录路径。相对于工作目录，不传则浏览工作目录本身。") String target_directory
+            @P(name = "target_directory", description = "要浏览的目录路径。相对于工作目录，不传或为空则浏览工作目录本身。") String target_directory
     ) {
         return null;
     }

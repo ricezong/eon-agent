@@ -27,17 +27,15 @@ import java.util.List;
 import cn.kong.eon.agent.event.TurnListener;
 
 /**
- * 应用级容器。管理 LlmClient、ToolRegistry、MCP 连接、MemoryStore、ContentTrimmer、systemPrompt 等重资源，
- * 构造一次不随会话切换重建。会话级组件委托给 {@link SessionContext}。
- * <p>
- * 通过 Spring 构造注入 AgentConfig、ObjectMapper、HttpConfig、ContentTrimmer、ResourceLoader。
+ * 应用级容器。管理 LlmClient、ToolRegistry、MCP 连接等重资源，构造一次不随会话切换重建。
+ * 会话级组件委托给 {@link SessionContext}。
  */
 @Component
 public class AgentBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(AgentBootstrap.class);
 
-    // ── 应用级组件（构造一次，不随会话切换重建）
+    // ── 应用级组件
     private final AgentConfig config;
     private final ContentTrimmer compressor;
     private final LlmClient llmClient;
@@ -48,10 +46,10 @@ public class AgentBootstrap {
     private final String systemPrompt;
     private final SessionRegistry sessionRegistry;
 
-    /** MCP 客户端列表（应用级，切换会话不重连）。 */
+    /** MCP 客户端列表 */
     private final List<McpClientManager> mcpClients = new ArrayList<>();
 
-    // ── 会话级组件（volatile 保证可见性，synchronized 保证原子性）
+    // ── 会话级组件
     private volatile SessionContext session;
 
     public AgentBootstrap(AgentConfig config,
@@ -87,12 +85,12 @@ public class AgentBootstrap {
     //  会话管理
     // ═══════════════════════════════════════════════════════════════════
 
-    /** 运行一轮对话。首次调用时自动初始化会话。 */
+    /** 运行一轮对话，首次调用时自动初始化会话。 */
     public synchronized String run(String userInput) {
         return run(userInput, List.of());
     }
 
-    /** 运行一轮对话（带外部 TurnListener，用于 SSE 推送）。 */
+    /** 运行一轮对话，带外部 TurnListener 用于 SSE 推送。 */
     public synchronized String run(String userInput, List<TurnListener> externalListeners) {
         if (userInput == null || userInput.isBlank()) {
             return "输入不能为空。";
@@ -100,7 +98,7 @@ public class AgentBootstrap {
         if (session == null) {
             session = createSession(null, externalListeners);
         } else {
-            // 动态注册外部 listener，不再重建 SessionContext
+            // 动态注册外部 listener
             for (TurnListener l : externalListeners) {
                 session.addTurnListener(l);
             }
@@ -119,7 +117,7 @@ public class AgentBootstrap {
         return session != null;
     }
 
-    /** 切换会话：关闭旧会话上下文，创建新会话上下文。 */
+    /** 切换会话。 */
     public synchronized void switchSession(String resumeSelector) {
         if (session != null) {
             session.close();
@@ -130,7 +128,7 @@ public class AgentBootstrap {
         log.info("AgentBootstrap 会话已切换: {}", session.getSessionId());
     }
 
-    /** 新建会话：关闭旧会话上下文，创建空会话。 */
+    /** 新建会话。 */
     public synchronized void newSession() {
         if (session != null) {
             session.close();
@@ -166,9 +164,7 @@ public class AgentBootstrap {
     //  内部装配
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * 创建会话上下文，注入应用级依赖（包括 ObjectMapper）。
-     */
+    /** 创建会话上下文，注入应用级依赖。 */
     private SessionContext createSession(SessionSummary resumedSession, List<TurnListener> externalListeners) {
         return new SessionContext(config, llmClient, toolRegistry, memoryStore,
                 compressor, systemPrompt, resumedSession, externalListeners, objectMapper);
