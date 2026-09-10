@@ -1,4 +1,4 @@
-package cn.kong.eon.hook.postmodel;
+package cn.kong.eon.agent.hook.postmodel;
 
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;

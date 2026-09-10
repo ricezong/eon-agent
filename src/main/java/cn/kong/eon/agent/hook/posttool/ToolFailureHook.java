@@ -1,4 +1,4 @@
-package cn.kong.eon.hook.posttool;
+package cn.kong.eon.agent.hook.posttool;
 
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;

@@ -1,4 +1,4 @@
-package cn.kong.eon.hook.premodel;
+package cn.kong.eon.agent.hook.premodel;
 
 import cn.kong.eon.context.ContextBuilder;
 import cn.kong.eon.context.ContextMetrics;
