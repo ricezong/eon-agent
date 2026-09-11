@@ -37,7 +37,7 @@ public class TurnMessageWriter {
 
         List<ToolCallRecord> toolResults = turn.toolResults();
         Set<String> succeeded = succeededIds(toolResults);
-        AiMessage aiMsg = buildAiMessage(assistantText, pendingCalls, hasText, turn.thinking());
+        AiMessage aiMsg = buildAiMessage(assistantText, pendingCalls, hasText, hasCalls, turn.thinking());
         r.session().ledger().append(aiMsg, succeeded);
 
         if (toolResults != null) {
@@ -56,12 +56,12 @@ public class TurnMessageWriter {
 
     /** 构建 AiMessage，携带 thinking 用于账本持久化。 */
     private static AiMessage buildAiMessage(String text, List<ToolExecutionRequest> calls,
-                                            boolean hasText, String thinking) {
+                                            boolean hasText, boolean hasCalls, String thinking) {
         var builder = AiMessage.builder();
         if (hasText) {
             builder.text(text);
         }
-        if (calls != null && !calls.isEmpty()) {
+        if (hasCalls) {
             builder.toolExecutionRequests(calls);
         }
         if (thinking != null && !thinking.isBlank()) {

@@ -32,6 +32,10 @@ public final class HookResult {
         return new HookResult(Action.STOP, category, message);
     }
 
+    public boolean isContinue() {
+        return action == Action.CONTINUE;
+    }
+
     public boolean isStop() {
         return action == Action.STOP;
     }

@@ -14,9 +14,9 @@ public record ToolRuntime(
         ArtifactStore artifactStore,
         MemoryStore memoryStore,
         PathResolver pathResolver,
-        /** 当前轮次序号（原 state.getTurnCount()） */
+        /** 当前轮次序号 */
         int turn,
-        /** 会话 ID（原 state.getSessionId()） */
+        /** 会话 ID */
         String sessionId
 ) {
 }

@@ -1,7 +1,5 @@
-package cn.kong.eon.web;
+package cn.kong.eon.web.exception;
 
-import cn.kong.eon.web.exception.SessionBusyException;
-import cn.kong.eon.web.exception.SessionNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;

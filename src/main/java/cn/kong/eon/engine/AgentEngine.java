@@ -41,7 +41,6 @@ public class AgentEngine {
     private final ToolService toolService;
     private final String basePrompt;
     private final TokenCountEstimator tokenCountEstimator;
-    /** Hook 分组在构造期做一次。 */
     private final HookBuckets hooks;
     private final ToolCallDispatcher dispatcher;
     private final TurnMessageWriter messageWriter;
@@ -74,8 +73,6 @@ public class AgentEngine {
     // ═══════════════════════════════════════════════════════════════════
 
     public String run(RunContext r) {
-        HookBuckets hooks = this.hooks;
-
         initRun(r);
 
         // 发出 session.status: running
@@ -85,7 +82,7 @@ public class AgentEngine {
             // 中断检查
             if (r.task().isInterrupted()) {
                 return completeExit(r, stopHandler.forceTerminate(
-                        r, StopCategory.USER_INTERRUPTED, "用户主动中断"));
+                        r, StopCategory.USER_INTERRUPTED, StopCategory.USER_INTERRUPTED.format()));
             }
 
             // 步数检查
@@ -98,7 +95,7 @@ public class AgentEngine {
             r.nextTurn();
 
             try {
-                LoopAction action = executeTurn(r, hooks);
+                LoopAction action = executeTurn(r);
                 if (action.isExit()) {
                     return completeExit(r, action.output());
                 }
@@ -114,12 +111,12 @@ public class AgentEngine {
     //  Turn 执行
     // ═══════════════════════════════════════════════════════════════════
 
-    private LoopAction executeTurn(RunContext r, HookBuckets hooks) {
+    private LoopAction executeTurn(RunContext r) {
         try {
             // ── 阶段 1：准备上下文 ──
             ContextBuilder contextBuilder = buildContext(r);
             r.turn().setPrompt(contextBuilder);
-            LoopAction preModel = prepareContext(r, hooks, contextBuilder);
+            LoopAction preModel = prepareContext(r, contextBuilder);
             if (preModel.isExit()) {
                 return preModel;
             }
@@ -132,22 +129,21 @@ public class AgentEngine {
             if (llmService.isStreamEnabled()) {
                 response = llmService.streamChat(messages, toolService.getSpecifications(),
                         delta -> r.emit(AgentDelta.text(r.task().turnId(), delta)),
-                        delta -> r.emit(AgentDelta.thinking(r.task().turnId(), delta)),
-                        thinking -> r.emit(AgentThinking.now(r.task().turnId(), thinking)));
+                        delta -> r.emit(AgentDelta.thinking(r.task().turnId(), delta)));
             } else {
                 response = llmService.chat(messages, toolService.getSpecifications());
             }
             r.turn().setResponse(response);
             r.session().usageAccum().add(response.usage());
 
-            String thought = response.aiMessage().text() != null ? response.aiMessage().text() : "";
-            r.turn().setAssistantText(thought);
+            String text = response.aiMessage().text() != null ? response.aiMessage().text() : "";
+            r.turn().setAssistantText(text);
             r.turn().setThinking(response.aiMessage().thinking());
             List<ToolExecutionRequest> requests = response.aiMessage().toolExecutionRequests();
 
             // ── 阶段 4：PostModel Hooks ──
             r.turn().setPendingToolCalls(requests);
-            LoopAction postModel = firePostModelHooks(r, hooks);
+            LoopAction postModel = firePostModelHooks(r);
             if (postModel.isExit()) {
                 return postModel;
             }
@@ -157,12 +153,12 @@ public class AgentEngine {
 
             // ── 阶段 5：无工具调用 → 发出 engine.message 并退出 ──
             if (requests == null || requests.isEmpty()) {
-                r.emit(AgentMessage.now(r.task().turnId(), r.turn().messageId(), thought));
-                return LoopAction.exit(thought);
+                r.emit(AgentMessage.now(r.task().turnId(), r.turn().messageId(), text));
+                return LoopAction.exit(text);
             }
 
             // ── 阶段 6：Extension Loop ──
-            LoopAction extension = executeExtensionLoop(r, hooks, requests);
+            LoopAction extension = executeExtensionLoop(r, requests);
             if (extension.isExit()) {
                 return extension;
             }
@@ -177,10 +173,10 @@ public class AgentEngine {
         }
     }
 
-    private LoopAction executeExtensionLoop(RunContext r, HookBuckets hooks,
+    private LoopAction executeExtensionLoop(RunContext r,
                                             List<ToolExecutionRequest> requests) {
         // PreTool Hooks
-        LoopAction preTool = firePreToolHooks(r, hooks, requests);
+        LoopAction preTool = firePreToolHooks(r, requests);
         if (preTool.isExit()) {
             return preTool;
         }
@@ -198,7 +194,7 @@ public class AgentEngine {
                 return interruptExit(r);
             }
             ToolCallRecord result = results.get(i);
-            LoopAction postTool = firePostToolHooks(r, hooks, requests.get(i).name(), result.success());
+            LoopAction postTool = firePostToolHooks(r, requests.get(i).name(), result.success());
             if (postTool.isExit()) {
                 return postTool;
             }
@@ -210,7 +206,7 @@ public class AgentEngine {
     /** 中断退出：生成终止文本并结束本轮，收尾由 run() 统一处理。 */
     private LoopAction interruptExit(RunContext r) {
         return LoopAction.exit(
-                stopHandler.forceTerminate(r, StopCategory.USER_INTERRUPTED, "用户主动中断"));
+                stopHandler.forceTerminate(r, StopCategory.USER_INTERRUPTED, StopCategory.USER_INTERRUPTED.format()));
     }
 
     /**
@@ -291,18 +287,18 @@ public class AgentEngine {
     //  Hook 调度
     // ═══════════════════════════════════════════════════════════════════
 
-    private LoopAction prepareContext(RunContext r, HookBuckets hooks, ContextBuilder contextBuilder) {
+    private LoopAction prepareContext(RunContext r, ContextBuilder contextBuilder) {
         HookResult result = HookDispatcher.dispatchPreModel(hooks.preModel, r);
-        if (result != null && result.isStop()) {
+        if (result.isStop()) {
             return exitOf(r, result);
         }
         consumeNudges(r, contextBuilder);
         return LoopAction.CONTINUE;
     }
 
-    private LoopAction firePostModelHooks(RunContext r, HookBuckets hooks) {
+    private LoopAction firePostModelHooks(RunContext r) {
         HookResult result = HookDispatcher.dispatchPostModel(hooks.postModel, r);
-        if (result == null) {
+        if (result.isContinue()) {
             return LoopAction.CONTINUE;
         }
         if (result.isSkip()) {
@@ -314,18 +310,18 @@ public class AgentEngine {
         return LoopAction.CONTINUE;
     }
 
-    private LoopAction firePreToolHooks(RunContext r, HookBuckets hooks,
+    private LoopAction firePreToolHooks(RunContext r,
                                         List<ToolExecutionRequest> requests) {
         HookResult result = HookDispatcher.dispatchPreTool(hooks.preTool, r, requests);
-        if (result != null && result.isStop()) {
+        if (result.isStop()) {
             return exitOf(r, result);
         }
         return LoopAction.CONTINUE;
     }
 
-    private LoopAction firePostToolHooks(RunContext r, HookBuckets hooks, String toolName, boolean success) {
+    private LoopAction firePostToolHooks(RunContext r, String toolName, boolean success) {
         HookResult result = HookDispatcher.dispatchPostTool(hooks.postTool, r, toolName, success);
-        if (result != null && result.isStop()) {
+        if (result.isStop()) {
             return exitOf(r, result);
         }
         return LoopAction.CONTINUE;

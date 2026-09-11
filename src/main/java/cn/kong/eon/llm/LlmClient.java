@@ -136,8 +136,7 @@ public class LlmClient implements LlmService {
     @Override
     public LlmResponse streamChat(List<ChatMessage> messages, List<ToolSpecification> tools,
                                    Consumer<String> onTextDelta,
-                                   Consumer<String> onThinkingDelta,
-                                   Consumer<String> onThinkingComplete) {
+                                   Consumer<String> onThinkingDelta) {
         ChatRequest.Builder requestBuilder = ChatRequest.builder().messages(messages);
         if (tools != null && !tools.isEmpty()) {
             requestBuilder.toolSpecifications(tools);
@@ -172,9 +171,6 @@ public class LlmClient implements LlmService {
                 aiMessageRef.set(ai);
                 usageRef.set(completeResponse.tokenUsage());
 
-                if (onThinkingComplete != null && ai.thinking() != null && !ai.thinking().isBlank()) {
-                    onThinkingComplete.accept(ai.thinking());
-                }
                 if (completeResponse.finishReason() != null) {
                     finishReasonRef.set(completeResponse.finishReason().name());
                 }

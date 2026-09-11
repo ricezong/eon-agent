@@ -34,15 +34,13 @@ public interface LlmService {
      *
      * @param messages          上下文消息
      * @param tools             工具规格
-     * @param onTextDelta       文本增量回调
-     * @param onThinkingDelta   thinking 增量回调
-     * @param onThinkingComplete thinking 完成回调
+     * @param onTextDelta     文本增量回调
+     * @param onThinkingDelta  thinking 增量回调
      * @return 完整的 LLM 响应
      */
     LlmResponse streamChat(List<ChatMessage> messages, List<ToolSpecification> tools,
                            Consumer<String> onTextDelta,
-                           Consumer<String> onThinkingDelta,
-                           Consumer<String> onThinkingComplete);
+                           Consumer<String> onThinkingDelta);
 
     /** 是否启用流式。 */
     boolean isStreamEnabled();
