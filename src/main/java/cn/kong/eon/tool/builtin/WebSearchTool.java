@@ -1,8 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.runtime.SessionState;
 import cn.kong.eon.tool.ToolPermission;
-import cn.kong.eon.tool.ToolContext;
+import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
@@ -73,7 +72,7 @@ public class WebSearchTool implements ToolExecutor {
     }
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
         String query = (String) arguments.get("query");
         if (query == null || query.isBlank()) {
             return ToolOutcome.failure("缺少 'query' 参数");

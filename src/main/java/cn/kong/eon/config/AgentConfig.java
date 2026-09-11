@@ -16,6 +16,7 @@ public class AgentConfig {
     private LoopDetectConfig loopDetect = new LoopDetectConfig();
     private RetryConfig retry = new RetryConfig();
     private StorageConfig storage = new StorageConfig();
+    private SessionConfig session = new SessionConfig();
     private ToolsConfig tools = new ToolsConfig();
     private McpConfig mcp = new McpConfig();
     private WebSearchConfig webSearch = new WebSearchConfig();
@@ -68,6 +69,14 @@ public class AgentConfig {
 
     public void setStorage(StorageConfig storage) {
         this.storage = storage;
+    }
+
+    public SessionConfig getSession() {
+        return session;
+    }
+
+    public void setSession(SessionConfig session) {
+        this.session = session;
     }
 
     public ToolsConfig getTools() {
@@ -510,6 +519,63 @@ public class AgentConfig {
 
         public void setDbPath(String v) {
             this.dbPath = v;
+        }
+    }
+
+    /** 会话运行时配置。 */
+    public static class SessionConfig {
+        private CacheConfig cache = new CacheConfig();
+
+        public CacheConfig getCache() {
+            return cache;
+        }
+
+        public void setCache(CacheConfig cache) {
+            this.cache = cache;
+        }
+
+        /** 活跃会话上下文缓存配置。 */
+        public static class CacheConfig {
+            /** 缓存条目上限 */
+            private int maximumSize = 1000;
+            /** IDLE 状态空闲 TTL（分钟） */
+            private int idleTtlMinutes = 30;
+            /** RUNNING 状态 TTL（分钟），兜底防长任务被淘汰 */
+            private int runningTtlMinutes = 1440;
+            /** 同会话并发策略：REJECT（抛 SessionBusyException）| QUEUE（排队等待） */
+            private String busyPolicy = "REJECT";
+
+            public int getMaximumSize() {
+                return maximumSize;
+            }
+
+            public void setMaximumSize(int v) {
+                this.maximumSize = v;
+            }
+
+            public int getIdleTtlMinutes() {
+                return idleTtlMinutes;
+            }
+
+            public void setIdleTtlMinutes(int v) {
+                this.idleTtlMinutes = v;
+            }
+
+            public int getRunningTtlMinutes() {
+                return runningTtlMinutes;
+            }
+
+            public void setRunningTtlMinutes(int v) {
+                this.runningTtlMinutes = v;
+            }
+
+            public String getBusyPolicy() {
+                return busyPolicy;
+            }
+
+            public void setBusyPolicy(String v) {
+                this.busyPolicy = v;
+            }
         }
     }
 

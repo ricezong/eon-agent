@@ -1,11 +1,10 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.runtime.SessionState;
 import cn.kong.eon.store.todo.TodoItem;
 import cn.kong.eon.store.todo.TodoStatus;
 import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.store.todo.TodoStore;
-import cn.kong.eon.tool.ToolContext;
+import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
@@ -33,7 +32,7 @@ public class TodoWriteTool implements ToolExecutor {
     }
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
         Object todosObj = arguments.get("todos");
         if (!(todosObj instanceof List<?> todosList) || todosList.isEmpty()) {
             return ToolOutcome.failure("缺少或空的 'todos' 参数");
@@ -63,23 +62,23 @@ public class TodoWriteTool implements ToolExecutor {
         }
 
         // 校验单一焦点：同一时间只能有一个任务处于 in_progress
-        if (!context.todoStore().validateSingleFocus(items)) {
+        if (!runtime.todoStore().validateSingleFocus(items)) {
             return ToolOutcome.failure(
                     "多个待办事项处于 'in_progress' 状态。同一时间只能有一个任务处于进行中状态。");
         }
 
         List<TodoItem> result;
         if (merge) {
-            result = context.todoStore().mergeById(items, state.getTurnCount());
+            result = runtime.todoStore().mergeById(items, runtime.turn());
         } else {
-            result = context.todoStore().replaceAll(items, state.getTurnCount());
+            result = runtime.todoStore().replaceAll(items, runtime.turn());
         }
 
         // 全部完成/取消时清空 TodoStore，使 Todo 不再注入上下文
         boolean allDone = result.stream()
                 .allMatch(t -> t.getStatus() == TodoStatus.COMPLETED || t.getStatus() == TodoStatus.CANCELLED);
         if (allDone) {
-            context.todoStore().clear();
+            runtime.todoStore().clear();
             log.info("todo_write: 全部完成/取消，已清空 TodoStore");
             return ToolOutcome.success("所有任务已完成。\n" + formatTodoList(result));
         }

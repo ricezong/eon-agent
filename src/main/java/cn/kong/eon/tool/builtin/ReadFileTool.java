@@ -1,8 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.runtime.SessionState;
 import cn.kong.eon.tool.ToolPermission;
-import cn.kong.eon.tool.ToolContext;
+import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
@@ -28,7 +27,7 @@ public class ReadFileTool implements ToolExecutor {
     private static final String ARTIFACT_PREFIX = "artifact://";
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
         String targetFile = (String) arguments.get("target_file");
         if (targetFile == null || targetFile.isBlank()) {
             return ToolOutcome.failure("缺少 'target_file' 参数");
@@ -40,7 +39,7 @@ public class ReadFileTool implements ToolExecutor {
         // artifact:// 引用：从 ArtifactStore 读取后分页返回，避免全文一次性进入上下文
         if (targetFile.startsWith(ARTIFACT_PREFIX)) {
             String refId = targetFile.substring(ARTIFACT_PREFIX.length()).trim();
-            String content = context.artifactStore().readContent(refId);
+            String content = runtime.artifactStore().readContent(refId);
             if (content == null) {
                 return ToolOutcome.failure("找不到 artifact 引用: " + refId);
             }
@@ -48,7 +47,7 @@ public class ReadFileTool implements ToolExecutor {
             return paginate(content, offset, limit, refId);
         }
 
-        PathResolver resolver = context.pathResolver();
+        PathResolver resolver = runtime.pathResolver();
         Path filePath;
         try {
             filePath = resolver.resolve(targetFile);

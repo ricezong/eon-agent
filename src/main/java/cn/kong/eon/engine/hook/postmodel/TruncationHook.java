@@ -2,15 +2,19 @@ package cn.kong.eon.engine.hook.postmodel;
 
 import cn.kong.eon.engine.hook.Hook;
 import cn.kong.eon.engine.hook.HookResult;
-import cn.kong.eon.runtime.SessionState;
+import cn.kong.eon.runtime.RunContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 /**
  * 截断检测（PostModel, order=5）。
  * finishReason=length 时注入截断提示 nudge 并返回 skip()，
  * 跳过当前 Turn 后续阶段直接进入下一轮，让模型重新调用工具。
+ * <p>
+ * 无状态：本轮响应读 {@code r.turn().response()}。
  */
+@Component
 public class TruncationHook implements Hook.PostModelHook {
     private static final Logger log = LoggerFactory.getLogger(TruncationHook.class);
 
@@ -22,22 +26,17 @@ public class TruncationHook implements Hook.PostModelHook {
     }
 
     @Override
-    public boolean active(SessionState state) {
-        return true;
-    }
-
-    @Override
     public int order() {
         return 5;
     }
 
     @Override
-    public HookResult afterModelCall(SessionState state) {
-        if (state.getLastResponse() == null) {
+    public HookResult afterModelCall(RunContext r) {
+        if (r.turn().response() == null) {
             return HookResult.ok();
         }
-        if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
-            state.addNudge(TRUNCATION_NUDGE);
+        if ("length".equalsIgnoreCase(r.turn().response().finishReason())) {
+            r.task().addNudge(TRUNCATION_NUDGE);
             log.info("[Truncation] 输出被截断(finishReason=length)，注入 nudge 并跳过后续阶段");
             return HookResult.skip();
         }

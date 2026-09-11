@@ -1,5 +1,7 @@
 package cn.kong.eon.web;
 
+import cn.kong.eon.web.exception.SessionBusyException;
+import cn.kong.eon.web.exception.SessionNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -23,6 +25,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException e, WebRequest request) {
         log.warn("参数错误: {}", e.getMessage());
         return buildResponse(HttpStatus.BAD_REQUEST, "bad_request", e.getMessage());
+    }
+
+    @ExceptionHandler(SessionNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleSessionNotFound(SessionNotFoundException e, WebRequest request) {
+        log.warn("会话不存在: {}", e.getMessage());
+        return buildResponse(HttpStatus.NOT_FOUND, "session_not_found", e.getMessage());
+    }
+
+    @ExceptionHandler(SessionBusyException.class)
+    public ResponseEntity<Map<String, Object>> handleSessionBusy(SessionBusyException e, WebRequest request) {
+        log.warn("会话忙: {}", e.getMessage());
+        return buildResponse(HttpStatus.CONFLICT, "session_busy", e.getMessage());
     }
 
     @ExceptionHandler(IllegalStateException.class)

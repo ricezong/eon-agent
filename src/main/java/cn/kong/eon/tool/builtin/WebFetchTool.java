@@ -1,8 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.runtime.SessionState;
 import cn.kong.eon.tool.ToolPermission;
-import cn.kong.eon.tool.ToolContext;
+import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
@@ -87,7 +86,7 @@ public class WebFetchTool implements ToolExecutor {
 
     @Override
     @SuppressWarnings("unchecked")
-    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
         Object urlsObj = arguments.get("urls");
         if (!(urlsObj instanceof List<?> rawUrls) || rawUrls.isEmpty()) {
             return ToolOutcome.failure("缺少或空的 'urls' 参数");

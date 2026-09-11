@@ -1,10 +1,9 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.runtime.SessionState;
 import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.store.memory.MemoryStore;
 import cn.kong.eon.store.memory.MemoryStore.MemoryItem;
-import cn.kong.eon.tool.ToolContext;
+import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
@@ -43,8 +42,8 @@ public class UpdateMemoryTool implements ToolExecutor {
     }
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
-        MemoryStore memoryStore = context.memoryStore();
+    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
+        MemoryStore memoryStore = runtime.memoryStore();
         String action = (String) arguments.getOrDefault("action", "create");
 
         try {

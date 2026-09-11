@@ -1,11 +1,11 @@
 package cn.kong.eon.store.index;
 
+import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.store.db.SessionIndexRepository;
 import cn.kong.eon.store.db.SessionIndexRepository.SessionIndex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -28,10 +28,8 @@ public class SessionIndexStore {
     private final Path baseDir;
     private final SessionIndexRepository indexRepo;
 
-    public SessionIndexStore(
-            @Value("${eon.storage.base_dir:/home/workspace/sessions}") String baseDir,
-            SessionIndexRepository indexRepo) {
-        this.baseDir = Path.of(baseDir).toAbsolutePath().normalize();
+    public SessionIndexStore(AgentConfig config, SessionIndexRepository indexRepo) {
+        this.baseDir = Path.of(config.getStorage().getBaseDir()).toAbsolutePath().normalize();
         this.indexRepo = indexRepo;
         try {
             Files.createDirectories(this.baseDir);

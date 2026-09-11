@@ -1,8 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.runtime.SessionState;
 import cn.kong.eon.tool.ToolPermission;
-import cn.kong.eon.tool.ToolContext;
+import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
@@ -54,7 +53,7 @@ public class AskQuestionTool implements ToolExecutor {
 
     @Override
     @SuppressWarnings("unchecked")
-    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
         Object questionsObj = arguments.get("questions");
         if (!(questionsObj instanceof List<?> rawQuestions) || rawQuestions.isEmpty()) {
             return ToolOutcome.failure("缺少或空的 'questions' 参数");
@@ -62,22 +61,22 @@ public class AskQuestionTool implements ToolExecutor {
 
         String title = (String) arguments.get("title");
 
-        InteractionCallback callback = context.interactionCallback();
+        InteractionCallback callback = runtime.interactionCallback();
         if (callback == null) {
             return ToolOutcome.failure("交互回调不可用，无法向用户提问。");
         }
 
-        return executeViaCallback(arguments, callback, state, title);
+        return executeViaCallback(arguments, runtime, callback, title);
     }
 
     /** 通过交互回调向用户收集答案。 */
     @SuppressWarnings("unchecked")
     private ToolOutcome executeViaCallback(Map<String, Object> arguments,
-                                           InteractionCallback callback,
-                                           SessionState state, String title) {
+                                           ToolRuntime runtime,
+                                           InteractionCallback callback, String title) {
         List<Map<String, Object>> questions = (List<Map<String, Object>>) arguments.get("questions");
 
-        log.info("AskQuestion 通过回调: {} 个问题, 会话={}", questions.size(), state.getSessionId());
+        log.info("AskQuestion 通过回调: {} 个问题, 会话={}", questions.size(), runtime.sessionId());
 
         Map<String, String> answers = callback.askQuestions(questions, title);
 

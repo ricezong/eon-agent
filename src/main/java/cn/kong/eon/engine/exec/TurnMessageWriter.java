@@ -1,65 +1,64 @@
 package cn.kong.eon.engine.exec;
 
+import cn.kong.eon.runtime.RunContext;
+import cn.kong.eon.runtime.TurnScope;
 import cn.kong.eon.tool.model.ToolCallRecord;
-import cn.kong.eon.runtime.SessionState;
-import cn.kong.eon.store.ledger.TranscriptLedger;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
+import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
- * 消息回填器。将 AI 消息和工具结果回填到上下文，清理临时状态。
+ * 消息回填器。将 AI 消息和工具结果回填到账本，清理轮次级临时状态。
  * 工具结果以原始输出回填，落盘与格式化交给入站管线。
+ * <p>
+ * 无状态：账本从 {@code r.session().ledger()} 取，本轮数据从 {@code r.turn()} 取。
  */
+@Component
 public class TurnMessageWriter {
-    private final TranscriptLedger transcriptLedger;
 
-    public TurnMessageWriter(TranscriptLedger transcriptLedger) {
-        this.transcriptLedger = transcriptLedger;
-    }
-
-    /** 回填 AI 消息和工具结果，清理临时状态。 */
-    public void flush(SessionState state) {
-        String assistantText = state.getLastAssistantText();
-        var pendingCalls = state.getPendingToolCalls();
+    /** 回填 AI 消息和工具结果，清理轮次级临时状态。 */
+    public void flush(RunContext r) {
+        TurnScope turn = r.turn();
+        String assistantText = turn.assistantText();
+        List<ToolExecutionRequest> pendingCalls = turn.pendingToolCalls();
         boolean hasText = assistantText != null && !assistantText.isBlank();
         boolean hasCalls = pendingCalls != null && !pendingCalls.isEmpty();
 
         // 异常路径下可能既无文本又无工具调用，直接清理并返回
         if (!hasText && !hasCalls) {
-            state.setPendingToolCalls(null);
-            state.setLastToolResults(null);
-            state.setLastAssistantText(null);
+            turn.setPendingToolCalls(null);
+            turn.setToolResults(null);
+            turn.setAssistantText(null);
             return;
         }
 
-        List<ToolCallRecord> toolResults = state.getLastToolResults();
+        List<ToolCallRecord> toolResults = turn.toolResults();
         Set<String> succeeded = succeededIds(toolResults);
-        String thinking = state.getLastThinking();
-        AiMessage aiMsg = buildAiMessage(assistantText, pendingCalls, hasText, thinking);
-        transcriptLedger.append(aiMsg, succeeded);
-
+        AiMessage aiMsg = buildAiMessage(assistantText, pendingCalls, hasText, turn.thinking());
+        r.session().ledger().append(aiMsg, succeeded);
 
         if (toolResults != null) {
             for (ToolCallRecord result : toolResults) {
-                ToolExecutionResultMessage toolResultMsg = ToolExecutionResultMessage.from(result.toolCallId(), result.toolName(), result.content());
-                transcriptLedger.append(toolResultMsg, succeeded, result.toolResultView());
+                ToolExecutionResultMessage toolResultMsg = ToolExecutionResultMessage.from(
+                        result.toolCallId(), result.toolName(), result.content());
+                r.session().ledger().append(toolResultMsg, succeeded, result.toolResultView());
             }
         }
 
-        state.setPendingToolCalls(null);
-        state.setLastToolResults(null);
-        state.setLastAssistantText(null);
-        state.setLastThinking(null);
+        turn.setPendingToolCalls(null);
+        turn.setToolResults(null);
+        turn.setAssistantText(null);
+        turn.setThinking(null);
     }
 
     /** 构建 AiMessage，携带 thinking 用于账本持久化。 */
     private static AiMessage buildAiMessage(String text, List<ToolExecutionRequest> calls,
-                                             boolean hasText, String thinking) {
+                                            boolean hasText, String thinking) {
         var builder = AiMessage.builder();
         if (hasText) {
             builder.text(text);

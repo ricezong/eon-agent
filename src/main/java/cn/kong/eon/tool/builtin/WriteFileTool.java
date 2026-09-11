@@ -1,8 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.runtime.SessionState;
 import cn.kong.eon.tool.ToolPermission;
-import cn.kong.eon.tool.ToolContext;
+import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
@@ -24,7 +23,7 @@ public class WriteFileTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(WriteFileTool.class);
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
         String filePath = (String) arguments.get("file_path");
         if (filePath == null || filePath.isBlank()) {
             return ToolOutcome.failure("缺少 'file_path' 参数");
@@ -34,7 +33,7 @@ public class WriteFileTool implements ToolExecutor {
             return ToolOutcome.failure("缺少 'contents' 参数");
         }
 
-        PathResolver resolver = context.pathResolver();
+        PathResolver resolver = runtime.pathResolver();
         Path resolvedPath;
         try {
             resolvedPath = resolver.resolve(filePath);

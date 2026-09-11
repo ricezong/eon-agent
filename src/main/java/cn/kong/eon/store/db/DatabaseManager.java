@@ -1,8 +1,8 @@
 package cn.kong.eon.store.db;
 
+import cn.kong.eon.config.AgentConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Files;
@@ -21,8 +21,8 @@ public class DatabaseManager {
 
     private final String dbPath;
 
-    public DatabaseManager(@Value("${eon.storage.db_path:/home/workspace/sessions/eon.db}") String dbPath) {
-        this.dbPath = dbPath;
+    public DatabaseManager(AgentConfig config) {
+        this.dbPath = config.getStorage().getDbPath();
         try {
             Path path = Path.of(dbPath).toAbsolutePath();
             Files.createDirectories(path.getParent());

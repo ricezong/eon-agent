@@ -1,15 +1,14 @@
 package cn.kong.eon.web;
 
-import cn.kong.eon.runtime.AgentRuntime;
 import cn.kong.eon.web.dto.ChatRequest;
 import cn.kong.eon.web.dto.InterruptRequest;
 import cn.kong.eon.web.dto.RunResult;
 import cn.kong.eon.web.dto.SessionListItem;
-import cn.kong.eon.event.AgentEvent;
-import cn.kong.eon.event.AgentEventListener;
+import cn.kong.eon.web.exception.SessionBusyException;
+import cn.kong.eon.web.exception.SessionNotFoundException;
+import cn.kong.eon.web.service.AgentChatService;
+import cn.kong.eon.web.service.AgentSessionService;
 import cn.kong.eon.web.sse.SseAgentEventListener;
-import cn.kong.eon.web.sse.AgentEventFormatter;
-import cn.kong.eon.store.ledger.TranscriptReplayer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,28 +18,38 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Agent HTTP/SSE 控制器。提供对话、会话管理、中断接口。
+ * Agent HTTP/SSE 控制器。<b>只做传输层</b>：参数校验、SseEmitter 生命周期、响应封装。
+ * 会话查找、标题派生、账本回放与格式化已全部下沉到 Service。
+ * <p>
+ * SSE 事件流：engine.delta → engine.thinking → engine.message → engine.tool_use →
+ * engine.tool_result → session.usage → session.status
+ * <p>
+ * 错误语义（契约不变）：{@code /api/chat} 在异步线程内执行，异常走不到
+ * {@link GlobalExceptionHandler}，因此一律就地转为 {@code session.error} 事件并带 {@code type}；
+ * 非流式接口才由 {@link GlobalExceptionHandler} 转成 HTTP 状态码。
  */
 @RestController
 @RequestMapping("/api")
 public class AgentController {
     private static final Logger log = LoggerFactory.getLogger(AgentController.class);
 
-    private final AgentRuntime runtime;
+    private final AgentChatService chatService;
+    private final AgentSessionService sessionService;
     private final ExecutorService sseExecutor;
     private final ObjectMapper objectMapper;
 
     @Autowired
-    public AgentController(AgentRuntime runtime,
+    public AgentController(AgentChatService chatService,
+                           AgentSessionService sessionService,
                            @Qualifier("sseExecutor") ExecutorService sseExecutor,
                            ObjectMapper objectMapper) {
-        this.runtime = runtime;
+        this.chatService = chatService;
+        this.sessionService = sessionService;
         this.sseExecutor = sseExecutor;
         this.objectMapper = objectMapper;
     }
@@ -51,9 +60,7 @@ public class AgentController {
 
     /**
      * 发送消息并流式接收 Agent 响应（唯一对话入口）。
-     * <p>
      * sessionId 为空时自动创建新会话，非空时恢复已有会话。
-     * SSE 事件流：engine.delta → engine.thinking → engine.message → engine.tool_use → engine.tool_result → session.usage → session.status
      */
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chat(@RequestBody ChatRequest request) {
@@ -61,20 +68,18 @@ public class AgentController {
 
         sseExecutor.execute(() -> {
             try {
-                List<AgentEventListener> listeners = new ArrayList<>();
-                listeners.add(new SseAgentEventListener(emitter, objectMapper));
-
-                RunResult result = runtime.run(request, listeners);
+                RunResult result = chatService.chat(request,
+                        List.of(new SseAgentEventListener(emitter, objectMapper)));
                 emitter.send(SseEmitter.event().name("engine.message.final")
                         .data(Map.of("content", result.content(), "session_id", result.sessionId())));
-                emitter.complete();
             } catch (Exception e) {
                 log.error("SSE 对话失败", e);
                 try {
                     emitter.send(SseEmitter.event().name("session.error")
-                            .data(Map.of("message", e.getMessage(), "type", "runtime_error")));
+                            .data(Map.of("message", e.getMessage(), "type", errorTypeOf(e))));
                 } catch (Exception ignored) {
                 }
+            } finally {
                 emitter.complete();
             }
         });
@@ -85,7 +90,7 @@ public class AgentController {
     /** 中断指定会话的当前任务。 */
     @PostMapping("/interrupt")
     public Map<String, Object> interrupt(@RequestBody InterruptRequest request) {
-        boolean interrupted = runtime.interrupt(request.sessionId());
+        boolean interrupted = chatService.interrupt(request.sessionId());
         return Map.of("status", interrupted ? "interrupted" : "no_session");
     }
 
@@ -97,44 +102,29 @@ public class AgentController {
     @GetMapping("/sessions")
     public List<SessionListItem> listSessions(
             @RequestParam(required = false, defaultValue = "default") String userId) {
-        var sessions = runtime.getSessionIndexStore().list(userId);
-        List<SessionListItem> result = new ArrayList<>();
-        for (int i = 0; i < sessions.size(); i++) {
-            var s = sessions.get(i);
-            result.add(new SessionListItem(
-                    i + 1,
-                    s.sessionId(),
-                    s.title(),
-                    s.messageCount(),
-                    s.lastActivityAt().toString()
-            ));
-        }
-        return result;
+        return sessionService.listSessions(userId);
     }
 
     /** 删除会话（硬删除：SQLite 记录 + 会话目录）。 */
     @DeleteMapping("/sessions/{sessionId}")
     public Map<String, Object> deleteSession(@PathVariable String sessionId,
             @RequestParam(required = false, defaultValue = "default") String userId) {
-        boolean deleted = runtime.getSessionIndexStore().delete(userId, sessionId);
+        boolean deleted = sessionService.deleteSession(userId, sessionId);
         return Map.of("status", deleted ? "deleted" : "not_found", "session_id", sessionId);
     }
 
-    /**
-     * 恢复会话
-     */
+    /** 恢复会话：回放账本，返回与实时 SSE 结构一致的事件列表。 */
     @GetMapping("/sessions/{sessionId}")
     public List<Map<String, Object>> getSession(@PathVariable String sessionId) {
-        var transcriptPath = runtime.getTranscriptPath(sessionId);
-        TranscriptReplayer replayer = new TranscriptReplayer(objectMapper);
-        List<AgentEvent> events = replayer.replay(transcriptPath);
-        // 与实时 SSE 共用同一个格式化器，保证恢复渲染与实时渲染结构一致
-        AgentEventFormatter formatter = new AgentEventFormatter();
-        List<Map<String, Object>> rendered = new ArrayList<>(events.size());
-        for (AgentEvent event : events) {
-            rendered.add(event.accept(formatter));
-        }
-        return rendered;
+        return sessionService.getSessionEvents(sessionId);
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+
+    /** 把异常映射为 SSE session.error 的 type 字段，前端按 type 区分。 */
+    private static String errorTypeOf(Throwable e) {
+        if (e instanceof SessionNotFoundException) return "session_not_found";
+        if (e instanceof SessionBusyException) return "session_busy";
+        return "runtime_error";
+    }
 }

@@ -1,17 +1,20 @@
 package cn.kong.eon.engine.hook.premodel;
 
-import cn.kong.eon.context.ContextBuilder;
+import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.engine.hook.Hook;
 import cn.kong.eon.engine.hook.HookResult;
 import cn.kong.eon.engine.stop.StopCategory;
-import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.runtime.SessionState;
+import cn.kong.eon.runtime.RunContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 /**
  * 预算检查（PreModel, order=10）。达到阈值比例注入收尾提示词，预算耗尽则终止。
+ * <p>
+ * 无状态：token 累计读 {@code r.session().usageAccum()}，轮次读 {@code r.task().turnCount()}。
  */
+@Component
 public class BudgetHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(BudgetHook.class);
 
@@ -33,19 +36,14 @@ public class BudgetHook implements Hook.PreModelHook {
     }
 
     @Override
-    public boolean active(SessionState state) {
-        return true;
-    }
-
-    @Override
     public int order() {
         return 10;
     }
 
     @Override
-    public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
+    public HookResult beforeModelCall(RunContext r) {
         AgentConfig.BudgetConfig budget = config.getBudget();
-        long used = state.getUsageAccum().getTotalTokens();
+        long used = r.session().usageAccum().getTotalTokens();
         long maxBudget = budget.getMaxTokens();
         double ratio = (double) used / maxBudget;
 
@@ -57,9 +55,9 @@ public class BudgetHook implements Hook.PreModelHook {
 
         // 达到阈值比例，注入收尾提示词
         if (ratio >= budget.getThreshold()) {
-            int remainingSteps = config.getLoop().getMaxSteps() - state.getTurnCount();
+            int remainingSteps = config.getLoop().getMaxSteps() - r.task().turnCount();
             String nudge = String.format(BUDGET_WARN_NUDGE, used, maxBudget, ratio * 100, Math.max(remainingSteps, 0));
-            state.addNudge(nudge);
+            r.task().addNudge(nudge);
             log.info("[Budget] 告警 {}% ({}/{})", String.format("%.0f", ratio * 100), used, maxBudget);
         }
 

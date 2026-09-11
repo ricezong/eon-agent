@@ -1,8 +1,7 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.runtime.SessionState;
 import cn.kong.eon.tool.ToolPermission;
-import cn.kong.eon.tool.ToolContext;
+import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
@@ -29,14 +28,14 @@ public class ListDirTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(ListDirTool.class);
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
         String targetDir = (String) arguments.get("target_directory");
         boolean defaulted = targetDir == null || targetDir.isBlank();
         if (defaulted) {
             targetDir = ".";
         }
 
-        PathResolver resolver = context.pathResolver();
+        PathResolver resolver = runtime.pathResolver();
         Path dirPath;
         try {
             dirPath = resolver.resolve(targetDir);

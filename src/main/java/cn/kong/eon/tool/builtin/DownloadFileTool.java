@@ -1,9 +1,8 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.runtime.SessionState;
 import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.tool.PathResolver;
-import cn.kong.eon.tool.ToolContext;
+import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolOutcome;
@@ -51,7 +50,7 @@ public class DownloadFileTool implements ToolExecutor {
     }
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context) {
+    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
         String url = (String) arguments.get("url");
         if (url == null || url.isBlank()) {
             return ToolOutcome.failure("缺少 'url' 参数");
@@ -64,7 +63,7 @@ public class DownloadFileTool implements ToolExecutor {
 
         String resolvedUrl = url.trim();
 
-        PathResolver resolver = context.pathResolver();
+        PathResolver resolver = runtime.pathResolver();
         Path localPath;
         try {
             localPath = resolver.resolve(fileName);

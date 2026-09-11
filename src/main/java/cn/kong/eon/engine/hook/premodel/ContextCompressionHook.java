@@ -1,30 +1,26 @@
 package cn.kong.eon.engine.hook.premodel;
 
-import cn.kong.eon.context.ContextBuilder;
+import cn.kong.eon.context.CompressionState;
 import cn.kong.eon.context.ContextMetrics;
 import cn.kong.eon.context.ContextWindow;
 import cn.kong.eon.context.block.CompressionLevel;
-import cn.kong.eon.context.policy.CompressionPolicy;
 import cn.kong.eon.engine.hook.Hook;
 import cn.kong.eon.engine.hook.HookResult;
 import cn.kong.eon.engine.stop.StopCategory;
-import cn.kong.eon.context.CompressionState;
-import cn.kong.eon.runtime.SessionState;
+import cn.kong.eon.runtime.RunContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 /**
  * 压缩执行点（PreModel, order=100）。每轮调 LLM 前调用
- * {@link CompressionPolicy#apply} 判定并执行一个压缩档位。
+ * {@link cn.kong.eon.context.policy.CompressionPolicy#apply} 判定并执行一个压缩档位。
+ * <p>
+ * 无状态：压缩策略从 {@code r.session().compressionPolicy()} 取，轮次从 {@code r.task().turnCount()} 取。
  */
+@Component
 public class ContextCompressionHook implements Hook.PreModelHook {
     private static final Logger log = LoggerFactory.getLogger(ContextCompressionHook.class);
-
-    private final CompressionPolicy policy;
-
-    public ContextCompressionHook(CompressionPolicy policy) {
-        this.policy = policy;
-    }
 
     @Override
     public String name() {
@@ -32,30 +28,27 @@ public class ContextCompressionHook implements Hook.PreModelHook {
     }
 
     @Override
-    public boolean active(SessionState state) {
-        return true;
-    }
-
-    @Override
-    public HookResult beforeModelCall(SessionState state, ContextBuilder ctx) {
-        ContextWindow window = ctx.getWindow();
+    public HookResult beforeModelCall(RunContext r) {
+        ContextWindow window = r.turn().prompt().getWindow();
         if (window == null || window.isEmpty()) {
             return HookResult.stop(StopCategory.UNEXPECTED_ERROR,
                     StopCategory.UNEXPECTED_ERROR.format("上下文为空"));
         }
 
-        CompressionState cs = state.getCompressionState();
-        ContextMetrics before = ctx.metrics();
+        CompressionState cs = r.session().compressionState();
+        ContextMetrics before = r.turn().prompt().metrics();
 
-        CompressionLevel level = policy.apply(window, before, cs, state.getTurnCount());
+        CompressionLevel level = r.session().compressionPolicy()
+                .apply(window, before, cs, r.task().turnCount());
         if (!level.enabled()) {
             return HookResult.ok();
         }
 
-        ctx.setSummary(cs.getLastSummary());
+        r.turn().prompt().setSummary(cs.getLastSummary());
 
         // 处置后窗口变了，度量要重算
-        log.info("[ContextCompressionHook] {}: 水位 {} -> {}", level, pct(before.waterLevel()), pct(ctx.metrics().waterLevel()));
+        log.info("[ContextCompressionHook] {}: 水位 {} -> {}", level, pct(before.waterLevel()),
+                pct(r.turn().prompt().metrics().waterLevel()));
 
         return HookResult.ok();
     }

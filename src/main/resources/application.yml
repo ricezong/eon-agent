@@ -79,6 +79,14 @@ eon:
     base_dir: "/home/workspace/sessions"      # 会话数据根目录: base_dir/{sessionId}/
     db_path: "/home/workspace/sessions/eon.db" # SQLite 索引数据库路径
 
+  # 活跃会话上下文缓存（SessionScope）
+  session:
+    cache:
+      maximum_size: 1000                      # 缓存条目上限
+      idle_ttl_minutes: 30                    # IDLE 状态空闲 TTL（分钟）
+      running_ttl_minutes: 1440               # RUNNING 状态 TTL（分钟），兜底防长任务被淘汰
+      busy_policy: REJECT                     # 同会话并发策略：REJECT(抛 409) | QUEUE(排队)
+
   tools:
     whitelist:                              # 允许注册的本地工具白名单
       - "read_file"

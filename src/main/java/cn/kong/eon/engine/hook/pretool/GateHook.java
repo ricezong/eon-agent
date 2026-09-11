@@ -1,14 +1,15 @@
 package cn.kong.eon.engine.hook.pretool;
 
+import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.engine.hook.Hook;
 import cn.kong.eon.engine.hook.HookResult;
 import cn.kong.eon.engine.stop.StopCategory;
-import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.runtime.SessionState;
+import cn.kong.eon.runtime.RunContext;
 import cn.kong.eon.tool.ToolService;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 
@@ -17,6 +18,7 @@ import java.util.List;
  * 对破坏性工具执行审批策略：auto_approve_destructive=true 时仅记日志，
  * false 时触发 GATE_REJECTED 终止，等待用户介入。
  */
+@Component
 public class GateHook implements Hook.PreToolHook {
     private static final Logger log = LoggerFactory.getLogger(GateHook.class);
 
@@ -34,26 +36,23 @@ public class GateHook implements Hook.PreToolHook {
     }
 
     @Override
-    public boolean active(SessionState state) {
-        return true;
-    }
-
-    @Override
     public int order() {
         return 20;
     }
 
     @Override
-    public HookResult beforeToolExecution(SessionState state, List<ToolExecutionRequest> requests) {
+    public HookResult beforeToolExecution(RunContext r, List<ToolExecutionRequest> requests) {
         if (requests == null || requests.isEmpty()) return HookResult.ok();
 
         for (ToolExecutionRequest req : requests) {
             if (!toolService.isDestructive(req.name())) continue;
 
             if (autoApproveDestructive) {
-                log.warn("[Gate] 破坏性工具 '{}' 已自动批准 | 参数: {} | turn: {}", req.name(), req.arguments(), state.getTurnCount());
+                log.warn("[Gate] 破坏性工具 '{}' 已自动批准 | 参数: {} | turn: {}",
+                        req.name(), req.arguments(), r.task().turnCount());
             } else {
-                log.warn("[Gate] 破坏性工具 '{}' 需要审批，已拒绝 | 参数: {} | turn: {}", req.name(), req.arguments(), state.getTurnCount());
+                log.warn("[Gate] 破坏性工具 '{}' 需要审批，已拒绝 | 参数: {} | turn: {}",
+                        req.name(), req.arguments(), r.task().turnCount());
                 return HookResult.stop(StopCategory.GATE_REJECTED, StopCategory.GATE_REJECTED.format(req.name()));
             }
         }

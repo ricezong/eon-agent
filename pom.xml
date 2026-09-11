@@ -72,6 +72,12 @@
             <version>${commons-lang3.version}</version>
         </dependency>
 
+        <!-- 本地缓存（活跃会话上下文）。版本由 spring-boot-starter-parent 管理 -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- SQLite -->
         <dependency>
             <groupId>org.xerial</groupId>

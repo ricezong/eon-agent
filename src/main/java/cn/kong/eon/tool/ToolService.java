@@ -1,6 +1,5 @@
 package cn.kong.eon.tool;
 
-import cn.kong.eon.runtime.SessionState;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import org.slf4j.Logger;
@@ -93,14 +92,13 @@ public class ToolService {
     }
 
     /** 执行工具（本地或 MCP），返回执行结果。 */
-    public ToolOutcome execute(String name, Map<String, Object> arguments,
-                               SessionState state, ToolContext context) {
+    public ToolOutcome execute(String name, Map<String, Object> arguments, ToolRuntime runtime) {
         ToolDescriptor descriptor = tools.get(name);
         if (descriptor != null) {
             try {
                 // 根据工具 Schema 转换参数类型
                 Map<String, Object> coerced = coercer.coerce(descriptor.getSpecification(), arguments);
-                ToolOutcome result = descriptor.getExecutor().execute(coerced, state, context);
+                ToolOutcome result = descriptor.getExecutor().execute(coerced, runtime);
                 log.debug("本地工具执行: {} -> 成功={} {} 字符", name, result.success(), result.content().length());
                 return result;
             } catch (Exception e) {

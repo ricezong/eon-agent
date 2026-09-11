@@ -1,8 +1,8 @@
 package cn.kong.eon.store.memory;
 
+import cn.kong.eon.config.AgentConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,8 +26,8 @@ public class MemoryStore {
     private final Path memoryDir;
     private final ObjectMapper mapper;
 
-    public MemoryStore(@Value("${eon.storage.base_dir:./data}") String baseDir, ObjectMapper objectMapper) {
-        this.memoryDir = Path.of(baseDir).toAbsolutePath().resolve("memories");
+    public MemoryStore(AgentConfig config, ObjectMapper objectMapper) {
+        this.memoryDir = Path.of(config.getStorage().getBaseDir()).toAbsolutePath().resolve("memories");
         this.mapper = objectMapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
         try {
             Files.createDirectories(memoryDir);
