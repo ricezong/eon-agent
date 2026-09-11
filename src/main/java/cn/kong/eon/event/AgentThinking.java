@@ -9,7 +9,7 @@ public record AgentThinking(
         String turnId,
         String content,
         Instant timestamp
-) implements TurnEvent {
+) implements AgentEvent {
 
     @Override
     public String type() {
@@ -17,7 +17,7 @@ public record AgentThinking(
     }
 
     @Override
-    public <T> T accept(TurnEventVisitor<T> visitor) {
+    public <T> T accept(AgentEventVisitor<T> visitor) {
         return visitor.visitThinking(this);
     }
 

@@ -1,11 +1,12 @@
 package cn.kong.eon.context.policy;
 
-import cn.kong.eon.context.ContentTrimmer;
+import cn.kong.eon.context.ContentCompressor;
 import cn.kong.eon.context.ContextMetrics;
 import cn.kong.eon.context.ContextWindow;
 import cn.kong.eon.context.block.CompressionLevel;
 import cn.kong.eon.context.block.ContextBlock;
 import cn.kong.eon.context.CompressionState;
+import cn.kong.eon.context.summary.LlmContextSummarizer;
 
 import java.util.List;
 
@@ -16,12 +17,12 @@ import java.util.List;
 public class CompressionPolicy {
 
     private final CompressionSettings settings;
-    private final ContentTrimmer compressor;
-    private final ContextSummarizer summarizer;
+    private final ContentCompressor compressor;
+    private final LlmContextSummarizer summarizer;
 
     public CompressionPolicy(CompressionSettings settings,
-                             ContentTrimmer compressor,
-                             ContextSummarizer summarizer) {
+                             ContentCompressor compressor,
+                             LlmContextSummarizer summarizer) {
         this.settings = settings;
         this.compressor = compressor;
         this.summarizer = summarizer;

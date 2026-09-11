@@ -11,7 +11,7 @@ public record AgentMessage(
         String messageId,
         List<ContentPart> content,
         Instant timestamp
-) implements TurnEvent {
+) implements AgentEvent {
 
     @Override
     public String type() {
@@ -19,7 +19,7 @@ public record AgentMessage(
     }
 
     @Override
-    public <T> T accept(TurnEventVisitor<T> visitor) {
+    public <T> T accept(AgentEventVisitor<T> visitor) {
         return visitor.visitMessage(this);
     }
 

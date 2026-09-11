@@ -5,7 +5,7 @@ import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.stop.StopCategory;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.session.SessionState;
-import cn.kong.eon.tool.ToolRegistry;
+import cn.kong.eon.tool.ToolService;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,11 +20,11 @@ import java.util.List;
 public class GateHook implements Hook.PreToolHook {
     private static final Logger log = LoggerFactory.getLogger(GateHook.class);
 
-    private final ToolRegistry toolRegistry;
+    private final ToolService toolService;
     private final boolean autoApproveDestructive;
 
-    public GateHook(ToolRegistry toolRegistry, AgentConfig config) {
-        this.toolRegistry = toolRegistry;
+    public GateHook(ToolService toolService, AgentConfig config) {
+        this.toolService = toolService;
         this.autoApproveDestructive = config.getTools().isAutoApproveDestructive();
     }
 
@@ -48,7 +48,7 @@ public class GateHook implements Hook.PreToolHook {
         if (requests == null || requests.isEmpty()) return HookResult.ok();
 
         for (ToolExecutionRequest req : requests) {
-            if (!toolRegistry.isDestructive(req.name())) continue;
+            if (!toolService.isDestructive(req.name())) continue;
 
             if (autoApproveDestructive) {
                 log.warn("[Gate] 破坏性工具 '{}' 已自动批准 | 参数: {} | turn: {}", req.name(), req.arguments(), state.getTurnCount());

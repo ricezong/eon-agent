@@ -10,7 +10,7 @@ public record SessionStatus(
         String status,        // "running" | "idle" | "terminated"
         String stopReason,    // idle 时可能携带
         Instant timestamp
-) implements TurnEvent {
+) implements AgentEvent {
 
     @Override
     public String type() {
@@ -18,7 +18,7 @@ public record SessionStatus(
     }
 
     @Override
-    public <T> T accept(TurnEventVisitor<T> visitor) {
+    public <T> T accept(AgentEventVisitor<T> visitor) {
         return visitor.visitStatus(this);
     }
 

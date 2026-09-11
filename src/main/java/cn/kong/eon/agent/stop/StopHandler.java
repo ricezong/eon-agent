@@ -1,6 +1,6 @@
 package cn.kong.eon.agent.stop;
 
-import cn.kong.eon.event.TurnEvent;
+import cn.kong.eon.event.AgentEvent;
 import cn.kong.eon.event.SessionError;
 import cn.kong.eon.event.SessionStatus;
 import cn.kong.eon.config.AgentConfig;
@@ -17,9 +17,9 @@ public class StopHandler {
     private static final Logger log = LoggerFactory.getLogger(StopHandler.class);
 
     private final AgentConfig config;
-    private final Consumer<TurnEvent> emitter;
+    private final Consumer<AgentEvent> emitter;
 
-    public StopHandler(AgentConfig config, Consumer<TurnEvent> emitter) {
+    public StopHandler(AgentConfig config, Consumer<AgentEvent> emitter) {
         this.config = config;
         this.emitter = emitter;
     }
@@ -40,7 +40,7 @@ public class StopHandler {
                 + " tokens, " + state.getTurnCount() + " 轮\n";
     }
 
-    private void emit(TurnEvent event) {
+    private void emit(AgentEvent event) {
         if (emitter != null) {
             emitter.accept(event);
         }

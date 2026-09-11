@@ -1,11 +1,11 @@
 package cn.kong.eon.web;
 
-import cn.kong.eon.app.AgentBootstrap;
-import cn.kong.eon.app.AgentChatRequest;
-import cn.kong.eon.app.RunResult;
-import cn.kong.eon.event.TurnListener;
-import cn.kong.eon.web.sse.SseTurnListener;
-import cn.kong.eon.web.sse.TranscriptReplayer;
+import cn.kong.eon.runtime.AgentRuntime;
+import cn.kong.eon.web.dto.ChatRequest;
+import cn.kong.eon.web.dto.RunResult;
+import cn.kong.eon.event.AgentEventListener;
+import cn.kong.eon.web.sse.SseAgentEventListener;
+import cn.kong.eon.runtime.TranscriptReplayer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,12 +28,12 @@ import java.util.concurrent.ExecutorService;
 public class AgentController {
     private static final Logger log = LoggerFactory.getLogger(AgentController.class);
 
-    private final AgentBootstrap app;
+    private final AgentRuntime app;
     private final ExecutorService sseExecutor;
     private final ObjectMapper objectMapper;
 
     @Autowired
-    public AgentController(AgentBootstrap app,
+    public AgentController(AgentRuntime app,
                            @Qualifier("sseExecutor") ExecutorService sseExecutor,
                            ObjectMapper objectMapper) {
         this.app = app;
@@ -52,13 +52,13 @@ public class AgentController {
      * SSE 事件流：agent.delta → agent.thinking → agent.message → agent.tool_use → agent.tool_result → session.usage → session.status
      */
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chat(@RequestBody AgentChatRequest request) {
+    public SseEmitter chat(@RequestBody ChatRequest request) {
         SseEmitter emitter = new SseEmitter(300_000L); // 5 分钟超时
 
         sseExecutor.execute(() -> {
             try {
-                List<TurnListener> listeners = new ArrayList<>();
-                listeners.add(new SseTurnListener(emitter, objectMapper));
+                List<AgentEventListener> listeners = new ArrayList<>();
+                listeners.add(new SseAgentEventListener(emitter, objectMapper));
 
                 RunResult result = app.run(request, listeners);
                 emitter.send(SseEmitter.event().name("agent.message.final")

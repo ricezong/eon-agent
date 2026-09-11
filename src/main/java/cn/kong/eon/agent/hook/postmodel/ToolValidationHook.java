@@ -3,7 +3,7 @@ package cn.kong.eon.agent.hook.postmodel;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.session.SessionState;
-import cn.kong.eon.tool.ToolRegistry;
+import cn.kong.eon.tool.ToolService;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,10 +19,10 @@ public class ToolValidationHook implements Hook.PostModelHook {
 
     private static final String TOOL_NOT_FOUND_NUDGE = "工具 %s 不存在，请使用可用工具。";
 
-    private final ToolRegistry toolRegistry;
+    private final ToolService toolService;
 
-    public ToolValidationHook(ToolRegistry toolRegistry) {
-        this.toolRegistry = toolRegistry;
+    public ToolValidationHook(ToolService toolService) {
+        this.toolService = toolService;
     }
 
     @Override
@@ -48,7 +48,7 @@ public class ToolValidationHook implements Hook.PostModelHook {
         }
 
         for (ToolExecutionRequest req : requests) {
-            if (!toolRegistry.contains(req.name())) {
+            if (!toolService.contains(req.name())) {
                 state.addNudge(String.format(TOOL_NOT_FOUND_NUDGE, req.name()));
                 log.warn("[ToolValidation] 工具 '{}' 不存在", req.name());
                 return HookResult.skip();

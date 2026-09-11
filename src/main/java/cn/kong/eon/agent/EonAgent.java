@@ -1,9 +1,9 @@
 package cn.kong.eon.agent;
 
 import cn.kong.eon.context.ContextBuilder;
-import cn.kong.eon.agent.exec.ToolExecHandler;
-import cn.kong.eon.agent.exec.ToolHealthTracker;
-import cn.kong.eon.agent.flush.MessageFlusher;
+import cn.kong.eon.agent.exec.ToolCallDispatcher;
+import cn.kong.eon.agent.guard.ToolCircuitBreaker;
+import cn.kong.eon.agent.exec.TurnMessageWriter;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookDispatcher;
 import cn.kong.eon.agent.stop.StopCategory;
@@ -13,10 +13,10 @@ import cn.kong.eon.event.*;
 import cn.kong.eon.llm.LlmClient;
 import cn.kong.eon.llm.LlmResponse;
 import cn.kong.eon.session.SessionState;
-import cn.kong.eon.session.ToolExecResult;
-import cn.kong.eon.store.ledger.JsonlStore;
+import cn.kong.eon.tool.model.ToolCallRecord;
+import cn.kong.eon.store.ledger.TranscriptLedger;
 import cn.kong.eon.tool.ToolContext;
-import cn.kong.eon.tool.ToolRegistry;
+import cn.kong.eon.tool.ToolService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.ChatMessage;
@@ -41,18 +41,18 @@ public class EonAgent {
     // ── 核心依赖
     private final AgentConfig config;
     private final LlmClient llmClient;
-    private final ToolRegistry toolRegistry;
-    private final JsonlStore jsonlStore;
+    private final ToolService toolService;
+    private final TranscriptLedger transcriptLedger;
     private final String basePrompt;
     private final ToolContext toolContext;
     private final TokenCountEstimator tokenCountEstimator;
 
     // ── 协作组件
-    private final CopyOnWriteArrayList<TurnListener> listeners;
-    private final ToolExecHandler toolHandler;
+    private final CopyOnWriteArrayList<AgentEventListener> listeners;
+    private final ToolCallDispatcher toolHandler;
     private final StopHandler stopHandler;
-    private final MessageFlusher flusher;
-    private final ToolHealthTracker tracker;
+    private final TurnMessageWriter flusher;
+    private final ToolCircuitBreaker tracker;
 
     // ── Hook 列表（按阶段分组）
     private final List<Hook.PreModelHook> preModelHooks = new ArrayList<>();
@@ -70,26 +70,26 @@ public class EonAgent {
 
     public EonAgent(AgentConfig config,
                     LlmClient llmClient,
-                    ToolRegistry toolRegistry,
-                    JsonlStore jsonlStore,
+                    ToolService toolService,
+                    TranscriptLedger transcriptLedger,
                     String basePrompt,
                     ToolContext toolContext,
-                    ToolHealthTracker tracker,
-                    List<TurnListener> listeners,
+                    ToolCircuitBreaker tracker,
+                    List<AgentEventListener> listeners,
                     ObjectMapper objectMapper) {
         this.config = config;
         this.llmClient = llmClient;
-        this.toolRegistry = toolRegistry;
-        this.jsonlStore = jsonlStore;
+        this.toolService = toolService;
+        this.transcriptLedger = transcriptLedger;
         this.basePrompt = basePrompt;
         this.toolContext = toolContext;
         this.tracker = tracker;
         this.listeners = new CopyOnWriteArrayList<>(listeners != null ? listeners : List.of());
         this.tokenCountEstimator = new OpenAiTokenCountEstimator("gpt-4o");
-        this.toolHandler = new ToolExecHandler(
-                toolRegistry, toolContext, this::emit, tracker,
+        this.toolHandler = new ToolCallDispatcher(
+                toolService, toolContext, this::emit, tracker,
                 config.getTools().getParallelism(), objectMapper);
-        this.flusher = new MessageFlusher(jsonlStore);
+        this.flusher = new TurnMessageWriter(transcriptLedger);
         this.stopHandler = new StopHandler(config, this::emit);
     }
 
@@ -121,12 +121,12 @@ public class EonAgent {
     }
 
     /** 动态注册 TurnListener。 */
-    public void addListener(TurnListener listener) {
+    public void addListener(AgentEventListener listener) {
         listeners.add(listener);
     }
 
     /** 动态移除 TurnListener。 */
-    public void removeListener(TurnListener listener) {
+    public void removeListener(AgentEventListener listener) {
         listeners.remove(listener);
     }
 
@@ -134,8 +134,8 @@ public class EonAgent {
     //  事件分发
     // ═══════════════════════════════════════════════════════════════════
 
-    private void emit(TurnEvent event) {
-        for (TurnListener l : listeners) {
+    private void emit(AgentEvent event) {
+        for (AgentEventListener l : listeners) {
             try {
                 l.onEvent(event);
             } catch (Exception e) {
@@ -203,12 +203,12 @@ public class EonAgent {
             // ── 阶段 3：调用 LLM（流式或同步） ──
             LlmResponse response;
             if (llmClient.isStreamEnabled()) {
-                response = llmClient.streamChat(messages, toolRegistry.getSpecifications(),
+                response = llmClient.streamChat(messages, toolService.getSpecifications(),
                         delta -> emit(AgentDelta.text(state.getTurnId(), delta)),
                         delta -> emit(AgentDelta.thinking(state.getTurnId(), delta)),
                         thinking -> emit(AgentThinking.now(state.getTurnId(), thinking)));
             } else {
-                response = llmClient.chat(messages, toolRegistry.getSpecifications());
+                response = llmClient.chat(messages, toolService.getSpecifications());
             }
             state.setLastResponse(response);
             state.getUsageAccum().add(response.usage());
@@ -258,11 +258,11 @@ public class EonAgent {
         }
 
         // 执行工具（ToolExecHandler 内部发出 agent.tool_use 和 agent.tool_result）
-        List<ToolExecResult> results = toolHandler.execute(state);
+        List<ToolCallRecord> results = toolHandler.execute(state);
 
         // PostTool Hooks
         for (int i = 0; i < requests.size(); i++) {
-            ToolExecResult result = results.get(i);
+            ToolCallRecord result = results.get(i);
             LoopAction postTool = firePostToolHooks(state, requests.get(i).name(), result.success());
             if (postTool instanceof LoopAction.Exit exit) {
                 return exit;
@@ -325,7 +325,7 @@ public class EonAgent {
     // ═══════════════════════════════════════════════════════════════════
 
     private void initRun(SessionState state) {
-        jsonlStore.append(UserMessage.from(state.getUserInput()));
+        transcriptLedger.append(UserMessage.from(state.getUserInput()));
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -338,7 +338,7 @@ public class EonAgent {
         ctx.setSystemPrompt(basePrompt);
         ctx.setSummary(state.getCompressionState().getLastSummary());
         ctx.setMemories(toolContext.memoryStore().renderForInjection());
-        ctx.setWindow(jsonlStore.window());
+        ctx.setWindow(transcriptLedger.window());
 
         ctx.setToolSchemaTokens(estimateToolSchemaTokens());
         ctx.setOutputReserveTokens(config.getLlm().getMaxTokens());
@@ -356,7 +356,7 @@ public class EonAgent {
 
     private long estimateToolSchemaTokens() {
         if (cachedToolSchemaTokens < 0) {
-            int specCount = toolRegistry.getSpecifications().size();
+            int specCount = toolService.getSpecifications().size();
             cachedToolSchemaTokens = specCount * TOOL_SCHEMA_TOKENS_ESTIMATE;
         }
         return cachedToolSchemaTokens;

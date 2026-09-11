@@ -3,6 +3,7 @@ package cn.kong.eon.session;
 import cn.kong.eon.llm.LlmResponse;
 import cn.kong.eon.context.CompressionState;
 import cn.kong.eon.llm.TokenUsage;
+import cn.kong.eon.tool.model.ToolCallRecord;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.ChatMessage;
@@ -29,7 +30,7 @@ public class SessionState {
     private transient List<ChatMessage> currentMessages;
     private transient LlmResponse lastResponse;
     private transient List<ToolExecutionRequest> pendingToolCalls;
-    private transient List<ToolExecResult> lastToolResults;
+    private transient List<ToolCallRecord> lastToolResults;
     /** SSE 事件链路的 turnId，每次用户消息开始时生成 */
     private transient volatile String turnId;
     /** 当前轮的 messageId（LLM 回复标识） */
@@ -165,11 +166,11 @@ public class SessionState {
         this.pendingToolCalls = pendingToolCalls;
     }
 
-    public List<ToolExecResult> getLastToolResults() {
+    public List<ToolCallRecord> getLastToolResults() {
         return lastToolResults;
     }
 
-    public void setLastToolResults(List<ToolExecResult> lastToolResults) {
+    public void setLastToolResults(List<ToolCallRecord> lastToolResults) {
         this.lastToolResults = lastToolResults;
     }
 

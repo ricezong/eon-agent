@@ -3,7 +3,7 @@ package cn.kong.eon.agent.hook.postmodel;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.stop.StopCategory;
-import cn.kong.eon.agent.exec.ToolHealthTracker;
+import cn.kong.eon.agent.guard.ToolCircuitBreaker;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.session.SessionState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -27,12 +27,12 @@ public class LoopDetectHook implements Hook.PostModelHook {
 
     private final int warnThreshold;
     private final int stopThreshold;
-    private final ToolHealthTracker tracker;
+    private final ToolCircuitBreaker tracker;
 
     /** 指纹 → 调用次数，同一轮内累计 */
     private final Map<String, Integer> callFingerprintCount = new HashMap<>();
 
-    public LoopDetectHook(AgentConfig.LoopDetectConfig cfg, ToolHealthTracker tracker) {
+    public LoopDetectHook(AgentConfig.LoopDetectConfig cfg, ToolCircuitBreaker tracker) {
         this.warnThreshold = cfg.getRepeatWarn();
         this.stopThreshold = cfg.getRepeatStop();
         this.tracker = tracker;

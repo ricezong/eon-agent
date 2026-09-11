@@ -10,7 +10,7 @@ public record AgentDelta(
         String kind,          // "text" | "thinking"
         String delta,
         Instant timestamp
-) implements TurnEvent {
+) implements AgentEvent {
 
     @Override
     public String type() {
@@ -18,7 +18,7 @@ public record AgentDelta(
     }
 
     @Override
-    public <T> T accept(TurnEventVisitor<T> visitor) {
+    public <T> T accept(AgentEventVisitor<T> visitor) {
         return visitor.visitDelta(this);
     }
 

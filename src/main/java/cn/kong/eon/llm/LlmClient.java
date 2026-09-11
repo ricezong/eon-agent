@@ -2,7 +2,7 @@ package cn.kong.eon.llm;
 
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.context.port.LlmStalledException;
-import cn.kong.eon.context.port.LlmSupport;
+import cn.kong.eon.context.port.LlmCompletion;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -31,7 +31,7 @@ import org.springframework.stereotype.Component;
  * 支持同步与流式两种调用模式。
  */
 @Component
-public class LlmClient implements LlmSupport {
+public class LlmClient implements LlmCompletion {
     private static final Logger log = LoggerFactory.getLogger(LlmClient.class);
 
     private final AgentConfig.RetryConfig retryConfig;

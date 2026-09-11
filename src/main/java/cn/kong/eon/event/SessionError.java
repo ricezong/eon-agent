@@ -9,7 +9,7 @@ public record SessionError(
         String message,
         String type,
         Instant timestamp
-) implements TurnEvent {
+) implements AgentEvent {
 
     @Override
     public String type() {
@@ -17,7 +17,7 @@ public record SessionError(
     }
 
     @Override
-    public <T> T accept(TurnEventVisitor<T> visitor) {
+    public <T> T accept(AgentEventVisitor<T> visitor) {
         return visitor.visitError(this);
     }
 

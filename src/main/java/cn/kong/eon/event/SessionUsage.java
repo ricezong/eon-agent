@@ -12,7 +12,7 @@ public record SessionUsage(
         int completionTokens,
         int totalTokens,
         Instant timestamp
-) implements TurnEvent {
+) implements AgentEvent {
 
     @Override
     public String type() {
@@ -20,7 +20,7 @@ public record SessionUsage(
     }
 
     @Override
-    public <T> T accept(TurnEventVisitor<T> visitor) {
+    public <T> T accept(AgentEventVisitor<T> visitor) {
         return visitor.visitUsage(this);
     }
 

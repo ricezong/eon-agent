@@ -1,7 +1,7 @@
 package cn.kong.eon.context;
 
 import cn.kong.eon.context.block.BlockKind;
-import cn.kong.eon.context.block.BlockProjector;
+import cn.kong.eon.context.block.MessageBlockCodec;
 import cn.kong.eon.context.block.ContextBlock;
 import dev.langchain4j.data.message.ChatMessage;
 
@@ -42,7 +42,7 @@ public class ContextWindow {
 
     /** 组装为 LangChain4j 消息序列。 */
     public List<ChatMessage> toMessages() {
-        return BlockProjector.assemble(blocks);
+        return MessageBlockCodec.assemble(blocks);
     }
 
     /**

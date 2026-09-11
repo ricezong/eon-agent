@@ -1,5 +1,7 @@
 package cn.kong.eon.event;
 
+import cn.kong.eon.tool.model.ToolResultView;
+
 import java.time.Instant;
 
 /**
@@ -11,10 +13,10 @@ public record AgentToolResult(
         String toolUseId,
         String name,
         String content,
-        StructuredContent structuredContent,
+        ToolResultView toolResultView,
         boolean success,
         Instant timestamp
-) implements TurnEvent {
+) implements AgentEvent {
 
     @Override
     public String type() {
@@ -22,13 +24,13 @@ public record AgentToolResult(
     }
 
     @Override
-    public <T> T accept(TurnEventVisitor<T> visitor) {
+    public <T> T accept(AgentEventVisitor<T> visitor) {
         return visitor.visitToolResult(this);
     }
 
     public static AgentToolResult now(String turnId, String toolUseId, String name,
-                                      String content, StructuredContent structuredContent,
+                                      String content, ToolResultView toolResultView,
                                       boolean success) {
-        return new AgentToolResult(turnId, toolUseId, name, content, structuredContent, success, Instant.now());
+        return new AgentToolResult(turnId, toolUseId, name, content, toolResultView, success, Instant.now());
     }
 }

@@ -12,7 +12,7 @@ import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import cn.kong.eon.event.StructuredContent;
+import cn.kong.eon.tool.model.ToolResultView;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -57,7 +57,7 @@ public class ListDirTool implements ToolExecutor {
                     .sorted()
                     .toList();
 
-            List<StructuredContent.DirEntry> dirEntries = new ArrayList<>();
+            List<ToolResultView.DirEntry> dirEntries = new ArrayList<>();
             StringBuilder sb = new StringBuilder();
             sb.append("目录内容 ").append(dirPath).append(":\n\n");
 
@@ -66,12 +66,12 @@ public class ListDirTool implements ToolExecutor {
                 boolean isDir = Files.isDirectory(entry);
                 if (isDir) {
                     sb.append("[目录]  ").append(name).append("/\n");
-                    dirEntries.add(StructuredContent.DirEntry.dir(name));
+                    dirEntries.add(ToolResultView.DirEntry.dir(name));
                 } else {
                     long size = Files.size(entry);
                     String sizeStr = formatSize(size);
                     sb.append("[文件] ").append(name).append(" (").append(sizeStr).append(")\n");
-                    dirEntries.add(StructuredContent.DirEntry.file(name, sizeStr));
+                    dirEntries.add(ToolResultView.DirEntry.file(name, sizeStr));
                 }
             }
 
@@ -83,7 +83,7 @@ public class ListDirTool implements ToolExecutor {
             log.info("list_dir: {} ({} 个条目)", dirPath, entries.size());
 
             return ToolOutcome.success(sb.toString(),
-                    StructuredContent.dirList(dirPath.toString(), dirEntries));
+                    ToolResultView.dirList(dirPath.toString(), dirEntries));
 
         } catch (IOException e) {
             log.error("list_dir 失败: {}", e.getMessage());

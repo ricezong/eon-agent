@@ -2,7 +2,7 @@ package cn.kong.eon.agent.hook.posttool;
 
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookResult;
-import cn.kong.eon.agent.exec.ToolHealthTracker;
+import cn.kong.eon.agent.guard.ToolCircuitBreaker;
 import cn.kong.eon.session.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,9 +14,9 @@ import org.slf4j.LoggerFactory;
 public class ToolFailureHook implements Hook.PostToolHook {
     private static final Logger log = LoggerFactory.getLogger(ToolFailureHook.class);
 
-    private final ToolHealthTracker tracker;
+    private final ToolCircuitBreaker tracker;
 
-    public ToolFailureHook(ToolHealthTracker tracker) {
+    public ToolFailureHook(ToolCircuitBreaker tracker) {
         this.tracker = tracker;
     }
 
