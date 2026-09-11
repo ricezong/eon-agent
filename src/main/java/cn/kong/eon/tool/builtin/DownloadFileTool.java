@@ -1,6 +1,6 @@
 package cn.kong.eon.tool.builtin;
 
-import cn.kong.eon.session.SessionState;
+import cn.kong.eon.runtime.SessionState;
 import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.tool.PathResolver;
 import cn.kong.eon.tool.ToolContext;

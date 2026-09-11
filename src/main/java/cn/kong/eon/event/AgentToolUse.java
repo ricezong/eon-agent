@@ -15,7 +15,7 @@ public record AgentToolUse(
 
     @Override
     public String type() {
-        return "agent.tool_use";
+        return "engine.tool_use";
     }
 
     @Override

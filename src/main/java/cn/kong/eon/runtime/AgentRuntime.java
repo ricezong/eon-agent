@@ -1,5 +1,6 @@
 package cn.kong.eon.runtime;
 
+import cn.kong.eon.engine.AgentEngine;
 import cn.kong.eon.context.ContentCompressor;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
@@ -31,8 +32,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import cn.kong.eon.event.AgentEventListener;
 
 /**
- * 应用级容器。管理 LlmClient、ToolService、MCP 连接等重资源，构造一次不随会话切换重建。
+ * 应用级容器。管理 EonAgent、LlmClient、ToolService、MCP 连接等重资源，构造一次不随会话切换重建。
  * 会话级组件委托给 {@link AgentSession}，按 sessionId 创建/恢复，运行结束后释放。
+ * <p>
+ * EonAgent 为无状态单例，每次会话通过 {@link SessionContext} 注入会话级依赖。
  */
 @Component
 public class AgentRuntime {
@@ -49,6 +52,7 @@ public class AgentRuntime {
     private final ObjectMapper objectMapper;
     private final String systemPrompt;
     private final SessionIndexStore sessionIndexStore;
+    private final AgentEngine agent;
 
     /** MCP 客户端列表 */
     private final List<McpServerClient> mcpClients = new ArrayList<>();
@@ -81,6 +85,9 @@ public class AgentRuntime {
 
         this.toolService = createToolService();
         connectMcpServers();
+
+        // 引擎单例：只注入应用级依赖
+        this.agent = new AgentEngine(config, llmClient, toolService, systemPrompt);
 
         log.info("AgentRuntime 就绪: {} 个工具", toolService.getAllToolNames().size());
     }
@@ -116,7 +123,7 @@ public class AgentRuntime {
         }
 
         try {
-            String output = session.run(request.message());
+            String output = session.run(agent, request.message());
             return new RunResult(output, actualSessionId);
         } finally {
             activeSessions.remove(actualSessionId);
@@ -128,7 +135,7 @@ public class AgentRuntime {
     public boolean interrupt(String sessionId) {
         AgentSession session = activeSessions.get(sessionId);
         if (session != null) {
-            session.getSessionState().requestInterrupt();
+            session.requestInterrupt();
             return true;
         }
         return false;

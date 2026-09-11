@@ -20,7 +20,7 @@ public record AgentToolResult(
 
     @Override
     public String type() {
-        return "agent.tool_result";
+        return "engine.tool_result";
     }
 
     @Override

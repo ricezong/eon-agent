@@ -14,7 +14,7 @@ public record AgentDelta(
 
     @Override
     public String type() {
-        return "agent.delta";
+        return "engine.delta";
     }
 
     @Override

@@ -3,7 +3,7 @@ package cn.kong.eon.event;
 import java.time.Instant;
 
 /**
- * 完整思考块事件。配合 agent.delta(kind=thinking) 实时展示。
+ * 完整思考块事件。配合 engine.delta(kind=thinking) 实时展示。
  */
 public record AgentThinking(
         String turnId,
@@ -13,7 +13,7 @@ public record AgentThinking(
 
     @Override
     public String type() {
-        return "agent.thinking";
+        return "engine.thinking";
     }
 
     @Override

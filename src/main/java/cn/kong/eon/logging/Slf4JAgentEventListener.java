@@ -20,35 +20,35 @@ public class Slf4JAgentEventListener implements AgentEventListener {
 
         @Override
         public Void visitDelta(AgentDelta e) {
-            log.debug("│ agent.delta: kind={}, delta={}", e.kind(), e.delta() != null ? clip(e.delta(), 80) : "");
+            log.debug("│ engine.delta: kind={}, delta={}", e.kind(), e.delta() != null ? clip(e.delta(), 80) : "");
             return null;
         }
 
         @Override
         public Void visitThinking(AgentThinking e) {
-            log.info("│ agent.thinking: {}", clip(e.content(), 500));
+            log.info("│ engine.thinking: {}", clip(e.content(), 500));
             return null;
         }
 
         @Override
         public Void visitMessage(AgentMessage e) {
             String text = e.content().isEmpty() ? "" : e.content().get(0).text();
-            log.info("│ agent.message: {}", clip(text, 500));
+            log.info("│ engine.message: {}", clip(text, 500));
             return null;
         }
 
         @Override
         public Void visitToolUse(AgentToolUse e) {
-            log.info("│ agent.tool_use: {} input={}", e.name(), clip(e.input(), 80));
+            log.info("│ engine.tool_use: {} input={}", e.name(), clip(e.input(), 80));
             return null;
         }
 
         @Override
         public Void visitToolResult(AgentToolResult e) {
             if (e.success()) {
-                log.info("│ agent.tool_result: {} content={}", e.name(), clip(e.content(), 500));
+                log.info("│ engine.tool_result: {} content={}", e.name(), clip(e.content(), 500));
             } else {
-                log.warn("│ agent.tool_result: {} 失败: {}", e.name(), clip(e.content(), 200));
+                log.warn("│ engine.tool_result: {} 失败: {}", e.name(), clip(e.content(), 200));
             }
             return null;
         }

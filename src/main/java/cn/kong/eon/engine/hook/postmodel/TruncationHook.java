@@ -1,0 +1,46 @@
+package cn.kong.eon.engine.hook.postmodel;
+
+import cn.kong.eon.engine.hook.Hook;
+import cn.kong.eon.engine.hook.HookResult;
+import cn.kong.eon.runtime.SessionState;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * 截断检测（PostModel, order=5）。
+ * finishReason=length 时注入截断提示 nudge 并返回 skip()，
+ * 跳过当前 Turn 后续阶段直接进入下一轮，让模型重新调用工具。
+ */
+public class TruncationHook implements Hook.PostModelHook {
+    private static final Logger log = LoggerFactory.getLogger(TruncationHook.class);
+
+    private static final String TRUNCATION_NUDGE = "上一轮输出因长度限制被截断，工具调用未完成。请重新调用工具，如果内容过长请分多次写入。";
+
+    @Override
+    public String name() {
+        return "Truncation";
+    }
+
+    @Override
+    public boolean active(SessionState state) {
+        return true;
+    }
+
+    @Override
+    public int order() {
+        return 5;
+    }
+
+    @Override
+    public HookResult afterModelCall(SessionState state) {
+        if (state.getLastResponse() == null) {
+            return HookResult.ok();
+        }
+        if ("length".equalsIgnoreCase(state.getLastResponse().finishReason())) {
+            state.addNudge(TRUNCATION_NUDGE);
+            log.info("[Truncation] 输出被截断(finishReason=length)，注入 nudge 并跳过后续阶段");
+            return HookResult.skip();
+        }
+        return HookResult.ok();
+    }
+}

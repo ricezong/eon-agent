@@ -9,7 +9,7 @@ import cn.kong.eon.event.AgentEvent;
 import cn.kong.eon.event.AgentEventListener;
 import cn.kong.eon.web.sse.SseAgentEventListener;
 import cn.kong.eon.web.sse.AgentEventFormatter;
-import cn.kong.eon.runtime.TranscriptReplayer;
+import cn.kong.eon.store.ledger.TranscriptReplayer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,7 +53,7 @@ public class AgentController {
      * 发送消息并流式接收 Agent 响应（唯一对话入口）。
      * <p>
      * sessionId 为空时自动创建新会话，非空时恢复已有会话。
-     * SSE 事件流：agent.delta → agent.thinking → agent.message → agent.tool_use → agent.tool_result → session.usage → session.status
+     * SSE 事件流：engine.delta → engine.thinking → engine.message → engine.tool_use → engine.tool_result → session.usage → session.status
      */
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chat(@RequestBody ChatRequest request) {
@@ -65,7 +65,7 @@ public class AgentController {
                 listeners.add(new SseAgentEventListener(emitter, objectMapper));
 
                 RunResult result = runtime.run(request, listeners);
-                emitter.send(SseEmitter.event().name("agent.message.final")
+                emitter.send(SseEmitter.event().name("engine.message.final")
                         .data(Map.of("content", result.content(), "session_id", result.sessionId())));
                 emitter.complete();
             } catch (Exception e) {

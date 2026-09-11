@@ -15,7 +15,7 @@ public record AgentMessage(
 
     @Override
     public String type() {
-        return "agent.message";
+        return "engine.message";
     }
 
     @Override

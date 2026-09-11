@@ -1,27 +1,31 @@
 package cn.kong.eon.runtime;
 
-import cn.kong.eon.agent.EonAgent;
 import cn.kong.eon.context.ContentCompressor;
 import cn.kong.eon.context.pipeline.IngestPipeline;
 import cn.kong.eon.context.block.CompressionLevel;
 import cn.kong.eon.context.policy.CompressionPolicy;
 import cn.kong.eon.context.policy.CompressionSettings;
 import cn.kong.eon.context.summary.LlmContextSummarizer;
-import cn.kong.eon.agent.guard.ToolCircuitBreaker;
-import cn.kong.eon.agent.hook.postmodel.LoopDetectHook;
-import cn.kong.eon.agent.hook.postmodel.ToolValidationHook;
-import cn.kong.eon.agent.hook.postmodel.TruncationHook;
-import cn.kong.eon.agent.hook.posttool.TodoSnapshotHook;
-import cn.kong.eon.agent.hook.posttool.ToolFailureHook;
-import cn.kong.eon.agent.hook.premodel.BudgetHook;
-import cn.kong.eon.agent.hook.premodel.ContextCompressionHook;
-import cn.kong.eon.agent.hook.premodel.TodoContextHook;
-import cn.kong.eon.agent.hook.pretool.GateHook;
+import cn.kong.eon.engine.AgentEngine;
+import cn.kong.eon.engine.guard.ToolCircuitBreaker;
+import cn.kong.eon.engine.hook.Hook;
+import cn.kong.eon.engine.hook.postmodel.LoopDetectHook;
+import cn.kong.eon.engine.hook.postmodel.ToolValidationHook;
+import cn.kong.eon.engine.hook.postmodel.TruncationHook;
+import cn.kong.eon.engine.hook.posttool.TodoSnapshotHook;
+import cn.kong.eon.engine.hook.posttool.ToolFailureHook;
+import cn.kong.eon.engine.hook.premodel.BudgetHook;
+import cn.kong.eon.engine.hook.premodel.ContextCompressionHook;
+import cn.kong.eon.engine.hook.premodel.TodoContextHook;
+import cn.kong.eon.engine.hook.pretool.GateHook;
+import cn.kong.eon.engine.exec.ToolCallDispatcher;
+import cn.kong.eon.engine.exec.TurnMessageWriter;
+import cn.kong.eon.engine.stop.StopHandler;
 import cn.kong.eon.logging.Slf4JAgentEventListener;
+import cn.kong.eon.event.AgentEvent;
 import cn.kong.eon.event.AgentEventListener;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.llm.LlmClient;
-import cn.kong.eon.session.SessionState;
 import cn.kong.eon.store.snapshot.RestoreMode;
 import cn.kong.eon.store.snapshot.SessionSnapshot;
 import cn.kong.eon.store.artifact.ToolResultArtifactStore;
@@ -43,15 +47,19 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
- * 会话。封装会话级组件：TranscriptLedger、SessionState、TodoStore、EonAgent、Hook 列表等。
- * 随会话切换而创建/销毁，应用级组件（LlmClient、ToolService、MCP）不在此处。
+ * 会话。封装会话级组件：TranscriptLedger、SessionState、TodoStore、Hook 列表等。
+ * 随会话切换而创建/销毁，应用级组件（LlmClient、ToolService、MCP、EonAgent）不在此处。
+ * <p>
+ * 职责：装配会话级组件 → 组装 {@link SessionContext} → 交给引擎执行 → 释放资源。
  */
 public class AgentSession {
 
     private static final Logger log = LoggerFactory.getLogger(AgentSession.class);
 
+    // ── 应用级依赖（运行时使用，不持有所有权）
     private final AgentConfig config;
     private final LlmClient llmClient;
     private final ToolService toolService;
@@ -74,9 +82,12 @@ public class AgentSession {
     private final ToolCircuitBreaker circuitBreaker;
     private final LoopDetectHook loopDetectHook;
     private final TodoSnapshotHook todoSnapshotHook;
-    private final EonAgent agent;
     private final ToolContext toolContext;
-    private final List<AgentEventListener> externalListeners;
+    private final ToolCallDispatcher toolDispatcher;
+    private final TurnMessageWriter messageWriter;
+    private final StopHandler stopHandler;
+    private final List<Hook> hooks;
+    private final List<AgentEventListener> listeners;
 
     /** 创建会话上下文，注入应用级依赖。 */
     public AgentSession(AgentConfig appConfig,
@@ -95,7 +106,6 @@ public class AgentSession {
         this.compressor = compressor;
         this.systemPrompt = systemPrompt;
         this.resumedSession = resumedSession;
-        this.externalListeners = externalListeners != null ? externalListeners : List.of();
         this.objectMapper = objectMapper;
 
         // ── 1. 会话 ID 与目录
@@ -161,18 +171,31 @@ public class AgentSession {
         this.compressionPolicy = createCompressionPolicy();
 
         // 组装 listeners：Slf4JAgentEventListener + 外部 SSE listeners
-        List<AgentEventListener> listeners = new ArrayList<>();
-        listeners.add(new Slf4JAgentEventListener());
-        listeners.addAll(externalListeners);
+        this.listeners = new ArrayList<>();
+        this.listeners.add(new Slf4JAgentEventListener());
+        this.listeners.addAll(externalListeners != null ? externalListeners : List.of());
 
-        this.agent = new EonAgent(
-                config, llmClient, toolService,
-                transcriptLedger, systemPrompt,
-                toolContext, circuitBreaker, listeners, objectMapper);
-        registerHooks();
+        // ── 8. 引擎协作组件（会话级，随会话创建/销毁）
+        Consumer<AgentEvent> emitter = event -> {
+            for (AgentEventListener l : listeners) {
+                try {
+                    l.onEvent(event);
+                } catch (Exception e) {
+                    log.warn("事件监听器异常: {}", e.getMessage(), e);
+                }
+            }
+        };
+        this.toolDispatcher = new ToolCallDispatcher(
+                toolService, toolContext, emitter, circuitBreaker,
+                config.getTools().getParallelism(), objectMapper);
+        this.messageWriter = new TurnMessageWriter(transcriptLedger);
+        this.stopHandler = new StopHandler(config, emitter);
+
+        // ── 9. Hook 列表
+        this.hooks = createHooks();
 
         log.info("会话 {} 已就绪: {} 个工具, {} 个 hook, {} 个 listener",
-                sessionId, toolService.getAllToolNames().size(), agent.getHookCount(), listeners.size());
+                sessionId, toolService.getAllToolNames().size(), hooks.size(), listeners.size());
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -180,7 +203,7 @@ public class AgentSession {
     // ═══════════════════════════════════════════════════════════════════
 
     /** 运行一轮对话。 */
-    public String run(String userInput) {
+    public String run(AgentEngine agent, String userInput) {
         if (userInput == null || userInput.isBlank()) {
             return "输入不能为空。";
         }
@@ -193,7 +216,12 @@ public class AgentSession {
         log.info("=== 会话 {} 任务开始 ===", sessionState.getSessionId());
         log.info("用户输入: {}", userInput.length() > 200 ? userInput.substring(0, 200) + "..." : userInput);
 
-        String output = agent.run(sessionState);
+        SessionContext ctx = new SessionContext(
+                sessionState, transcriptLedger, toolContext,
+                circuitBreaker, listeners, hooks,
+                toolDispatcher, messageWriter, stopHandler);
+
+        String output = agent.run(ctx);
         log.info("=== 会话 {} 任务结束, 本次 {} 轮, 会话累计 {} tokens ===",
                 sessionState.getSessionId(), sessionState.getTurnCount(), sessionState.getUsageAccum().getTotalTokens());
         return output;
@@ -204,18 +232,8 @@ public class AgentSession {
     // ═══════════════════════════════════════════════════════════════════
 
     public void close() {
-        agent.shutdown();
+        toolDispatcher.shutdown();
         log.info("会话 {} 资源已释放", sessionId);
-    }
-
-    /** 动态注册事件监听器。 */
-    public void addListener(AgentEventListener listener) {
-        agent.addListener(listener);
-    }
-
-    /** 动态移除事件监听器。 */
-    public void removeListener(AgentEventListener listener) {
-        agent.removeListener(listener);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -226,7 +244,11 @@ public class AgentSession {
     public SessionSummary getResumedSession() { return resumedSession; }
     public TranscriptLedger getTranscriptLedger() { return transcriptLedger; }
     public SessionState getSessionState() { return sessionState; }
-    public ToolService getToolService() { return toolService; }
+
+    /** 请求中断当前任务。 */
+    public void requestInterrupt() {
+        sessionState.requestInterrupt();
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     //  内部装配
@@ -282,19 +304,21 @@ public class AgentSession {
         }
     }
 
-    private void registerHooks() {
-        agent.addHook(new BudgetHook(config));
-        agent.addHook(new TodoContextHook(todoStore));
-        agent.addHook(new ContextCompressionHook(compressionPolicy));
+    private List<Hook> createHooks() {
+        return List.of(
+                new BudgetHook(config),
+                new TodoContextHook(todoStore),
+                new ContextCompressionHook(compressionPolicy),
 
-        agent.addHook(new TruncationHook());
-        agent.addHook(new ToolValidationHook(toolService));
-        agent.addHook(loopDetectHook);
+                new TruncationHook(),
+                new ToolValidationHook(toolService),
+                loopDetectHook,
 
-        agent.addHook(new GateHook(toolService, config));
+                new GateHook(toolService, config),
 
-        agent.addHook(new ToolFailureHook(circuitBreaker));
-        agent.addHook(todoSnapshotHook);
+                new ToolFailureHook(circuitBreaker),
+                todoSnapshotHook
+        );
     }
 
     private void restore(SessionSnapshot cp, RestoreMode mode) {
