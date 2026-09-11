@@ -1,6 +1,5 @@
 package cn.kong.eon.config;
 
-import cn.kong.eon.context.block.CompressionLevel;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.*;
@@ -230,8 +229,12 @@ public class AgentConfig {
             private double summarizeWaterLevel = 0.92;
             /** 轮数触发周期：轮次序号为其整数倍时命中轮数入口 */
             private int turnInterval = 7;
-            /** 轮数入口命中且水位三档均未命中时执行的档位 */
-            private CompressionLevel turnLevel = CompressionLevel.SNIP;
+            /**
+             * 轮数入口命中且水位三档均未命中时执行的档位。
+             * 用字符串承载（SNIP/PRUNE/SUMMARIZE/NONE），避免配置层反向依赖 context 包；
+             * 由 {@code AgentSession} 装配压缩策略时解析为 CompressionLevel。
+             */
+            private String turnLevel = "SNIP";
             /** 尾部保护区块数：窗口末尾这些块不参与任何档位 */
             private int tailGuardBlocks = 12;
             /** 参数块字段裁剪的最小字符数，短参数裁剪后反而更长 */
@@ -269,11 +272,11 @@ public class AgentConfig {
                 this.turnInterval = v;
             }
 
-            public CompressionLevel getTurnLevel() {
+            public String getTurnLevel() {
                 return turnLevel;
             }
 
-            public void setTurnLevel(CompressionLevel v) {
+            public void setTurnLevel(String v) {
                 this.turnLevel = v;
             }
 

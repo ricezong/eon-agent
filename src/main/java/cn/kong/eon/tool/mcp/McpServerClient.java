@@ -1,5 +1,6 @@
 package cn.kong.eon.tool.mcp;
 
+import cn.kong.eon.tool.RemoteToolInvoker;
 import cn.kong.eon.tool.ToolOutcome;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -16,8 +17,10 @@ import java.util.List;
 
 /**
  * MCP 客户端管理器。连接 MCP 服务、获取工具列表、执行工具调用。
+ * <p>
+ * 实现 tool 包的 {@link RemoteToolInvoker} 端口：依赖方向为 tool.mcp → tool。
  */
-public class McpServerClient {
+public class McpServerClient implements RemoteToolInvoker {
     private static final Logger log = LoggerFactory.getLogger(McpServerClient.class);
 
     private final String serverKey;
@@ -50,6 +53,7 @@ public class McpServerClient {
     }
 
     /** 获取 MCP 服务提供的工具列表。 */
+    @Override
     public List<ToolSpecification> listTools() {
         if (mcpClient == null) {
             log.warn("MCP 客户端未连接，无法获取工具列表");
@@ -69,14 +73,15 @@ public class McpServerClient {
     }
 
     /** 执行 MCP 工具调用。 */
-    public ToolOutcome executeTool(String toolName, String arguments) {
+    @Override
+    public ToolOutcome invoke(String toolName, String argumentsJson) {
         if (mcpClient == null) {
             return ToolOutcome.failure("MCP 客户端未连接");
         }
         try {
             ToolExecutionRequest request = ToolExecutionRequest.builder()
                     .name(toolName)
-                    .arguments(arguments != null ? arguments : "{}")
+                    .arguments(argumentsJson != null ? argumentsJson : "{}")
                     .build();
             ToolExecutionResult result = mcpClient.executeTool(request);
             String resultText = result != null ? result.resultText() : "";
@@ -100,7 +105,8 @@ public class McpServerClient {
         }
     }
 
-    public String getServerKey() {
+    @Override
+    public String serverKey() {
         return serverKey;
     }
 }

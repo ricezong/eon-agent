@@ -10,7 +10,6 @@ public enum StopCategory {
     BUDGET_EXCEEDED("预算超限: 已用 {0} / {1} tokens"),
     LOOP_DETECTED("检测到死循环: {0}"),
     GATE_REJECTED("门禁拒绝: 破坏性工具 {0} 需要用户审批"),
-    FAILURE_BREAKER("失败熔断: {0}"),
     MAX_STEPS_REACHED("达到最大步数: {0}"),
     USER_INTERRUPTED("用户主动中断: {0}"),
     UNEXPECTED_ERROR("执行异常: {0}");

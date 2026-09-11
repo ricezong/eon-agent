@@ -6,6 +6,7 @@ import cn.kong.eon.agent.guard.ToolCircuitBreaker;
 import cn.kong.eon.agent.exec.TurnMessageWriter;
 import cn.kong.eon.agent.hook.Hook;
 import cn.kong.eon.agent.hook.HookDispatcher;
+import cn.kong.eon.agent.hook.HookResult;
 import cn.kong.eon.agent.stop.StopCategory;
 import cn.kong.eon.agent.stop.StopHandler;
 import cn.kong.eon.config.AgentConfig;
@@ -367,23 +368,48 @@ public class EonAgent {
     // ═══════════════════════════════════════════════════════════════════
 
     private LoopAction prepareContext(SessionState state, ContextBuilder ctx) {
-        LoopAction outcome = HookDispatcher.dispatchPreModel(preModelHooks, state, ctx, stopHandler::forceTerminate);
-        if (outcome instanceof LoopAction.Exit) {
-            return outcome;
+        HookResult result = HookDispatcher.dispatchPreModel(preModelHooks, state, ctx);
+        if (result != null && result.isStop()) {
+            return exitOf(state, result);
         }
         consumeNudges(state, ctx);
-        return outcome;
+        return new LoopAction.Continue();
     }
 
     private LoopAction firePostModelHooks(SessionState state) {
-        return HookDispatcher.dispatchPostModel(postModelHooks, state, stopHandler::forceTerminate);
+        HookResult result = HookDispatcher.dispatchPostModel(postModelHooks, state);
+        if (result == null) {
+            return new LoopAction.Continue();
+        }
+        if (result.isSkip()) {
+            // 返回 Skip 让主循环跳过本轮后续阶段（阶段 5~7），由 finishSkip 收尾
+            return new LoopAction.Skip();
+        }
+        if (result.isStop()) {
+            return exitOf(state, result);
+        }
+        return new LoopAction.Continue();
     }
 
     private LoopAction firePreToolHooks(SessionState state, List<ToolExecutionRequest> requests) {
-        return HookDispatcher.dispatchPreTool(preToolHooks, state, requests, stopHandler::forceTerminate);
+        HookResult result = HookDispatcher.dispatchPreTool(preToolHooks, state, requests);
+        if (result != null && result.isStop()) {
+            return exitOf(state, result);
+        }
+        return new LoopAction.Continue();
     }
 
     private LoopAction firePostToolHooks(SessionState state, String toolName, boolean success) {
-        return HookDispatcher.dispatchPostTool(postToolHooks, state, toolName, success, stopHandler::forceTerminate);
+        HookResult result = HookDispatcher.dispatchPostTool(postToolHooks, state, toolName, success);
+        if (result != null && result.isStop()) {
+            return exitOf(state, result);
+        }
+        return new LoopAction.Continue();
+    }
+
+    /** 把 Hook 的 stop 结果翻译成循环退出动作：终止文本由 StopHandler 生成。 */
+    private LoopAction exitOf(SessionState state, HookResult result) {
+        return new LoopAction.Exit(
+                stopHandler.forceTerminate(state, result.getCategory(), result.getMessage()));
     }
 }

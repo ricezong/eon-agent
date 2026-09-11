@@ -18,10 +18,4 @@ public record ToolContext(
         PathResolver pathResolver,
         InteractionCallback interactionCallback
 ) {
-
-    /** 返回替换了 interactionCallback 的新实例。 */
-    public ToolContext withInteractionCallback(InteractionCallback callback) {
-        return new ToolContext(todoStore, toolResultStore, memoryStore,
-                transcriptLedger, snapshotStore, pathResolver, callback);
-    }
 }

@@ -2,9 +2,13 @@ package cn.kong.eon.web;
 
 import cn.kong.eon.runtime.AgentRuntime;
 import cn.kong.eon.web.dto.ChatRequest;
+import cn.kong.eon.web.dto.InterruptRequest;
 import cn.kong.eon.web.dto.RunResult;
+import cn.kong.eon.web.dto.SessionListItem;
+import cn.kong.eon.event.AgentEvent;
 import cn.kong.eon.event.AgentEventListener;
 import cn.kong.eon.web.sse.SseAgentEventListener;
+import cn.kong.eon.web.sse.TurnEventFormatter;
 import cn.kong.eon.runtime.TranscriptReplayer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -123,20 +127,14 @@ public class AgentController {
     public List<Map<String, Object>> getSession(@PathVariable String sessionId) {
         var transcriptPath = app.getTranscriptPath(sessionId);
         TranscriptReplayer replayer = new TranscriptReplayer(objectMapper);
-        return replayer.replay(transcriptPath);
+        List<AgentEvent> events = replayer.replay(transcriptPath);
+        // 与实时 SSE 共用同一个格式化器，保证恢复渲染与实时渲染结构一致
+        TurnEventFormatter formatter = new TurnEventFormatter();
+        List<Map<String, Object>> rendered = new ArrayList<>(events.size());
+        for (AgentEvent event : events) {
+            rendered.add(event.accept(formatter));
+        }
+        return rendered;
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    //  请求/响应 DTO
-    // ═══════════════════════════════════════════════════════════════════
-
-    public record InterruptRequest(String sessionId) {}
-
-    public record SessionListItem(
-            int index,
-            String sessionId,
-            String title,
-            long messageCount,
-            String lastActivityAt
-    ) {}
 }

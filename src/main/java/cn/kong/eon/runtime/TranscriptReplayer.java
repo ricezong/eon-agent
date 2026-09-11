@@ -4,7 +4,6 @@ import cn.kong.eon.event.*;
 import cn.kong.eon.store.ledger.TranscriptLedger;
 import cn.kong.eon.store.ledger.TranscriptLedger.SerializedMessage;
 import cn.kong.eon.tool.model.ToolResultView;
-import cn.kong.eon.web.sse.TurnEventFormatter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,12 +14,13 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
- * 账本回放器。读取 transcript.jsonl，将 SerializedMessage 转为 TurnEvent 列表，
- * 再通过 {@link TurnEventFormatter} 格式化为前端渲染数据——与实时渲染走同一条管道。
+ * 账本回放器。读取 transcript.jsonl，将 SerializedMessage 还原为 AgentEvent 列表。
+ * <p>
+ * 只负责"账本 → 事件"这一步；事件到前端渲染数据的格式化由接入层（web.sse）完成，
+ * 保证应用层不反向依赖传输层。
  * <p>
  * 账本中每行消息的映射规则：
  * <ul>
@@ -37,18 +37,17 @@ public class TranscriptReplayer {
     private static final Logger log = LoggerFactory.getLogger(TranscriptReplayer.class);
 
     private final ObjectMapper mapper;
-    private final TurnEventFormatter formatter = new TurnEventFormatter();
 
     public TranscriptReplayer(ObjectMapper mapper) {
         this.mapper = mapper;
     }
 
     /**
-     * 读取账本，返回前端渲染数据列表。
-     * 每个元素是一个 Map，结构与实时 SSE 事件的 data 字段完全一致。
+     * 读取账本，还原为事件列表。
+     * 由调用方用 {@code TurnEventFormatter} 格式化，即可与实时 SSE 输出结构完全一致。
      */
-    public List<Map<String, Object>> replay(Path transcriptPath) {
-        List<Map<String, Object>> events = new ArrayList<>();
+    public List<AgentEvent> replay(Path transcriptPath) {
+        List<AgentEvent> events = new ArrayList<>();
         if (!Files.exists(transcriptPath)) {
             log.warn("账本不存在: {}", transcriptPath);
             return events;
@@ -70,14 +69,11 @@ public class TranscriptReplayer {
                     continue;
                 }
 
-                List<AgentEvent> agentEvents = toEvents(sm, turnId, i);
-                for (AgentEvent event : agentEvents) {
-                    events.add(event.accept(formatter));
-                }
+                events.addAll(toEvents(sm, turnId, i));
             }
 
             // 补发一个最终的 session.status: idle
-            events.add(SessionStatus.idle("replay_completed").accept(formatter));
+            events.add(SessionStatus.idle("replay_completed"));
 
             log.info("账本回放完成: {} 行 → {} 个事件", lines.size(), events.size());
         } catch (IOException e) {
@@ -88,7 +84,7 @@ public class TranscriptReplayer {
     }
 
     /**
-     * 将单条 SerializedMessage 转为对应的 TurnEvent 列表。
+     * 将单条 SerializedMessage 转为对应的 AgentEvent 列表。
      */
     private List<AgentEvent> toEvents(SerializedMessage sm, String turnId, int seq) {
         List<AgentEvent> events = new ArrayList<>();

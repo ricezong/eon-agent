@@ -100,11 +100,6 @@ public class SessionIndexRepository {
         return matches.size() == 1 ? Optional.of(matches.get(0)) : Optional.empty();
     }
 
-    public Optional<SessionIndex> last(String userId) {
-        List<SessionIndex> all = list(userId);
-        return all.isEmpty() ? Optional.empty() : Optional.of(all.get(0));
-    }
-
     public boolean delete(String userId, String sessionId) {
         String sql = "DELETE FROM chat_sessions WHERE user_id = ? AND session_id = ?";
         try (Connection conn = dbManager.getConnection();
@@ -129,18 +124,6 @@ public class SessionIndexRepository {
             ps.executeUpdate();
         } catch (SQLException e) {
             log.error("更新会话索引失败: {}", sessionId, e);
-        }
-    }
-
-    public int count() {
-        String sql = "SELECT COUNT(*) FROM chat_sessions";
-        try (Connection conn = dbManager.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            return rs.next() ? rs.getInt(1) : 0;
-        } catch (SQLException e) {
-            log.error("统计会话数失败", e);
-            return 0;
         }
     }
 

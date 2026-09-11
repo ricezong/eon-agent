@@ -1,7 +1,6 @@
 package cn.kong.eon.tool;
 
 import cn.kong.eon.session.SessionState;
-import cn.kong.eon.tool.mcp.McpServerClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import org.slf4j.Logger;
@@ -20,7 +19,7 @@ public class ToolService {
     private final ArgumentTypeCoercer sanitizer;
     private final ObjectMapper objectMapper;
 
-    private final Map<String, McpServerClient> mcpToolSources = new HashMap<>();
+    private final Map<String, RemoteToolInvoker> mcpToolSources = new HashMap<>();
     private final Map<String, ToolSpecification> mcpToolSpecs = new HashMap<>();
 
     public ToolService(Set<String> whitelist, ObjectMapper objectMapper) {
@@ -43,20 +42,20 @@ public class ToolService {
      * 注册 MCP 工具。不受本地白名单限制。
      * @return 实际注册的工具数量
      */
-    public int registerMcpTools(McpServerClient mcpManager, String permission) {
+    public int registerMcpTools(RemoteToolInvoker remoteTools, String permission) {
         ToolPermission perm = parsePermission(permission);
-        List<ToolSpecification> toolSpecs = mcpManager.listTools();
+        List<ToolSpecification> toolSpecs = remoteTools.listTools();
         if (toolSpecs == null || toolSpecs.isEmpty()) {
-            log.warn("MCP 服务无工具可注册: {}", mcpManager.getServerKey());
+            log.warn("远程工具服务无工具可注册: {}", remoteTools.serverKey());
             return 0;
         }
         int count = 0;
         for (ToolSpecification spec : toolSpecs) {
             String toolName = spec.name();
-            mcpToolSources.put(toolName, mcpManager);
+            mcpToolSources.put(toolName, remoteTools);
             mcpToolSpecs.put(toolName, spec);
-            log.info("MCP 工具已注册: {} [{}] 来自服务 '{}'",
-                    toolName, perm, mcpManager.getServerKey());
+            log.info("远程工具已注册: {} [{}] 来自服务 '{}'",
+                    toolName, perm, remoteTools.serverKey());
             count++;
         }
         return count;
@@ -81,11 +80,6 @@ public class ToolService {
     /** 工具是否存在（本地或 MCP）。 */
     public boolean contains(String name) {
         return tools.containsKey(name) || mcpToolSpecs.containsKey(name);
-    }
-
-    /** 是否为 MCP 工具。 */
-    public boolean isMcpTool(String name) {
-        return mcpToolSpecs.containsKey(name);
     }
 
     /** 获取所有工具 Schema（本地 + MCP）。 */
@@ -115,16 +109,16 @@ public class ToolService {
             }
         }
 
-        McpServerClient mcpManager = mcpToolSources.get(name);
-        if (mcpManager != null) {
+        RemoteToolInvoker remoteTools = mcpToolSources.get(name);
+        if (remoteTools != null) {
             try {
                 String argsJson = convertArgsToJson(arguments);
-                ToolOutcome result = mcpManager.executeTool(name, argsJson);
-                log.debug("MCP 工具执行: {} -> 成功={} {} 字符", name, result.success(), result.content().length());
+                ToolOutcome result = remoteTools.invoke(name, argsJson);
+                log.debug("远程工具执行: {} -> 成功={} {} 字符", name, result.success(), result.content().length());
                 return result;
             } catch (Exception e) {
-                log.error("MCP 工具执行失败: {}", name, e);
-                return ToolOutcome.failure("MCP 工具执行失败: " + e.getMessage());
+                log.error("远程工具执行失败: {}", name, e);
+                return ToolOutcome.failure("远程工具执行失败: " + e.getMessage());
             }
         }
 
@@ -149,11 +143,6 @@ public class ToolService {
         return perm == ToolPermission.DESTRUCTIVE;
     }
 
-    /** 白名单（只读）。 */
-    public Set<String> getWhitelist() {
-        return Collections.unmodifiableSet(whitelist);
-    }
-
     /** 所有工具名称（本地 + MCP）。 */
     public Collection<String> getAllToolNames() {
         Set<String> names = new LinkedHashSet<>();
@@ -165,11 +154,6 @@ public class ToolService {
     /** 所有本地工具描述符。 */
     public Collection<ToolDescriptor> getAll() {
         return tools.values();
-    }
-
-    /** MCP 工具数量。 */
-    public int getMcpToolCount() {
-        return mcpToolSpecs.size();
     }
 
     /** 释放所有本地工具持有的资源。 */

@@ -7,7 +7,6 @@
     </appender>
 
     <logger name="cn.kong.eon" level="INFO"/>
-    <logger name="cn.kong.eon.loop" level="DEBUG"/>
     <logger name="cn.kong.eon.context" level="DEBUG"/>
     <logger name="cn.kong.eon.tool" level="INFO"/>
 

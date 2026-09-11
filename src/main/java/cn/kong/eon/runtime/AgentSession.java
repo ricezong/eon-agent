@@ -3,6 +3,7 @@ package cn.kong.eon.runtime;
 import cn.kong.eon.agent.EonAgent;
 import cn.kong.eon.context.ContentCompressor;
 import cn.kong.eon.context.pipeline.IngestPipeline;
+import cn.kong.eon.context.block.CompressionLevel;
 import cn.kong.eon.context.policy.CompressionPolicy;
 import cn.kong.eon.context.policy.CompressionSettings;
 import cn.kong.eon.context.summary.LlmContextSummarizer;
@@ -255,16 +256,30 @@ public class AgentSession {
         var comp = ctxCfg.getCompression();
         LlmContextSummarizer summarizer = new LlmContextSummarizer(llmClient, transcriptPath,
                 ctxCfg.getSummarizeMaxInputChars(), ctxCfg.getSummarizeMaxOutputChars());
+        CompressionLevel turnLevel = parseTurnLevel(comp.getTurnLevel());
         log.info("压缩策略已装配: 水位 {}/{}/{} | 轮数周期 {} 档位 {} | 尾部保护 {} 块 | 参数裁剪阈值 {} 字符",
                 comp.getSnipWaterLevel(), comp.getPruneWaterLevel(), comp.getSummarizeWaterLevel(),
-                comp.getTurnInterval(), comp.getTurnLevel(),
+                comp.getTurnInterval(), turnLevel,
                 comp.getTailGuardBlocks(), comp.getArgsPruneMinChars());
         CompressionSettings settings = new CompressionSettings(
                 comp.getSnipWaterLevel(), comp.getPruneWaterLevel(), comp.getSummarizeWaterLevel(),
-                comp.getTurnInterval(), comp.getTurnLevel(),
+                comp.getTurnInterval(), turnLevel,
                 comp.getTailGuardBlocks(), comp.getArgsPruneMinChars(),
                 ctxCfg.getSnipKeepChars());
         return new CompressionPolicy(settings, compressor, summarizer);
+    }
+
+    /** 解析轮数兜底档位字符串（配置层用 String 承载）。非法值回退为 SNIP。 */
+    private CompressionLevel parseTurnLevel(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return CompressionLevel.SNIP;
+        }
+        try {
+            return CompressionLevel.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("未知的压缩档位 '{}'，回退为 SNIP", raw);
+            return CompressionLevel.SNIP;
+        }
     }
 
     private void registerHooks() {
