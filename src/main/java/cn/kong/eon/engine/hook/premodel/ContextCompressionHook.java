@@ -13,10 +13,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 压缩执行点（PreModel, order=100）。每轮调 LLM 前调用
- * {@link cn.kong.eon.context.policy.CompressionPolicy#apply} 判定并执行一个压缩档位。
- * <p>
- * 无状态：压缩策略从 {@code r.session().compressionPolicy()} 取，轮次从 {@code r.task().turnCount()} 取。
+ * 压缩执行点（PreModel, order=100）。每轮调 LLM 前调用 CompressionPolicy#apply
+ * 判定并执行一个压缩档位。
  */
 @Component
 public class ContextCompressionHook implements Hook.PreModelHook {

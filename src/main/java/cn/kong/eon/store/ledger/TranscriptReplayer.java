@@ -17,23 +17,8 @@ import java.util.UUID;
 
 /**
  * 账本回放器。读取 transcript.jsonl，将 SerializedMessage 还原为 AgentEvent 列表。
- * <p>
- * 只负责"账本 → 事件"这一步；事件到前端渲染数据的格式化由接入层（web.sse）完成，
- * 保证应用层不反向依赖传输层。
- * <p>
- * 账本中每行消息的映射规则：
- * <ul>
- *   <li>user → 不产出事件（用户消息在前端由 chat 请求本身渲染）</li>
- *   <li>ai（无 toolCalls）→ AgentThinking（如有 thinking）+ AgentMessage</li>
- *   <li>ai（有 toolCalls）→ AgentThinking（如有 thinking）+ AgentToolUse × N</li>
- *   <li>tool → AgentToolResult</li>
- *   <li>system → 跳过（系统消息不需要前端渲染）</li>
- * </ul>
- * AgentDelta（流式增量）是瞬态事件，不参与回放。
- * SessionUsage 和 SessionStatus 是运行时状态事件，回放时补发一个最终的 idle 状态。
- * <p>
- * <b>应用级单例</b>：唯一字段是不可变的 {@code ObjectMapper}，账本路径由
- * {@link #replay(Path)} 作为参数传入，因此本类无会话状态，可安全共享。
+ * 映射规则：user→不产出事件；ai(无toolCalls)→AgentThinking+AgentMessage；
+ * ai(有toolCalls)→AgentThinking+AgentToolUse×N；tool→AgentToolResult；system→跳过。
  */
 @Component
 public class TranscriptReplayer {

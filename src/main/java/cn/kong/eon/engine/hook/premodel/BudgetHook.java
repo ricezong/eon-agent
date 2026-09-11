@@ -11,8 +11,6 @@ import org.springframework.stereotype.Component;
 
 /**
  * 预算检查（PreModel, order=10）。达到阈值比例注入收尾提示词，预算耗尽则终止。
- * <p>
- * 无状态：token 累计读 {@code r.session().usageAccum()}，轮次读 {@code r.task().turnCount()}。
  */
 @Component
 public class BudgetHook implements Hook.PreModelHook {

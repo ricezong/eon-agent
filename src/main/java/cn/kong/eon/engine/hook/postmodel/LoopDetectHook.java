@@ -12,12 +12,8 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * 循环检测（PostModel, order=30）。
- * 检测同一任务内重复的工具调用：同工具同参数重复达到 stop 阈值时直接终止，
- * 达到 warn 阈值时注入 nudge。已熔断的工具跳过检测——执行层会直接拦截。
- * <p>
- * 无状态：计数表外置到 {@code r.task().loopDetector()}（每次 run 独立实例），
- * 这是 Hook 能安全单例化的关键——原先的私有 HashMap 在多会话并发时会互相污染。
+ * 循环检测（PostModel, order=30）。同工具同参数重复达到 stop 阈值时终止，
+ * 达到 warn 阈值时注入 nudge。已熔断的工具跳过检测。
  */
 @Component
 public class LoopDetectHook implements Hook.PostModelHook {

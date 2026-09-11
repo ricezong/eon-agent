@@ -8,11 +8,8 @@ import java.util.List;
 /**
  * Hook 基础接口。每个 Hook 只属于一个执行阶段，通过 order 控制阶段内顺序。
  * 引擎按阶段分组调度：PreModel → PostModel → PreTool → PostTool。
- * <p>
- * <b>全部方法只接受 {@link RunContext}</b>：会话级数据从 {@code r.session()} 取、
- * 任务级从 {@code r.task()} 取、轮次级从 {@code r.turn()} 取。
- * Hook 因此不含任何可变状态，可安全作为应用级单例（{@code @Component}）被多会话共享。
- * 需要跨轮累计的状态一律外置（如 {@code LoopDetector}、{@code ProgressTracker} 挂在 TaskScope 上）。
+ * Hook 不含可变状态，可安全作为应用级单例被多会话共享。
+ * 跨轮累计的状态外置到 TaskScope/SessionScope。
  */
 public interface Hook {
 

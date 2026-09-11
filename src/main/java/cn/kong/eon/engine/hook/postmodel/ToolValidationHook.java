@@ -14,8 +14,6 @@ import java.util.List;
 /**
  * 工具存在性校验（PostModel, order=10）。
  * 模型输出的工具调用中如果包含不存在的工具，注入 nudge 提示。
- * <p>
- * 无状态：待执行工具调用读 {@code r.turn().pendingToolCalls()}。
  */
 @Component
 public class ToolValidationHook implements Hook.PostModelHook {

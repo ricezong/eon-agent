@@ -7,9 +7,6 @@ import java.util.Set;
 
 /**
  * Todo 无进展检测器：滑动窗口比对 Todo 快照，连续多个窗口无变化则判定无进展。
- * <p>
- * 原为 {@code TodoNoProgressHook} 的私有状态，外置后挂在 {@code TaskScope} 上，
- * 使 Hook 可以变无状态单例，避免多会话并发时互相污染计数。
  */
 public final class ProgressTracker {
 

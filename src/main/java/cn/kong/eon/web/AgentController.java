@@ -24,15 +24,9 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Agent HTTP/SSE 控制器。<b>只做传输层</b>：参数校验、SseEmitter 生命周期、响应封装。
- * 会话查找、标题派生、账本回放与格式化已全部下沉到 Service。
- * <p>
+ * Agent HTTP/SSE 控制器。只做传输层：参数校验、SseEmitter 生命周期、响应封装。
  * SSE 事件流：engine.delta → engine.thinking → engine.message → engine.tool_use →
  * engine.tool_result → session.usage → session.status
- * <p>
- * 错误语义（契约不变）：{@code /api/chat} 在异步线程内执行，异常走不到
- * {@link GlobalExceptionHandler}，因此一律就地转为 {@code session.error} 事件并带 {@code type}；
- * 非流式接口才由 {@link GlobalExceptionHandler} 转成 HTTP 状态码。
  */
 @RestController
 @RequestMapping("/api")

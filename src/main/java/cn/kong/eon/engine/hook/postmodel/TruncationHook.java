@@ -8,11 +8,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 截断检测（PostModel, order=5）。
- * finishReason=length 时注入截断提示 nudge 并返回 skip()，
- * 跳过当前 Turn 后续阶段直接进入下一轮，让模型重新调用工具。
- * <p>
- * 无状态：本轮响应读 {@code r.turn().response()}。
+ * 截断检测（PostModel, order=5）。finishReason=length 时注入截断提示并返回 skip()，
+ * 让模型重新调用工具。
  */
 @Component
 public class TruncationHook implements Hook.PostModelHook {

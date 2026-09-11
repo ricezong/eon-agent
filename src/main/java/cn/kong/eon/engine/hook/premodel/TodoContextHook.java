@@ -11,10 +11,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Todo 渲染（PreModel, order=20）。
- * TodoStore 有数据时渲染 Todo 列表到上下文。
- * <p>
- * 无状态：TodoStore 从 {@code r.session().todoStore()} 取，不再构造注入。
+ * Todo 渲染（PreModel, order=20）。TodoStore 有数据时渲染 Todo 列表到上下文。
  */
 @Component
 public class TodoContextHook implements Hook.PreModelHook {

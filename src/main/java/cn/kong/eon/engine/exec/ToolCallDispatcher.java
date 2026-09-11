@@ -25,10 +25,6 @@ import java.util.concurrent.*;
 /**
  * 工具执行处理器。封装工具执行全流程：参数解析 → 执行 → 事件发射。
  * 支持并行执行，串行豁免清单（todo_write/AskQuestion）强制串行。
- * <p>
- * 无状态：会话级依赖（熔断器、各 store）全部从 {@code r.session()} 取，
- * {@link ToolRuntime} 在每次调用时现场组装，不再跨会话持有。
- * 因此可作为应用级单例，线程池也随之收敛为一个（原先每会话一个）。
  */
 @Component
 public class ToolCallDispatcher {

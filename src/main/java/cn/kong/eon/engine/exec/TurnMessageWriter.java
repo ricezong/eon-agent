@@ -15,8 +15,6 @@ import java.util.Set;
 /**
  * 消息回填器。将 AI 消息和工具结果回填到账本，清理轮次级临时状态。
  * 工具结果以原始输出回填，落盘与格式化交给入站管线。
- * <p>
- * 无状态：账本从 {@code r.session().ledger()} 取，本轮数据从 {@code r.turn()} 取。
  */
 @Component
 public class TurnMessageWriter {

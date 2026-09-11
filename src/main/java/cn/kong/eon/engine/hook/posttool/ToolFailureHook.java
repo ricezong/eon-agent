@@ -8,10 +8,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 失败熔断（PostTool, order=30）。检测单工具连续失败：
+ * 失败熔断（PostTool, order=30）。检测单工具连续失败，
  * 熔断后工具被执行层拦截跳过，冷却结束后自动恢复。
- * <p>
- * 无状态：熔断器从 {@code r.session().circuitBreaker()} 取（会话级，跨轮累计）。
  */
 @Component
 public class ToolFailureHook implements Hook.PostToolHook {

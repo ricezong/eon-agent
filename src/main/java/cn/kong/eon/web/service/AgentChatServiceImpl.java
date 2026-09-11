@@ -20,9 +20,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 对话编排：解析会话 → 取缓存上下文 → 组装 {@link RunContext} → 调引擎 → 释放状态。
- * <p>
- * 取代原 {@code AgentRuntime.run()} 的编排职责。
+ * 对话编排：解析会话 → 取缓存上下文 → 组装 RunContext → 调引擎 → 释放状态。
  */
 @Service
 public class AgentChatServiceImpl implements AgentChatService {

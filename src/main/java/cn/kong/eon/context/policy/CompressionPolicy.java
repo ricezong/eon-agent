@@ -12,10 +12,7 @@ import java.util.List;
 
 /**
  * 压缩策略编排者。每轮在 PreModel 阶段执行：判档位 → 处置 → 修复配对 → 返回档位。
- * SNIP/PRUNE 就地处置块，SUMMARIZE 委托 LlmContextSummarizer 生成摘要后删除原文。
- * <p>
- * <b>应用级单例</b>：策略参数（水位、档位）与压缩器、摘要器都是应用级依赖，
- * 每轮变化的数据（窗口、度量、状态、轮次）全部由 {@link #apply} 的参数传入。
+ * SNIP/PRUNE 就地处置块，SUMMARIZE 委托摘要器生成摘要后删除原文。
  */
 public class CompressionPolicy {
 

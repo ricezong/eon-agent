@@ -6,13 +6,7 @@ import com.github.benmanes.caffeine.cache.Expiry;
 
 import java.time.Duration;
 
-/**
- * 会话缓存的变长过期策略。
- * <p>
- * 为什么不用 {@code expireAfterAccess}：它无法区分会话状态，
- * 长任务执行期间若长时间无人"访问"缓存也可能被淘汰，导致运行中的上下文被销毁。
- * 这里让 RUNNING 条目自动获得长 TTL，是唯一能真正保证"执行中不被淘汰"的方式。
- */
+/** 会话缓存的变长过期策略：RUNNING 状态自动获得长 TTL，保证执行中不被淘汰。 */
 public final class SessionExpiry implements Expiry<String, SessionScope> {
 
     private final long idleNanos;

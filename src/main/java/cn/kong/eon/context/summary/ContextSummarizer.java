@@ -25,10 +25,7 @@ public class ContextSummarizer {
     private final int maxInputChars;
     private final int maxOutputChars;
 
-    /**
-     * 本类<b>应用级单例</b>：字段全为不可变的应用级依赖，会话相关信息
-     * （账本路径）由 {@link #summarize} 作为参数传入，因此可跨会话安全共享。
-     */
+    /** 应用级单例，会话相关信息由参数传入。 */
     public ContextSummarizer(LlmService llmService, int maxInputChars, int maxOutputChars) {
         this.llmService = llmService;
         this.maxInputChars = maxInputChars;
@@ -36,11 +33,8 @@ public class ContextSummarizer {
     }
 
     /**
-     * 生成摘要。返回 null 表示保护区之前无可摘要内容；否则返回摘要文本。
-     * 分段摘要中某段失败时跳过该段继续下一段；全部段失败才用兜底提示。
-     *
-     * @param transcriptPath 会话账本路径，仅用于兜底文案与提示词里的一行说明；
-     *                       正因为只是文本用途，才没有让它污染构造签名
+     * 生成摘要。返回 null 表示保护区之前无可摘要内容。
+     * 分段摘要中某段失败时跳过，全部失败才用兜底提示。
      */
     public String summarize(ContextWindow window, int protectedFrom,
                             String existingSummary, String transcriptPath) {

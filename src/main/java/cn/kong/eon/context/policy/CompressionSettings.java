@@ -2,10 +2,7 @@ package cn.kong.eon.context.policy;
 
 import cn.kong.eon.context.block.CompressionLevel;
 
-/**
- * 压缩参数快照。由组合根从 AgentConfig 构造后注入，
- * 使 context 层不必依赖 config 包（依赖倒置，参数随消费者走）。
- */
+/** 压缩参数快照，由组合根从 AgentConfig 构造后注入。 */
 public record CompressionSettings(
         /** SNIP 档水位下限 */
         double snipWaterLevel,

@@ -9,10 +9,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 轮次级作用域：每轮新建，轮末随引用切换整体丢弃。
- * <p>
- * 装的是「这一轮 LLM 交互」内有效的数据：本轮 prompt、响应、待执行工具调用、工具结果。
- * 跨轮数据（轮次计数、nudges）在 {@link TaskScope}。
+ * 轮次级作用域：每轮新建，轮末丢弃。
+ * 装本轮 prompt、响应、待执行工具调用、工具结果。
  */
 public final class TurnScope {
 

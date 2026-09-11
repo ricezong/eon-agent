@@ -10,9 +10,6 @@ import org.springframework.stereotype.Component;
 
 /**
  * 停止处理器。发出 SessionStatus(terminated) 事件并返回终止输出文本。
- * <p>
- * 无状态：事件通过 {@code r.emit()} 发出（不再自持 emitter），
- * token 与轮次从 {@code r.session()} / {@code r.task()} 取。
  */
 @Component
 public class StopHandler {

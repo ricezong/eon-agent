@@ -27,14 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 应用级组件装配。
- * <p>
- * 集中构造进程级单例：工具注册表（含内置工具与 MCP 工具）、系统提示词、token 估算器。
- * 这些对象与会话无关，生命周期 = 应用生命周期，因此交由 Spring 容器管理，
- * 不再散落在 {@code AgentRuntime} 的构造器里手动 new。
- * <p>
- * 注意：MCP 连接失败按 server 逐个降级（与改造前 {@code connectMcpServers()} 行为一致），
- * 单个 MCP 不通只跳过该 server，不阻断应用启动。
+ * 应用级组件装配：集中构造工具注册表、系统提示词、token 估算器等进程级单例。
  */
 @Configuration
 public class AgentBeans {
@@ -45,8 +38,7 @@ public class AgentBeans {
     private final List<McpServerClient> mcpClients = new ArrayList<>();
 
     /**
-     * 工具注册表：注册内置工具 → 连接 MCP 并注册远程工具。
-     * {@code destroyMethod = "closeAll"} 由容器在关闭时回收工具持有的资源。
+     * 工具注册表：注册内置工具并连接 MCP 注册远程工具。
      */
     @Bean(destroyMethod = "closeAll")
     public ToolService toolService(AgentConfig config,
@@ -96,11 +88,7 @@ public class AgentBeans {
         return registry;
     }
 
-    /**
-     * 压缩策略（应用级单例）：水位与档位来自配置、压缩器与摘要器也都是单例，
-     * 唯一与会话相关的 {@code transcriptPath} 已下沉为 {@code apply(...)} 的方法参数，
-     * 因此不再每会话新建。
-     */
+    /** 压缩策略（应用级单例）。 */
     @Bean
     public CompressionPolicy compressionPolicy(AgentConfig config,
                                                ContentCompressor compressor,
@@ -122,7 +110,7 @@ public class AgentBeans {
         return new CompressionPolicy(settings, compressor, summarizer);
     }
 
-    /** 解析轮数兜底档位字符串（配置层用 String 承载）。非法值回退为 SNIP。 */
+    /** 解析轮数兜底档位字符串，非法值回退为 SNIP。 */
     private CompressionLevel parseTurnLevel(String raw) {
         if (raw == null || raw.isBlank()) {
             return CompressionLevel.SNIP;
@@ -135,7 +123,7 @@ public class AgentBeans {
         }
     }
 
-    /** 系统提示词。String 类型 bean，注入处需 {@code @Qualifier("systemPrompt")}。 */
+    /** 系统提示词，注入处需 {@code @Qualifier("systemPrompt")}。 */
     @Bean("systemPrompt")
     public String systemPrompt(AgentConfig config, ResourceLoader resourceLoader) {
         String path = config.getContext().getSystemPromptPath();
@@ -155,7 +143,7 @@ public class AgentBeans {
         return "";
     }
 
-    /** token 估算器，供上下文窗口水位计算使用。 */
+    /** token 估算器。 */
     @Bean
     public TokenCountEstimator tokenCountEstimator() {
         return new OpenAiTokenCountEstimator("gpt-4o");
@@ -173,7 +161,7 @@ public class AgentBeans {
         mcpClients.clear();
     }
 
-    /** 逐个连接 MCP 服务并注册其工具；单个失败只跳过，不阻断启动。 */
+    /** 逐个连接 MCP 服务并注册工具，单个失败只跳过。 */
     private void connectMcpServers(AgentConfig config, ToolService registry) {
         var mcpConfig = config.getMcp();
         if (mcpConfig == null || mcpConfig.getServers() == null) return;

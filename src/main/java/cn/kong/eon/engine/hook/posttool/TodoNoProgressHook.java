@@ -8,13 +8,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Todo 无进展检测（PostTool, order=100）。
- * todo_write 成功后，滑动窗口比对 Todo 快照，连续 N 步无变化则注入 nudge 警告。
- * <p>
- * 独立于快照开关——即使 {@code snapshot_enabled=false}，无进展检测仍然工作。
- * <p>
- * 无状态：滑动窗口外置到 {@code r.task().progressTracker()}（每次 run 独立实例），
- * 删掉原先的 {@code reset()}，避免多会话并发时快照队列互相污染。
+ * Todo 无进展检测（PostTool, order=100）。todo_write 成功后，
+ * 滑动窗口比对 Todo 快照，连续 N 步无变化则注入 nudge 警告。
  */
 @Component
 public class TodoNoProgressHook implements Hook.PostToolHook {

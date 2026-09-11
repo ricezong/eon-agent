@@ -17,14 +17,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * 会话级作用域：<b>缓存条目</b>，跨多次 run 存活。
- * <p>
- * 装的是会话级不变依赖（各 store、策略、熔断器）与跨任务累计量（token、压缩水位）。
- * 明确<b>不装</b>请求级数据（{@code listeners}/emitter 在 {@link RunContext}），
- * 也<b>不装</b>任务级/轮次级数据（在 {@link TaskScope} / {@link TurnScope}）。
- * <p>
- * 同会话并发互斥：{@link #tryAcquire()} 用 CAS 保证同一时刻只有一个 run；
- * 这是必须的，因为熔断器计数、压缩水位、账本窗口都是可变共享状态，双写会错乱。
+ * 会话级作用域：缓存条目，跨多次 run 存活。
+ * 装会话级不变依赖（各 store、策略、熔断器）与跨任务累计量（token、压缩水位）。
+ * 同会话并发互斥：tryAcquire() 用 CAS 保证同一时刻只有一个 run。
  */
 public final class SessionScope {
 

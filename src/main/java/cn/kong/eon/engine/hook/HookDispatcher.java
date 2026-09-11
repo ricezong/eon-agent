@@ -6,15 +6,7 @@ import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import java.util.List;
 
 /**
- * Hook 调度器。按阶段分组调度各 Hook，返回第一个"非 ok"的结果：
- * <ul>
- *   <li>ok() → 继续调度下一个 Hook，全部 ok 时返回 {@code null}</li>
- *   <li>skip() → 立即返回该 skip 结果，由主循环决定如何跳过本轮后续阶段</li>
- *   <li>stop() → 立即返回该 stop 结果，由主循环调用 {@code StopHandler} 生成退出文本</li>
- * </ul>
- * <p>
- * 只做"找出结果"，不做终止动作——调度器不感知 {@code LoopAction} 与 {@code StopHandler}，
- * 从而切断 engine.hook → engine 的反向依赖。
+ * Hook 调度器。按阶段分组调度各 Hook，返回第一个 stop/skip 结果，全部通过则返回 null。
  */
 public class HookDispatcher {
 

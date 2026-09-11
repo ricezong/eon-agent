@@ -12,8 +12,7 @@ import java.util.Map;
 
 /**
  * SSE 事件监听器。将 AgentEvent 序列化为 SSE 帧推送到前端。
- * <p>
- * 事件格式化委托给 {@link AgentEventFormatter}，与恢复渲染共用同一套格式化代码。
+ * 事件格式化委托给 AgentEventFormatter，与恢复渲染共用同一套格式化代码。
  */
 public class SseAgentEventListener implements AgentEventListener {
     private static final Logger log = LoggerFactory.getLogger(SseAgentEventListener.class);
@@ -22,10 +21,6 @@ public class SseAgentEventListener implements AgentEventListener {
     private final ObjectMapper mapper;
     private final AgentEventFormatter formatter;
 
-    /**
-     * @param formatter 应用级单例格式化器。此处只持有引用，不新建——
-     *                  本监听器的 {@code onEvent()} 每收到一个事件就被调用一次。
-     */
     public SseAgentEventListener(SseEmitter emitter, ObjectMapper objectMapper,
                                  AgentEventFormatter formatter) {
         this.emitter = emitter;

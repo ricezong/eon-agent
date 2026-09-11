@@ -28,15 +28,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Agent 核心引擎（无状态应用级单例）。每次 {@code run(RunContext)} 接收本次运行的上下文。
- * <p>
- * 每轮执行：PreModel → 构建上下文 → 调用 LLM → PostModel →
+ * Agent 核心引擎（无状态单例）。每轮执行：PreModel → LLM → PostModel →
  * 工具执行(PreTool→Execute→PostTool) → 回填消息。无工具调用时任务完成。
- * 事件驱动：引擎在关键阶段发出 AgentEvent，统一经 {@code r.emit()} 分发。
- * <p>
- * <b>无状态的含义</b>：不持有任何会话级/任务级/轮次级对象，一切从参数 {@code RunContext} 取；
- * 10 个 Hook 与执行层协作组件也都是构造注入的应用级单例，状态全部外置到
- * {@code SessionScope} / {@code TaskScope} / {@code TurnScope}。
  */
 @Component
 public class AgentEngine {
@@ -48,7 +41,7 @@ public class AgentEngine {
     private final ToolService toolService;
     private final String basePrompt;
     private final TokenCountEstimator tokenCountEstimator;
-    /** Hook 分组在构造期做一次：Hook 集合是应用级不变的，没必要每轮 run 重排。 */
+    /** Hook 分组在构造期做一次。 */
     private final HookBuckets hooks;
     private final ToolCallDispatcher dispatcher;
     private final TurnMessageWriter messageWriter;
@@ -221,11 +214,7 @@ public class AgentEngine {
     }
 
     /**
-     * 跳过本轮后续阶段（PostModel 返回 skip 时）。
-     * <p>
-     * 必须清空 {@code pendingToolCalls}：本轮的工具调用不会被执行，
-     * 若带着 tool_calls 落账本却没有对应的 tool_result，下一轮就会出现悬空 tool_calls，
-     * OpenAI 兼容接口会直接报错。清理后 flush 只会写入文本部分（无文本则整条不落）。
+     * 跳过本轮后续阶段（PostModel 返回 skip 时），必须清空 pendingToolCalls。
      */
     private LoopAction finishSkip(RunContext r) {
         r.turn().setPendingToolCalls(null);
@@ -252,11 +241,7 @@ public class AgentEngine {
         return output;
     }
 
-    /**
-     * 任务结束落盘已统一收敛到 {@link RunContext#close()}（在 Service 的 {@code finally} 中调用），
-     * 引擎不再自行保存快照——否则同一轮会写两遍，且引擎这次不受 {@code snapshot_enabled} 控制，
-     * 导致开关关闭时 state.json 照写。
-     */
+    // 任务结束落盘统一收敛到 RunContext#close()，引擎不自行保存快照
 
     private String renderMemoryReferences(RunContext r, String text) {
         if (text == null || text.isEmpty()) return text;
@@ -297,7 +282,7 @@ public class AgentEngine {
         r.task().nudges().clear();
     }
 
-    /** 工具 Schema 的 token 估算。工具集是应用级静态的，每次现算，不在引擎里缓存可变状态。 */
+    /** 工具 Schema 的 token 估算。 */
     private long estimateToolSchemaTokens() {
         return toolService.getSpecifications().size() * TOOL_SCHEMA_TOKENS_ESTIMATE;
     }
@@ -356,10 +341,7 @@ public class AgentEngine {
     //  Hook 分组
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * 将平铺的 Hook 列表按阶段分组并排序。
-     * Spring 注入顺序不保证，但这里按 {@code order()} 重排，因此免疫注入顺序。
-     */
+    /** 将平铺的 Hook 列表按阶段分组并按 order 排序。 */
     private static HookBuckets groupHooks(List<Hook> hooks) {
         List<Hook.PreModelHook> preModel = new ArrayList<>();
         List<Hook.PostModelHook> postModel = new ArrayList<>();
@@ -385,7 +367,7 @@ public class AgentEngine {
         return new HookBuckets(preModel, postModel, preTool, postTool);
     }
 
-    /** Hook 分组容器，仅在 run 期间存活。 */
+    /** Hook 分组容器。 */
     private record HookBuckets(
             List<Hook.PreModelHook> preModel,
             List<Hook.PostModelHook> postModel,

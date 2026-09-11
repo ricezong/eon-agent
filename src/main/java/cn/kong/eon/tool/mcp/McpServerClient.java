@@ -17,8 +17,6 @@ import java.util.List;
 
 /**
  * 单个 MCP 服务的客户端。连接 MCP 服务、获取工具列表、执行工具调用。
- * <p>
- * 实现 tool 包的 {@link RemoteToolInvoker} 端口：依赖方向为 tool.mcp → tool。
  */
 public class McpServerClient implements RemoteToolInvoker {
     private static final Logger log = LoggerFactory.getLogger(McpServerClient.class);

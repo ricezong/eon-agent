@@ -9,14 +9,8 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * 运行时上下文：<b>唯一入口</b>，一次 run 一个实例。
- * <p>
- * 三层作用域全从这里取：{@link #session()}（会话级）/ {@link #task()}（任务级）/ {@link #turn()}（轮次级）。
- * 任何组件方法若需访问会话级及以下数据，只能从方法参数 {@code RunContext} 取，
- * 不允许构造注入、static、ThreadLocal 或全局注册表。
- * <p>
- * emitter 是<b>全系统唯一构建点</b>：把请求级的 listeners 包成一个 Consumer，
- * 这样 listeners 不会随 SessionScope 进入长生命周期缓存而跨请求污染。
+ * 运行时上下文：一次 run 一个实例。
+ * 三层作用域全从这里取：session()（会话级）/ task()（任务级）/ turn()（轮次级）。
  */
 public final class RunContext implements AutoCloseable {
 

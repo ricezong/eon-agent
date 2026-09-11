@@ -16,16 +16,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 会话上下文注册表：缓存 + 状态机的对外门面。
- * <p>
- * 取代原 {@code AgentRuntime.activeSessions}（那个 Map 用 {@code put} 覆盖，
- * 同 session 并发时后到的请求会把先到的会话实例顶掉，是既有缺陷）。
- * <p>
- * 关键保证：
- * <ul>
- *   <li>同 key 只装配一次——{@code cache.get(key, loader)} 由 Caffeine 保证原子加载；</li>
- *   <li>同 session 互斥执行——{@link SessionScope#tryAcquire()} CAS，第二个请求按 busyPolicy 处理；</li>
- *   <li>淘汰即释放——{@code removalListener} 调 {@code scope.close()}。</li>
- * </ul>
+ * 同 key 只装配一次（Caffeine 原子加载），同 session 互斥执行（SessionScope#tryAcquire()）。
  */
 @Component
 public class SessionRegistry {
@@ -64,9 +55,7 @@ public class SessionRegistry {
         }
 
         if (isQueuePolicy()) {
-            // 排队模式：限时等待前一个任务结束。锁由当前线程持有，release 时按线程归属解锁。
-            // 必须限时——前一个任务若卡死（如 LLM 请求不返回），无参 lock() 会把 sseExecutor
-            // 的线程无限挂住，且客户端要等到 SseEmitter 的 5 分钟超时才有反应。
+            // 排队模式：限时等待前一个任务结束
             try {
                 if (!scope.runLock().tryLock(queueTimeoutSeconds(), TimeUnit.SECONDS)) {
                     log.warn("会话 {} 排队等待超时（{}s），按 busy 处理", sessionId, queueTimeoutSeconds());

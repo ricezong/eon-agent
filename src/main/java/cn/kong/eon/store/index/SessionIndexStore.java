@@ -72,12 +72,7 @@ public class SessionIndexStore {
         indexRepo.insert(sessionId, userId, title);
     }
 
-    /**
-     * 更新活跃时间与消息数。
-     * <p>
-     * 注意：当前无调用方——会话索引的活跃时间与消息数在 insert 之后不会回写。
-     * 保留本方法作为回写入口，接线属于独立议题（需在运行期取到消息数后调用）。
-     */
+    /** 更新活跃时间与消息数。 */
     public void touch(String sessionId, int messageCount, int userMessageCount) {
         indexRepo.touch(sessionId, messageCount, userMessageCount);
     }

@@ -18,8 +18,6 @@ import java.util.Map;
 
 /**
  * 会话管理：索引查询/删除（含缓存失效）、账本回放与事件格式化。
- * <p>
- * 承接原 {@code AgentRuntime.getTranscriptPath()} 与 controller 里的回放/格式化逻辑。
  */
 @Service
 public class AgentSessionServiceImpl implements AgentSessionService {

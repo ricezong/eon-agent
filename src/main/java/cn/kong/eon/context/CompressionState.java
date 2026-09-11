@@ -1,10 +1,6 @@
 package cn.kong.eon.context;
 
-/**
- * 压缩状态：最新摘要与回放水位线。
- * 两者必须成对更新（由 CompressionPolicy 的 SUMMARIZE 分支保证）：
- * 摘要覆盖 #0~replayFromSeq-1，账本保留 #replayFromSeq~，拼起来内容完整。
- */
+/** 压缩状态：最新摘要与回放水位线。 */
 public class CompressionState {
     private String lastSummary;
     /** 回放水位线：窗口删除后首个幸存块的消息序号。 */

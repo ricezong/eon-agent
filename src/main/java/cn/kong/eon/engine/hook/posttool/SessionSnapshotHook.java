@@ -12,11 +12,8 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * 会话快照（PostTool, order=200）。
- * todo_write 成功后，将 todo 列表 + token 累计 + 压缩状态写入 state.json。
- * 仅在 {@code snapshot_enabled=true} 时激活。
- * <p>
- * 无状态：快照存储与 TodoStore 均从 {@code r.session()} 取。
+ * 会话快照（PostTool, order=200）。todo_write 成功后保存快照。
+ * 仅在 snapshot_enabled=true 时激活。
  */
 @Component
 public class SessionSnapshotHook implements Hook.PostToolHook {

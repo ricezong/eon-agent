@@ -7,10 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 会话上下文缓存的淘汰监听器：条目离开缓存时释放 {@link SessionScope} 资源。
- * <p>
- * 主动失效（删除会话）不落快照，因为会话目录即将被删除；
- * 过期/超容淘汰则落终态快照，避免累计 token 与压缩水位丢失。
+ * 会话上下文缓存的淘汰监听器：条目离开缓存时释放 SessionScope 资源。
+ * 主动失效不落快照，过期/超容淘汰则落终态快照。
  */
 @Component
 public class SessionScopeRemovalListener implements RemovalListener<String, SessionScope> {
