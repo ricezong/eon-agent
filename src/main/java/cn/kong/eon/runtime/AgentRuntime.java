@@ -31,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import cn.kong.eon.event.AgentEventListener;
 
 /**
- * 应用级容器。管理 LlmClient、ToolRegistry、MCP 连接等重资源，构造一次不随会话切换重建。
+ * 应用级容器。管理 LlmClient、ToolService、MCP 连接等重资源，构造一次不随会话切换重建。
  * 会话级组件委托给 {@link AgentSession}，按 sessionId 创建/恢复，运行结束后释放。
  */
 @Component
@@ -53,7 +53,7 @@ public class AgentRuntime {
     /** MCP 客户端列表 */
     private final List<McpServerClient> mcpClients = new ArrayList<>();
 
-    /** 运行中的会话上下文（sessionId → SessionContext），用于 interrupt */
+    /** 运行中的会话（sessionId → AgentSession），用于 interrupt */
     private final ConcurrentHashMap<String, AgentSession> activeSessions = new ConcurrentHashMap<>();
 
     public AgentRuntime(AgentConfig config,
@@ -72,7 +72,7 @@ public class AgentRuntime {
         this.sessionIndexStore = sessionIndexStore;
         this.memoryStore = memoryStore;
 
-        log.info("AgentBootstrap 初始化: llm.provider={}, model={}, storage.baseDir={}",
+        log.info("AgentRuntime 初始化: llm.provider={}, model={}, storage.baseDir={}",
                 config.getLlm().getProvider(), config.getLlm().getModelName(),
                 config.getStorage().getBaseDir());
 
@@ -82,7 +82,7 @@ public class AgentRuntime {
         this.toolService = createToolRegistry();
         connectMcpServers();
 
-        log.info("AgentBootstrap 就绪: {} 个工具", toolService.getAllToolNames().size());
+        log.info("AgentRuntime 就绪: {} 个工具", toolService.getAllToolNames().size());
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -136,7 +136,7 @@ public class AgentRuntime {
 
     @PreDestroy
     public void shutdown() {
-        log.info("正在关闭 AgentBootstrap...");
+        log.info("正在关闭 AgentRuntime...");
         for (AgentSession session : activeSessions.values()) {
             session.close();
         }
@@ -145,7 +145,7 @@ public class AgentRuntime {
         for (McpServerClient mcp : mcpClients) {
             mcp.close();
         }
-        log.info("AgentBootstrap 已关闭。");
+        log.info("AgentRuntime 已关闭。");
     }
 
     // ═══════════════════════════════════════════════════════════════════

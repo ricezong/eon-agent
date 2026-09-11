@@ -50,11 +50,11 @@ public class ToolCircuitBreaker {
 
         int fails = failureCount.getOrDefault(toolName, 0) + 1;
         failureCount.put(toolName, fails);
-        log.warn("[ToolHealthTracker] 工具 '{}' 失败: 连续 {} 次", toolName, fails);
+        log.warn("[ToolCircuitBreaker] 工具 '{}' 失败: 连续 {} 次", toolName, fails);
 
         if (fails >= stopThreshold) {
             trippedCooldown.put(toolName, cooldownTurns);
-            log.error("[ToolHealthTracker] 工具 '{}' 已熔断: 连续失败 {} 次, 冷却 {} 轮", toolName, fails, cooldownTurns);
+            log.error("[ToolCircuitBreaker] 工具 '{}' 已熔断: 连续失败 {} 次, 冷却 {} 轮", toolName, fails, cooldownTurns);
             return String.format(WARN_MSG, toolName, fails);
         }
 
@@ -87,7 +87,7 @@ public class ToolCircuitBreaker {
                 String toolName = entry.getKey();
                 it.remove();
                 failureCount.remove(toolName);
-                log.info("[ToolHealthTracker] 工具 '{}' 冷却结束，恢复可用", toolName);
+                log.info("[ToolCircuitBreaker] 工具 '{}' 冷却结束，恢复可用", toolName);
             } else {
                 entry.setValue(remaining);
             }
@@ -98,6 +98,6 @@ public class ToolCircuitBreaker {
     public void reset() {
         failureCount.clear();
         trippedCooldown.clear();
-        log.debug("[ToolHealthTracker] 熔断状态已重置");
+        log.debug("[ToolCircuitBreaker] 熔断状态已重置");
     }
 }

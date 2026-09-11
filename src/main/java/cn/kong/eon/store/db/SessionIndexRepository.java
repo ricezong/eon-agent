@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 会话索引 Repository。替代 SessionRegistry 的目录扫描逻辑。
+ * 会话索引 Repository。以 SQLite 持久化会话索引，替代早期的目录扫描方式。
  */
 @Repository
 public class SessionIndexRepository {

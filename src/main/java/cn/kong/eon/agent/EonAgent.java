@@ -34,7 +34,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * Agent 核心引擎。每轮执行：PreModel → 构建上下文 → 调用 LLM → PostModel →
  * 工具执行(PreTool→Execute→PostTool) → 回填消息。无工具调用时任务完成。
- * 事件驱动：引擎在关键阶段发出 TurnEvent，由 TurnListener 消费。
+ * 事件驱动：引擎在关键阶段发出 AgentEvent，由 AgentEventListener 消费。
  */
 public class EonAgent {
     private static final Logger log = LoggerFactory.getLogger(EonAgent.class);
@@ -121,12 +121,12 @@ public class EonAgent {
         log.info("EonAgent 资源已释放");
     }
 
-    /** 动态注册 TurnListener。 */
+    /** 动态注册事件监听器。 */
     public void addListener(AgentEventListener listener) {
         listeners.add(listener);
     }
 
-    /** 动态移除 TurnListener。 */
+    /** 动态移除事件监听器。 */
     public void removeListener(AgentEventListener listener) {
         listeners.remove(listener);
     }
@@ -258,7 +258,7 @@ public class EonAgent {
             return exit;
         }
 
-        // 执行工具（ToolExecHandler 内部发出 agent.tool_use 和 agent.tool_result）
+        // 执行工具（ToolCallDispatcher 内部发出 agent.tool_use 和 agent.tool_result）
         List<ToolCallRecord> results = toolHandler.execute(state);
 
         // PostTool Hooks

@@ -18,7 +18,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * 会话注册表。从 SQLite 查询会话索引，硬删除时同时删除会话目录。
+ * 会话索引存储。从 SQLite 查询会话索引，硬删除时同时删除会话目录。
  */
 @Component
 public class SessionIndexStore {

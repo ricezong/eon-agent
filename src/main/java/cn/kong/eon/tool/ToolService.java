@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
- * 工具注册表。统一管理本地工具和 MCP 工具的元数据与执行。
+ * 工具服务。统一管理本地工具与远程工具（MCP）的元数据、Schema 与执行。
  */
 public class ToolService {
     private static final Logger log = LoggerFactory.getLogger(ToolService.class);

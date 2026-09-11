@@ -16,7 +16,7 @@ public interface ToolExecutor {
      */
     ToolOutcome execute(Map<String, Object> arguments, SessionState state, ToolContext context);
 
-    /** 释放工具持有的资源，会话销毁时由 ToolRegistry.closeAll() 统一调用。 */
+    /** 释放工具持有的资源，会话销毁时由 ToolService.closeAll() 统一调用。 */
     default void close() {
     }
 }

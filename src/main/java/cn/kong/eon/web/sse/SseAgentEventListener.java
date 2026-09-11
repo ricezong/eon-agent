@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.util.Map;
 
 /**
- * SSE 事件监听器。将 TurnEvent 序列化为 SSE 帧推送到前端。
+ * SSE 事件监听器。将 AgentEvent 序列化为 SSE 帧推送到前端。
  * <p>
  * 事件格式化委托给 {@link TurnEventFormatter}，与恢复渲染共用同一套格式化代码。
  */

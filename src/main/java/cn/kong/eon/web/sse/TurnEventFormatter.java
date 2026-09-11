@@ -6,7 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * SSE 事件格式化器（Visitor）。将 TurnEvent 转为前端渲染所需的 Map 结构。
+ * SSE 事件格式化器（Visitor）。将 AgentEvent 转为前端渲染所需的 Map 结构。
  * <p>
  * 实时渲染和恢复渲染共用此格式化器，保证两套链路输出格式完全一致。
  */

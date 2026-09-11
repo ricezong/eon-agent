@@ -3,7 +3,7 @@ package cn.kong.eon.context.block;
 import java.util.Objects;
 
 /**
- * 上下文内容块。通过 BlockProjector 与 ChatMessage 双向投射。
+ * 上下文内容块。通过 MessageBlockCodec 与 ChatMessage 双向投射。
  * 可压缩性由窗口位置和块内容特征决定，不按类型硬编码豁免。
  */
 public final class ContextBlock {

@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * 压缩策略编排者。每轮在 PreModel 阶段执行：判档位 → 处置 → 修复配对 → 返回档位。
- * SNIP/PRUNE 就地处置块，SUMMARIZE 委托 ContextSummarizer 生成摘要后删除原文。
+ * SNIP/PRUNE 就地处置块，SUMMARIZE 委托 LlmContextSummarizer 生成摘要后删除原文。
  */
 public class CompressionPolicy {
 

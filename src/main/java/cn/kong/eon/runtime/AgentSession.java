@@ -45,8 +45,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 会话上下文。封装会话级组件：JsonlStore、SessionState、TodoStore、EonAgent、Hook 列表等。
- * 随会话切换而创建/销毁，应用级组件（LlmClient、ToolRegistry、MCP）不在此处。
+ * 会话。封装会话级组件：TranscriptLedger、SessionState、TodoStore、EonAgent、Hook 列表等。
+ * 随会话切换而创建/销毁，应用级组件（LlmClient、ToolService、MCP）不在此处。
  */
 public class AgentSession {
 
@@ -126,7 +126,7 @@ public class AgentSession {
                     snapshot.getCompressionState().getLastSummary() != null ? "有" : "无");
         }
 
-        // ── 4. JsonlStore（回放）
+        // ── 4. TranscriptLedger（回放）
         Path jsonlPath = sessionDir.resolve("transcript.jsonl");
         this.transcriptLedger = new TranscriptLedger(jsonlPath, ingestPipeline, replayFrom, objectMapper);
         this.transcriptPath = jsonlPath.toAbsolutePath().toString();
@@ -160,7 +160,7 @@ public class AgentSession {
         this.todoSnapshotHook = new TodoSnapshotHook(config, snapshotStore, todoStore);
         this.compressionPolicy = createCompressionPolicy();
 
-        // 组装 listeners：Slf4j + 外部 SSE listeners
+        // 组装 listeners：Slf4JAgentEventListener + 外部 SSE listeners
         List<AgentEventListener> listeners = new ArrayList<>();
         listeners.add(new Slf4JAgentEventListener());
         listeners.addAll(externalListeners);
@@ -208,12 +208,12 @@ public class AgentSession {
         log.info("会话 {} 资源已释放", sessionId);
     }
 
-    /** 动态注册 TurnListener。 */
+    /** 动态注册事件监听器。 */
     public void addTurnListener(AgentEventListener listener) {
         agent.addListener(listener);
     }
 
-    /** 动态移除 TurnListener。 */
+    /** 动态移除事件监听器。 */
     public void removeTurnListener(AgentEventListener listener) {
         agent.removeListener(listener);
     }
