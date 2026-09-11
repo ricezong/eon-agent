@@ -64,11 +64,14 @@ public class AgentChatServiceImpl implements AgentChatService {
 
         String sessionId = isNew ? UUID.randomUUID().toString() : requestedId;
 
-        // 缓存命中则跳过账本回放；同 session 已有任务在跑时按 busyPolicy 拒绝或排队
-        SessionScope scope = registry.acquire(sessionId, resumed);
+        // 先落索引再占用会话：反过来的话，insert 抛异常时 acquire 已经发生，
+        // 而此时还没进 try 块，release 不会执行，会话会卡在 RUNNING 直到 TTL 淘汰（默认 24 小时）
         if (isNew) {
             sessionIndexStore.insert(sessionId, userId, deriveTitle(userInput));
         }
+
+        // 缓存命中则跳过账本回放；同 session 已有任务在跑时按 busyPolicy 拒绝或排队
+        SessionScope scope = registry.acquire(sessionId, resumed);
 
         RunContext ctx = null;
         try {

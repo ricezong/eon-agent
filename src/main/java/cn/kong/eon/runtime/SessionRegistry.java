@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 会话上下文注册表：缓存 + 状态机的对外门面。
@@ -52,7 +53,7 @@ public class SessionRegistry {
         SessionScope scope = cache.get(sessionId, k -> loader.load(k, resumed));
 
         // 防御：条目在极窄的时序窗口内被关闭，重建后再占用
-        if (scope.status() == SessionStatus.CLOSED) {
+        if (scope.status() == SessionLifecycle.CLOSED) {
             log.warn("会话 {} 缓存条目已关闭，重建", sessionId);
             cache.invalidate(sessionId);
             scope = cache.get(sessionId, k -> loader.load(k, resumed));
@@ -63,8 +64,18 @@ public class SessionRegistry {
         }
 
         if (isQueuePolicy()) {
-            // 排队模式：阻塞等待前一个任务结束。锁由当前线程持有，release 时按线程归属解锁
-            scope.runLock().lock();
+            // 排队模式：限时等待前一个任务结束。锁由当前线程持有，release 时按线程归属解锁。
+            // 必须限时——前一个任务若卡死（如 LLM 请求不返回），无参 lock() 会把 sseExecutor
+            // 的线程无限挂住，且客户端要等到 SseEmitter 的 5 分钟超时才有反应。
+            try {
+                if (!scope.runLock().tryLock(queueTimeoutSeconds(), TimeUnit.SECONDS)) {
+                    log.warn("会话 {} 排队等待超时（{}s），按 busy 处理", sessionId, queueTimeoutSeconds());
+                    throw new SessionBusyException(sessionId);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new SessionBusyException(sessionId);
+            }
             if (!scope.tryAcquire()) {
                 scope.runLock().unlock();
                 throw new SessionBusyException(sessionId);
@@ -126,5 +137,11 @@ public class SessionRegistry {
 
     private boolean isQueuePolicy() {
         return "QUEUE".equalsIgnoreCase(config.getSession().getCache().getBusyPolicy());
+    }
+
+    /** 排队超时秒数。配置值 ≤0 时回退为 60s，避免误配成 0 导致排队模式形同 REJECT。 */
+    private long queueTimeoutSeconds() {
+        int v = config.getSession().getCache().getQueueTimeoutSeconds();
+        return v > 0 ? v : 60L;
     }
 }

@@ -7,7 +7,6 @@ import cn.kong.eon.store.index.SessionIndexStore;
 import cn.kong.eon.store.ledger.TranscriptReplayer;
 import cn.kong.eon.web.dto.SessionListItem;
 import cn.kong.eon.web.sse.AgentEventFormatter;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -30,16 +29,19 @@ public class AgentSessionServiceImpl implements AgentSessionService {
     private final AgentConfig config;
     private final SessionIndexStore indexStore;
     private final SessionRegistry registry;
-    private final ObjectMapper objectMapper;
+    private final TranscriptReplayer replayer;
+    private final AgentEventFormatter formatter;
 
     public AgentSessionServiceImpl(AgentConfig config,
                                    SessionIndexStore indexStore,
                                    SessionRegistry registry,
-                                   ObjectMapper objectMapper) {
+                                   TranscriptReplayer replayer,
+                                   AgentEventFormatter formatter) {
         this.config = config;
         this.indexStore = indexStore;
         this.registry = registry;
-        this.objectMapper = objectMapper;
+        this.replayer = replayer;
+        this.formatter = formatter;
     }
 
     @Override
@@ -70,10 +72,8 @@ public class AgentSessionServiceImpl implements AgentSessionService {
 
     @Override
     public List<Map<String, Object>> getSessionEvents(String sessionId) {
-        TranscriptReplayer replayer = new TranscriptReplayer(objectMapper);
         List<AgentEvent> events = replayer.replay(transcriptPath(sessionId));
-        // 与实时 SSE 共用同一个格式化器，保证恢复渲染与实时渲染结构一致
-        AgentEventFormatter formatter = new AgentEventFormatter();
+        // 与实时 SSE 共用同一个格式化器实例，保证恢复渲染与实时渲染结构一致
         List<Map<String, Object>> rendered = new ArrayList<>(events.size());
         for (AgentEvent event : events) {
             rendered.add(event.accept(formatter));

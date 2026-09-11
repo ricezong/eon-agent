@@ -20,16 +20,23 @@ public class SseAgentEventListener implements AgentEventListener {
 
     private final SseEmitter emitter;
     private final ObjectMapper mapper;
+    private final AgentEventFormatter formatter;
 
-    public SseAgentEventListener(SseEmitter emitter, ObjectMapper objectMapper) {
+    /**
+     * @param formatter 应用级单例格式化器。此处只持有引用，不新建——
+     *                  本监听器的 {@code onEvent()} 每收到一个事件就被调用一次。
+     */
+    public SseAgentEventListener(SseEmitter emitter, ObjectMapper objectMapper,
+                                 AgentEventFormatter formatter) {
         this.emitter = emitter;
         this.mapper = objectMapper;
+        this.formatter = formatter;
     }
 
     @Override
     public void onEvent(AgentEvent event) {
         try {
-            Map<String, Object> data = event.accept(new AgentEventFormatter());
+            Map<String, Object> data = event.accept(formatter);
 
             String json = mapper.writeValueAsString(data);
             emitter.send(SseEmitter.event().name(event.type()).data(json));

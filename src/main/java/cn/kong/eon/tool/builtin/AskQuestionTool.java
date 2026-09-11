@@ -51,44 +51,23 @@ public class AskQuestionTool implements ToolExecutor {
         return ToolDescriptor.fromAnnotated(new AskQuestionTool(), ToolPermission.READONLY);
     }
 
+    /**
+     * 交互回调目前全项目无实现（{@link InteractionCallback} 只是接口，没有任何注入路径），
+     * 因此本工具恒定返回失败。这不是降级——改造前同样如此，只是当时要等到运行期
+     * 才发现 callback 为 null。此处前移为显式失败，避免误以为能力可用。
+     * <p>
+     * 接入方式：给 {@link ToolRuntime} 加回 callback 字段并在
+     * {@code ToolCallDispatcher} 装配，然后恢复下面的回调分支。
+     */
     @Override
-    @SuppressWarnings("unchecked")
     public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
         Object questionsObj = arguments.get("questions");
         if (!(questionsObj instanceof List<?> rawQuestions) || rawQuestions.isEmpty()) {
             return ToolOutcome.failure("缺少或空的 'questions' 参数");
         }
 
-        String title = (String) arguments.get("title");
-
-        InteractionCallback callback = runtime.interactionCallback();
-        if (callback == null) {
-            return ToolOutcome.failure("交互回调不可用，无法向用户提问。");
-        }
-
-        return executeViaCallback(arguments, runtime, callback, title);
-    }
-
-    /** 通过交互回调向用户收集答案。 */
-    @SuppressWarnings("unchecked")
-    private ToolOutcome executeViaCallback(Map<String, Object> arguments,
-                                           ToolRuntime runtime,
-                                           InteractionCallback callback, String title) {
-        List<Map<String, Object>> questions = (List<Map<String, Object>>) arguments.get("questions");
-
-        log.info("AskQuestion 通过回调: {} 个问题, 会话={}", questions.size(), runtime.sessionId());
-
-        Map<String, String> answers = callback.askQuestions(questions, title);
-
-        StringBuilder output = new StringBuilder();
-        if (title != null && !title.isBlank()) {
-            output.append("--- ").append(title).append(" ---\n\n");
-        }
-        for (Map.Entry<String, String> entry : answers.entrySet()) {
-            output.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
-        }
-
-        log.info("AskQuestion 回调收集 {} 个答案", answers.size());
-        return ToolOutcome.success(output.toString());
+        log.info("AskQuestion 被调用但交互回调未接入: {} 个问题, 会话={}",
+                rawQuestions.size(), runtime.sessionId());
+        return ToolOutcome.failure("交互回调不可用，无法向用户提问。");
     }
 }

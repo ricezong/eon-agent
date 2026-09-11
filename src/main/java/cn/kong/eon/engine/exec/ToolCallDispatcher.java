@@ -62,7 +62,6 @@ public class ToolCallDispatcher {
                 r.session().artifactStore(),
                 r.session().memoryStore(),
                 r.session().pathResolver(),
-                null,
                 r.task().turnCount(),
                 r.session().sessionId());
 

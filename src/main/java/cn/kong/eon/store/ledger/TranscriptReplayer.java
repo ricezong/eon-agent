@@ -5,6 +5,7 @@ import cn.kong.eon.tool.model.ToolResultView;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -30,7 +31,11 @@ import java.util.UUID;
  * </ul>
  * AgentDelta（流式增量）是瞬态事件，不参与回放。
  * SessionUsage 和 SessionStatus 是运行时状态事件，回放时补发一个最终的 idle 状态。
+ * <p>
+ * <b>应用级单例</b>：唯一字段是不可变的 {@code ObjectMapper}，账本路径由
+ * {@link #replay(Path)} 作为参数传入，因此本类无会话状态，可安全共享。
  */
+@Component
 public class TranscriptReplayer {
     private static final Logger log = LoggerFactory.getLogger(TranscriptReplayer.class);
 

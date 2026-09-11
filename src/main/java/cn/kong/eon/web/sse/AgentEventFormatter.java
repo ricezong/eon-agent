@@ -1,6 +1,7 @@
 package cn.kong.eon.web.sse;
 
 import cn.kong.eon.event.*;
+import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -9,7 +10,12 @@ import java.util.Map;
  * SSE 事件格式化器（Visitor）。将 AgentEvent 转为前端渲染所需的 Map 结构。
  * <p>
  * 实时渲染和恢复渲染共用此格式化器，保证两套链路输出格式完全一致。
+ * <p>
+ * <b>应用级单例</b>：本类零字段、完全无状态，格式化所需数据全在事件对象里。
+ * 改造前在 {@code SseAgentEventListener.onEvent()} 里每收到一个事件就 new 一次,
+ * 而一次流式响应可能产生数百个 delta 事件；恢复会话时又各 new 一次。
  */
+@Component
 public class AgentEventFormatter implements AgentEventVisitor<Map<String, Object>> {
 
     @Override

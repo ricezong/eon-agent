@@ -86,6 +86,7 @@ eon:
       idle_ttl_minutes: 30                    # IDLE 状态空闲 TTL（分钟）
       running_ttl_minutes: 1440               # RUNNING 状态 TTL（分钟），兜底防长任务被淘汰
       busy_policy: REJECT                     # 同会话并发策略：REJECT(抛 409) | QUEUE(排队)
+      queue_timeout_seconds: 60               # QUEUE 模式等待前一个任务的最长秒数，超时按 busy 处理
 
   tools:
     whitelist:                              # 允许注册的本地工具白名单

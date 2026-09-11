@@ -22,14 +22,15 @@ public class ContextSummarizer {
     private static final Logger log = LoggerFactory.getLogger(ContextSummarizer.class);
 
     private final LlmService llmService;
-    private final String transcriptPath;
     private final int maxInputChars;
     private final int maxOutputChars;
 
-    public ContextSummarizer(LlmService llmService, String transcriptPath,
-                             int maxInputChars, int maxOutputChars) {
+    /**
+     * 本类<b>应用级单例</b>：字段全为不可变的应用级依赖，会话相关信息
+     * （账本路径）由 {@link #summarize} 作为参数传入，因此可跨会话安全共享。
+     */
+    public ContextSummarizer(LlmService llmService, int maxInputChars, int maxOutputChars) {
         this.llmService = llmService;
-        this.transcriptPath = transcriptPath != null ? transcriptPath : "(transcript 路径不可用)";
         this.maxInputChars = maxInputChars;
         this.maxOutputChars = maxOutputChars;
     }
@@ -37,8 +38,12 @@ public class ContextSummarizer {
     /**
      * 生成摘要。返回 null 表示保护区之前无可摘要内容；否则返回摘要文本。
      * 分段摘要中某段失败时跳过该段继续下一段；全部段失败才用兜底提示。
+     *
+     * @param transcriptPath 会话账本路径，仅用于兜底文案与提示词里的一行说明；
+     *                       正因为只是文本用途，才没有让它污染构造签名
      */
-    public String summarize(ContextWindow window, int protectedFrom, String existingSummary) {
+    public String summarize(ContextWindow window, int protectedFrom,
+                            String existingSummary, String transcriptPath) {
         List<ContextBlock> removable = collectRemovable(window, protectedFrom);
         if (removable.isEmpty()) {
             return null;
@@ -49,7 +54,7 @@ public class ContextSummarizer {
         boolean anySuccess = false;
 
         for (int i = 0; i < segments.size(); i++) {
-            String merged = generateSummary(segments.get(i), summary, i + 1, segments.size());
+            String merged = generateSummary(segments.get(i), summary, i + 1, segments.size(), transcriptPath);
             if (merged == null || merged.isBlank()) {
                 log.warn("[Summary] 第 {}/{} 段摘要失败，跳过", i + 1, segments.size());
                 continue;
@@ -60,15 +65,16 @@ public class ContextSummarizer {
 
         if (!anySuccess) {
             log.warn("[Summary] 全部 {} 段摘要均失败，使用兜底摘要", segments.size());
-            return fallback(summary);
+            return fallback(summary, transcriptPath);
         }
         return summary;
     }
 
     /** 全部段落失败时的兜底提示。 */
-    private String fallback(String existingSummary) {
+    private static String fallback(String existingSummary, String transcriptPath) {
         if (existingSummary != null && !existingSummary.isBlank()) return existingSummary;
-        return "[摘要失败] 历史对话摘要生成失败，完整对话记录: " + transcriptPath;
+        return "[摘要失败] 历史对话摘要生成失败，完整对话记录: "
+                + (transcriptPath != null ? transcriptPath : "(transcript 路径不可用)");
     }
 
     /**
@@ -139,7 +145,8 @@ public class ContextSummarizer {
     /**
      * 调用 LLM 把一段对话增量合并进已有摘要。
      */
-    private String generateSummary(String segmentText, String existingSummary, int index, int total) {
+    private String generateSummary(String segmentText, String existingSummary,
+                                   int index, int total, String transcriptPath) {
         String existingSection = StringUtils.isNotBlank(existingSummary) ? existingSummary : "(无旧摘要，首次生成)";
         String segmentHint = "";
         if (total > 1) {
@@ -186,7 +193,9 @@ public class ContextSummarizer {
 
                 === 待摘要的对话片段 ===
                 %s
-                """.formatted(maxOutputChars, segmentHint, transcriptPath, existingSection, segmentText);
+                """.formatted(maxOutputChars, segmentHint,
+                        transcriptPath != null ? transcriptPath : "(transcript 路径不可用)",
+                        existingSection, segmentText);
 
         List<ChatMessage> messages = List.of(
                 SystemMessage.from("你是一个对话摘要生成器。请严格按指令生成摘要。"),

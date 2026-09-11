@@ -1,5 +1,11 @@
 package cn.kong.eon.config;
 
+import cn.kong.eon.context.ContentCompressor;
+import cn.kong.eon.context.block.CompressionLevel;
+import cn.kong.eon.context.policy.CompressionPolicy;
+import cn.kong.eon.context.policy.CompressionSettings;
+import cn.kong.eon.context.summary.ContextSummarizer;
+import cn.kong.eon.llm.LlmService;
 import cn.kong.eon.tool.ToolService;
 import cn.kong.eon.tool.builtin.*;
 import cn.kong.eon.tool.mcp.McpServerClient;
@@ -88,6 +94,45 @@ public class AgentBeans {
 
         log.info("ToolService 就绪: {} 个工具", registry.getAllToolNames().size());
         return registry;
+    }
+
+    /**
+     * 压缩策略（应用级单例）：水位与档位来自配置、压缩器与摘要器也都是单例，
+     * 唯一与会话相关的 {@code transcriptPath} 已下沉为 {@code apply(...)} 的方法参数，
+     * 因此不再每会话新建。
+     */
+    @Bean
+    public CompressionPolicy compressionPolicy(AgentConfig config,
+                                               ContentCompressor compressor,
+                                               LlmService llmService) {
+        var ctxCfg = config.getContext();
+        var comp = ctxCfg.getCompression();
+        ContextSummarizer summarizer = new ContextSummarizer(
+                llmService, ctxCfg.getSummarizeMaxInputChars(), ctxCfg.getSummarizeMaxOutputChars());
+        CompressionLevel turnLevel = parseTurnLevel(comp.getTurnLevel());
+        log.info("压缩策略已装配: 水位 {}/{}/{} | 轮数周期 {} 档位 {} | 尾部保护 {} 块 | 参数裁剪阈值 {} 字符",
+                comp.getSnipWaterLevel(), comp.getPruneWaterLevel(), comp.getSummarizeWaterLevel(),
+                comp.getTurnInterval(), turnLevel,
+                comp.getTailGuardBlocks(), comp.getArgsPruneMinChars());
+        CompressionSettings settings = new CompressionSettings(
+                comp.getSnipWaterLevel(), comp.getPruneWaterLevel(), comp.getSummarizeWaterLevel(),
+                comp.getTurnInterval(), turnLevel,
+                comp.getTailGuardBlocks(), comp.getArgsPruneMinChars(),
+                ctxCfg.getSnipKeepChars());
+        return new CompressionPolicy(settings, compressor, summarizer);
+    }
+
+    /** 解析轮数兜底档位字符串（配置层用 String 承载）。非法值回退为 SNIP。 */
+    private CompressionLevel parseTurnLevel(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return CompressionLevel.SNIP;
+        }
+        try {
+            return CompressionLevel.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("未知的压缩档位 '{}'，回退为 SNIP", raw);
+            return CompressionLevel.SNIP;
+        }
     }
 
     /** 系统提示词。String 类型 bean，注入处需 {@code @Qualifier("systemPrompt")}。 */

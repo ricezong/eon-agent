@@ -32,6 +32,8 @@ public final class SessionScope {
 
     // ── 不变部分（装配一次）
     private final String sessionId;
+    /** 会话账本路径。压缩摘要需要它做兜底文案，故作为会话级不变量存下来。 */
+    private final String transcriptPath;
     private final boolean snapshotEnabled;
     private final TranscriptLedger ledger;
     private final TodoStore todoStore;
@@ -47,11 +49,12 @@ public final class SessionScope {
     private CompressionState compressionState;
 
     // ── 状态与并发控制
-    private final AtomicReference<SessionStatus> status = new AtomicReference<>(SessionStatus.IDLE);
+    private final AtomicReference<SessionLifecycle> status = new AtomicReference<>(SessionLifecycle.IDLE);
     private final AtomicReference<RunContext> currentRun = new AtomicReference<>();
     private final ReentrantLock runLock = new ReentrantLock();
 
     public SessionScope(String sessionId,
+                        String transcriptPath,
                         boolean snapshotEnabled,
                         TranscriptLedger ledger,
                         TodoStore todoStore,
@@ -64,6 +67,7 @@ public final class SessionScope {
                         TokenUsage usageAccum,
                         CompressionState compressionState) {
         this.sessionId = sessionId;
+        this.transcriptPath = transcriptPath;
         this.snapshotEnabled = snapshotEnabled;
         this.ledger = ledger;
         this.todoStore = todoStore;
@@ -83,17 +87,17 @@ public final class SessionScope {
 
     /** IDLE → RUNNING；已 RUNNING 或 CLOSED 返回 false。 */
     public boolean tryAcquire() {
-        return status.compareAndSet(SessionStatus.IDLE, SessionStatus.RUNNING);
+        return status.compareAndSet(SessionLifecycle.IDLE, SessionLifecycle.RUNNING);
     }
 
     /** RUNNING → IDLE，清空 currentRun 引用。 */
     public void release() {
         currentRun.set(null);
-        status.compareAndSet(SessionStatus.RUNNING, SessionStatus.IDLE);
+        status.compareAndSet(SessionLifecycle.RUNNING, SessionLifecycle.IDLE);
     }
 
     /** 当前状态。 */
-    public SessionStatus status() {
+    public SessionLifecycle status() {
         return status.get();
     }
 
@@ -135,7 +139,7 @@ public final class SessionScope {
      *                     避免把快照写进一个正在删除的目录。
      */
     public void close(boolean saveSnapshot) {
-        if (status.get() == SessionStatus.RUNNING) {
+        if (status.get() == SessionLifecycle.RUNNING) {
             log.error("会话 {} 在 RUNNING 状态被关闭：TTL 配置过短或任务卡死", sessionId);
         }
         if (saveSnapshot) {
@@ -150,7 +154,7 @@ public final class SessionScope {
         } catch (Exception e) {
             log.warn("会话 {} 关闭时清空窗口失败", sessionId, e);
         }
-        status.set(SessionStatus.CLOSED);
+        status.set(SessionLifecycle.CLOSED);
         log.info("会话 {} 已关闭并释放资源", sessionId);
     }
 
@@ -159,6 +163,7 @@ public final class SessionScope {
     // ═══════════════════════════════════════════════════════════════════
 
     public String sessionId() { return sessionId; }
+    public String transcriptPath() { return transcriptPath; }
     public TranscriptLedger ledger() { return ledger; }
     public TodoStore todoStore() { return todoStore; }
     public ArtifactStore artifactStore() { return artifactStore; }

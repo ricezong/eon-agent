@@ -1,7 +1,7 @@
 package cn.kong.eon.config;
 
 import cn.kong.eon.runtime.SessionScope;
-import cn.kong.eon.runtime.SessionStatus;
+import cn.kong.eon.runtime.SessionLifecycle;
 import com.github.benmanes.caffeine.cache.Expiry;
 
 import java.time.Duration;
@@ -39,6 +39,6 @@ public final class SessionExpiry implements Expiry<String, SessionScope> {
     }
 
     private long ttl(SessionScope value) {
-        return value.status() == SessionStatus.RUNNING ? runningNanos : idleNanos;
+        return value.status() == SessionLifecycle.RUNNING ? runningNanos : idleNanos;
     }
 }

@@ -544,6 +544,8 @@ public class AgentConfig {
             private int runningTtlMinutes = 1440;
             /** 同会话并发策略：REJECT（抛 SessionBusyException）| QUEUE（排队等待） */
             private String busyPolicy = "REJECT";
+            /** QUEUE 模式下等待前一个任务的最长秒数，超时按 busy 处理，避免无限阻塞 */
+            private int queueTimeoutSeconds = 60;
 
             public int getMaximumSize() {
                 return maximumSize;
@@ -575,6 +577,14 @@ public class AgentConfig {
 
             public void setBusyPolicy(String v) {
                 this.busyPolicy = v;
+            }
+
+            public int getQueueTimeoutSeconds() {
+                return queueTimeoutSeconds;
+            }
+
+            public void setQueueTimeoutSeconds(int v) {
+                this.queueTimeoutSeconds = v;
             }
         }
     }

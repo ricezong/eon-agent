@@ -13,6 +13,9 @@ import java.util.List;
 /**
  * 压缩策略编排者。每轮在 PreModel 阶段执行：判档位 → 处置 → 修复配对 → 返回档位。
  * SNIP/PRUNE 就地处置块，SUMMARIZE 委托 LlmContextSummarizer 生成摘要后删除原文。
+ * <p>
+ * <b>应用级单例</b>：策略参数（水位、档位）与压缩器、摘要器都是应用级依赖，
+ * 每轮变化的数据（窗口、度量、状态、轮次）全部由 {@link #apply} 的参数传入。
  */
 public class CompressionPolicy {
 
@@ -30,8 +33,11 @@ public class CompressionPolicy {
 
     /**
      * 执行本轮压缩。
+     *
+     * @param transcriptPath 会话账本路径，仅在 SUMMARIZE 档透传给摘要器（用于兜底文案与提示词）
      */
-    public CompressionLevel apply(ContextWindow window, ContextMetrics metrics, CompressionState state, int turnCount) {
+    public CompressionLevel apply(ContextWindow window, ContextMetrics metrics,
+                                  CompressionState state, int turnCount, String transcriptPath) {
         CompressionLevel level = resolveLevel(metrics, turnCount);
         if (!level.enabled()) {
             return CompressionLevel.NONE;
@@ -42,7 +48,7 @@ public class CompressionPolicy {
 
         boolean disposed;
         if (level == CompressionLevel.SUMMARIZE) {
-            String summary = summarizer.summarize(window, protectedFrom, state.getLastSummary());
+            String summary = summarizer.summarize(window, protectedFrom, state.getLastSummary(), transcriptPath);
             if (summary == null) {
                 return CompressionLevel.NONE;
             }

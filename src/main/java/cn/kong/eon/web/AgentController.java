@@ -8,6 +8,7 @@ import cn.kong.eon.web.exception.SessionBusyException;
 import cn.kong.eon.web.exception.SessionNotFoundException;
 import cn.kong.eon.web.service.AgentChatService;
 import cn.kong.eon.web.service.AgentSessionService;
+import cn.kong.eon.web.sse.AgentEventFormatter;
 import cn.kong.eon.web.sse.SseAgentEventListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -42,16 +43,19 @@ public class AgentController {
     private final AgentSessionService sessionService;
     private final ExecutorService sseExecutor;
     private final ObjectMapper objectMapper;
+    private final AgentEventFormatter formatter;
 
     @Autowired
     public AgentController(AgentChatService chatService,
                            AgentSessionService sessionService,
                            @Qualifier("sseExecutor") ExecutorService sseExecutor,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           AgentEventFormatter formatter) {
         this.chatService = chatService;
         this.sessionService = sessionService;
         this.sseExecutor = sseExecutor;
         this.objectMapper = objectMapper;
+        this.formatter = formatter;
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -69,7 +73,7 @@ public class AgentController {
         sseExecutor.execute(() -> {
             try {
                 RunResult result = chatService.chat(request,
-                        List.of(new SseAgentEventListener(emitter, objectMapper)));
+                        List.of(new SseAgentEventListener(emitter, objectMapper, formatter)));
                 emitter.send(SseEmitter.event().name("engine.message.final")
                         .data(Map.of("content", result.content(), "session_id", result.sessionId())));
             } catch (Exception e) {

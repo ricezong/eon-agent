@@ -13,7 +13,6 @@ import cn.kong.eon.event.*;
 import cn.kong.eon.llm.LlmService;
 import cn.kong.eon.llm.LlmResponse;
 import cn.kong.eon.runtime.RunContext;
-import cn.kong.eon.store.todo.TodoItem;
 import cn.kong.eon.tool.ToolService;
 import cn.kong.eon.tool.model.ToolCallRecord;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -49,7 +48,8 @@ public class AgentEngine {
     private final ToolService toolService;
     private final String basePrompt;
     private final TokenCountEstimator tokenCountEstimator;
-    private final List<Hook> allHooks;
+    /** Hook 分组在构造期做一次：Hook 集合是应用级不变的，没必要每轮 run 重排。 */
+    private final HookBuckets hooks;
     private final ToolCallDispatcher dispatcher;
     private final TurnMessageWriter messageWriter;
     private final StopHandler stopHandler;
@@ -69,7 +69,7 @@ public class AgentEngine {
         this.llmService = llmService;
         this.toolService = toolService;
         this.tokenCountEstimator = tokenCountEstimator;
-        this.allHooks = allHooks;
+        this.hooks = groupHooks(allHooks);
         this.dispatcher = dispatcher;
         this.messageWriter = messageWriter;
         this.stopHandler = stopHandler;
@@ -81,7 +81,7 @@ public class AgentEngine {
     // ═══════════════════════════════════════════════════════════════════
 
     public String run(RunContext r) {
-        HookBuckets hooks = groupHooks(allHooks);
+        HookBuckets hooks = this.hooks;
 
         initRun(r);
 
@@ -191,12 +191,19 @@ public class AgentEngine {
         if (preTool.isExit()) {
             return preTool;
         }
+        // 中断检查点：一轮内的工具调用可能很慢，不等下一轮开头才响应
+        if (r.task().isInterrupted()) {
+            return interruptExit(r);
+        }
 
         // 执行工具（ToolCallDispatcher 内部发出 engine.tool_use 和 engine.tool_result）
         List<ToolCallRecord> results = dispatcher.execute(r);
 
         // PostTool Hooks
         for (int i = 0; i < requests.size(); i++) {
+            if (r.task().isInterrupted()) {
+                return interruptExit(r);
+            }
             ToolCallRecord result = results.get(i);
             LoopAction postTool = firePostToolHooks(r, hooks, requests.get(i).name(), result.success());
             if (postTool.isExit()) {
@@ -205,6 +212,12 @@ public class AgentEngine {
         }
 
         return LoopAction.CONTINUE;
+    }
+
+    /** 中断退出：生成终止文本并结束本轮，收尾由 run() 统一处理。 */
+    private LoopAction interruptExit(RunContext r) {
+        return LoopAction.exit(
+                stopHandler.forceTerminate(r, StopCategory.USER_INTERRUPTED, "用户主动中断"));
     }
 
     /**
@@ -225,7 +238,6 @@ public class AgentEngine {
     // ═══════════════════════════════════════════════════════════════════
 
     private String completeExit(RunContext r, String rawOutput) {
-        saveSnapshot(r);
         String output = renderMemoryReferences(r, rawOutput);
 
         // 发出 session.usage
@@ -241,20 +253,10 @@ public class AgentEngine {
     }
 
     /**
-     * 任务结束落盘。注意此处不判断 {@code snapshot_enabled}——与改造前引擎收尾行为保持一致
-     * （{@code SessionSnapshotHook} 才受该开关控制）。
+     * 任务结束落盘已统一收敛到 {@link RunContext#close()}（在 Service 的 {@code finally} 中调用），
+     * 引擎不再自行保存快照——否则同一轮会写两遍，且引擎这次不受 {@code snapshot_enabled} 控制，
+     * 导致开关关闭时 state.json 照写。
      */
-    private void saveSnapshot(RunContext r) {
-        try {
-            List<TodoItem> todos = r.session().todoStore().getAll();
-            r.session().snapshotStore().save(todos, r.session().usageAccum(), r.session().compressionState());
-            log.info("[Snapshot] 任务结束快照已保存: replayFrom={}, tokens={}",
-                    r.session().compressionState().getReplayFromSeq(),
-                    r.session().usageAccum().getTotalTokens());
-        } catch (Exception e) {
-            log.warn("[Snapshot] 任务结束快照保存失败: {}", e.getMessage());
-        }
-    }
 
     private String renderMemoryReferences(RunContext r, String text) {
         if (text == null || text.isEmpty()) return text;

@@ -2,13 +2,9 @@ package cn.kong.eon.runtime;
 
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.context.ContentCompressor;
-import cn.kong.eon.context.block.CompressionLevel;
 import cn.kong.eon.context.pipeline.IngestPipeline;
 import cn.kong.eon.context.policy.CompressionPolicy;
-import cn.kong.eon.context.policy.CompressionSettings;
-import cn.kong.eon.context.summary.ContextSummarizer;
 import cn.kong.eon.engine.guard.ToolCircuitBreaker;
-import cn.kong.eon.llm.LlmService;
 import cn.kong.eon.store.artifact.ArtifactStore;
 import cn.kong.eon.store.index.SessionIndexStore.SessionSummary;
 import cn.kong.eon.store.ledger.TranscriptLedger;
@@ -42,20 +38,21 @@ public class SessionScopeLoader {
 
     private final AgentConfig config;
     private final ContentCompressor compressor;
-    private final LlmService llmService;
     private final MemoryStore memoryStore;
     private final ObjectMapper objectMapper;
+    /** 应用级单例：压缩策略与会话无关（水位/档位来自配置，摘要器也是单例）。 */
+    private final CompressionPolicy compressionPolicy;
 
     public SessionScopeLoader(AgentConfig config,
                               ContentCompressor compressor,
-                              LlmService llmService,
                               MemoryStore memoryStore,
-                              ObjectMapper objectMapper) {
+                              ObjectMapper objectMapper,
+                              CompressionPolicy compressionPolicy) {
         this.config = config;
         this.compressor = compressor;
-        this.llmService = llmService;
         this.memoryStore = memoryStore;
         this.objectMapper = objectMapper;
+        this.compressionPolicy = compressionPolicy;
     }
 
     /**
@@ -114,13 +111,13 @@ public class SessionScopeLoader {
         // ── 5. 工作区
         PathResolver pathResolver = createWorkspace(sessionDir);
 
-        // ── 6. 运行时组件
+        // ── 6. 运行时组件（压缩策略为应用级单例，直接注入；熔断器是会话级状态，每会话新建）
         var ldc = config.getLoopDetect();
         ToolCircuitBreaker circuitBreaker = new ToolCircuitBreaker(ldc);
-        CompressionPolicy compressionPolicy = createCompressionPolicy(transcriptPath);
 
         SessionScope scope = new SessionScope(
                 sessionId,
+                transcriptPath,
                 config.isSnapshotEnabled(),
                 ledger,
                 todoStore,
@@ -170,34 +167,4 @@ public class SessionScopeLoader {
                 ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
     }
 
-    private CompressionPolicy createCompressionPolicy(String transcriptPath) {
-        var ctxCfg = config.getContext();
-        var comp = ctxCfg.getCompression();
-        ContextSummarizer summarizer = new ContextSummarizer(llmService, transcriptPath,
-                ctxCfg.getSummarizeMaxInputChars(), ctxCfg.getSummarizeMaxOutputChars());
-        CompressionLevel turnLevel = parseTurnLevel(comp.getTurnLevel());
-        log.info("压缩策略已装配: 水位 {}/{}/{} | 轮数周期 {} 档位 {} | 尾部保护 {} 块 | 参数裁剪阈值 {} 字符",
-                comp.getSnipWaterLevel(), comp.getPruneWaterLevel(), comp.getSummarizeWaterLevel(),
-                comp.getTurnInterval(), turnLevel,
-                comp.getTailGuardBlocks(), comp.getArgsPruneMinChars());
-        CompressionSettings settings = new CompressionSettings(
-                comp.getSnipWaterLevel(), comp.getPruneWaterLevel(), comp.getSummarizeWaterLevel(),
-                comp.getTurnInterval(), turnLevel,
-                comp.getTailGuardBlocks(), comp.getArgsPruneMinChars(),
-                ctxCfg.getSnipKeepChars());
-        return new CompressionPolicy(settings, compressor, summarizer);
-    }
-
-    /** 解析轮数兜底档位字符串（配置层用 String 承载）。非法值回退为 SNIP。 */
-    private CompressionLevel parseTurnLevel(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return CompressionLevel.SNIP;
-        }
-        try {
-            return CompressionLevel.valueOf(raw.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            log.warn("未知的压缩档位 '{}'，回退为 SNIP", raw);
-            return CompressionLevel.SNIP;
-        }
-    }
 }
