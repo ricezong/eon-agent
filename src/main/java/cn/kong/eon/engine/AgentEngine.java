@@ -7,7 +7,7 @@ import cn.kong.eon.engine.hook.HookResult;
 import cn.kong.eon.engine.stop.StopCategory;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.event.*;
-import cn.kong.eon.llm.LlmClient;
+import cn.kong.eon.llm.LlmService;
 import cn.kong.eon.llm.LlmResponse;
 import cn.kong.eon.runtime.SessionContext;
 import cn.kong.eon.runtime.SessionState;
@@ -37,7 +37,7 @@ public class AgentEngine {
 
     // ── 应用级依赖（构造一次，不随会话变化）
     private final AgentConfig config;
-    private final LlmClient llmClient;
+    private final LlmService llmService;
     private final ToolService toolService;
     private final String basePrompt;
     private final TokenCountEstimator tokenCountEstimator;
@@ -50,11 +50,11 @@ public class AgentEngine {
     // ═══════════════════════════════════════════════════════════════════
 
     public AgentEngine(AgentConfig config,
-                       LlmClient llmClient,
+                       LlmService llmService,
                        ToolService toolService,
                        String basePrompt) {
         this.config = config;
-        this.llmClient = llmClient;
+        this.llmService = llmService;
         this.toolService = toolService;
         this.basePrompt = basePrompt;
         this.tokenCountEstimator = new OpenAiTokenCountEstimator("gpt-4o");
@@ -92,7 +92,7 @@ public class AgentEngine {
             try {
                 LoopAction action = executeTurn(ctx, state, hooks);
                 if (action.isExit()) {
-                    return completeExit(ctx, state, ((LoopAction.Exit) action).output());
+                    return completeExit(ctx, state, action.output());
                 }
             } catch (Exception e) {
                 return completeExit(ctx, state, ctx.stopHandler().forceTerminate(
@@ -111,8 +111,8 @@ public class AgentEngine {
             // ── 阶段 1：准备上下文 ──
             ContextBuilder contextBuilder = buildContext(ctx, state);
             LoopAction preModel = prepareContext(ctx, state, hooks, contextBuilder);
-            if (preModel instanceof LoopAction.Exit exit) {
-                return exit;
+            if (preModel.isExit()) {
+                return preModel;
             }
 
             // ── 阶段 2：构建 messages ──
@@ -121,13 +121,13 @@ public class AgentEngine {
 
             // ── 阶段 3：调用 LLM（流式或同步） ──
             LlmResponse response;
-            if (llmClient.isStreamEnabled()) {
-                response = llmClient.streamChat(messages, toolService.getSpecifications(),
+            if (llmService.isStreamEnabled()) {
+                response = llmService.streamChat(messages, toolService.getSpecifications(),
                         delta -> emit(ctx, AgentDelta.text(state.getTurnId(), delta)),
                         delta -> emit(ctx, AgentDelta.thinking(state.getTurnId(), delta)),
                         thinking -> emit(ctx, AgentThinking.now(state.getTurnId(), thinking)));
             } else {
-                response = llmClient.chat(messages, toolService.getSpecifications());
+                response = llmService.chat(messages, toolService.getSpecifications());
             }
             state.setLastResponse(response);
             state.getUsageAccum().add(response.usage());
@@ -140,10 +140,10 @@ public class AgentEngine {
             // ── 阶段 4：PostModel Hooks ──
             state.setPendingToolCalls(requests);
             LoopAction postModel = firePostModelHooks(ctx, state, hooks);
-            if (postModel instanceof LoopAction.Exit exit) {
-                return exit;
+            if (postModel.isExit()) {
+                return postModel;
             }
-            if (postModel instanceof LoopAction.Skip) {
+            if (postModel.isSkip()) {
                 return finishSkip(ctx, state);
             }
 
@@ -155,14 +155,14 @@ public class AgentEngine {
 
             // ── 阶段 6：Extension Loop ──
             LoopAction extension = executeExtensionLoop(ctx, state, hooks, requests);
-            if (extension instanceof LoopAction.Exit exit) {
-                return exit;
+            if (extension.isExit()) {
+                return extension;
             }
 
             // ── 阶段 7：推进熔断冷却 ──
             ctx.circuitBreaker().tickCooldown();
 
-            return new LoopAction.Continue();
+            return LoopAction.CONTINUE;
         } finally {
             // ── 阶段 8：消息回填 ──
             ctx.messageWriter().flush(state);
@@ -173,8 +173,8 @@ public class AgentEngine {
                                             HookBuckets hooks, List<ToolExecutionRequest> requests) {
         // PreTool Hooks
         LoopAction preTool = firePreToolHooks(ctx, state, hooks, requests);
-        if (preTool instanceof LoopAction.Exit exit) {
-            return exit;
+        if (preTool.isExit()) {
+            return preTool;
         }
 
         // 执行工具（ToolCallDispatcher 内部发出 engine.tool_use 和 engine.tool_result）
@@ -184,21 +184,21 @@ public class AgentEngine {
         for (int i = 0; i < requests.size(); i++) {
             ToolCallRecord result = results.get(i);
             LoopAction postTool = firePostToolHooks(ctx, state, hooks, requests.get(i).name(), result.success());
-            if (postTool instanceof LoopAction.Exit exit) {
-                return exit;
+            if (postTool.isExit()) {
+                return postTool;
             }
         }
 
-        return new LoopAction.Continue();
+        return LoopAction.CONTINUE;
     }
 
     private LoopAction handleNoToolCalls(SessionState state, String thought) {
-        return new LoopAction.Exit(thought);
+        return LoopAction.exit(thought);
     }
 
     private LoopAction finishSkip(SessionContext ctx, SessionState state) {
         ctx.circuitBreaker().tickCooldown();
-        return new LoopAction.Continue();
+        return LoopAction.CONTINUE;
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -308,21 +308,21 @@ public class AgentEngine {
             return exitOf(ctx, state, result);
         }
         consumeNudges(state, contextBuilder);
-        return new LoopAction.Continue();
+        return LoopAction.CONTINUE;
     }
 
     private LoopAction firePostModelHooks(SessionContext ctx, SessionState state, HookBuckets hooks) {
         HookResult result = HookDispatcher.dispatchPostModel(hooks.postModel, state);
         if (result == null) {
-            return new LoopAction.Continue();
+            return LoopAction.CONTINUE;
         }
         if (result.isSkip()) {
-            return new LoopAction.Skip();
+            return LoopAction.SKIP;
         }
         if (result.isStop()) {
             return exitOf(ctx, state, result);
         }
-        return new LoopAction.Continue();
+        return LoopAction.CONTINUE;
     }
 
     private LoopAction firePreToolHooks(SessionContext ctx, SessionState state,
@@ -331,7 +331,7 @@ public class AgentEngine {
         if (result != null && result.isStop()) {
             return exitOf(ctx, state, result);
         }
-        return new LoopAction.Continue();
+        return LoopAction.CONTINUE;
     }
 
     private LoopAction firePostToolHooks(SessionContext ctx, SessionState state,
@@ -340,12 +340,12 @@ public class AgentEngine {
         if (result != null && result.isStop()) {
             return exitOf(ctx, state, result);
         }
-        return new LoopAction.Continue();
+        return LoopAction.CONTINUE;
     }
 
     /** 把 Hook 的 stop 结果翻译成循环退出动作：终止文本由 StopHandler 生成。 */
     private LoopAction exitOf(SessionContext ctx, SessionState state, HookResult result) {
-        return new LoopAction.Exit(
+        return LoopAction.exit(
                 ctx.stopHandler().forceTerminate(state, result.getCategory(), result.getMessage()));
     }
 

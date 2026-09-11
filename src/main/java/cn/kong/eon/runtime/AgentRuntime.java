@@ -3,7 +3,7 @@ package cn.kong.eon.runtime;
 import cn.kong.eon.engine.AgentEngine;
 import cn.kong.eon.context.ContentCompressor;
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.llm.LlmClient;
+import cn.kong.eon.llm.LlmService;
 import cn.kong.eon.tool.mcp.McpServerClient;
 import cn.kong.eon.store.index.SessionIndexStore;
 import cn.kong.eon.store.index.SessionIndexStore.SessionSummary;
@@ -32,10 +32,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import cn.kong.eon.event.AgentEventListener;
 
 /**
- * 应用级容器。管理 EonAgent、LlmClient、ToolService、MCP 连接等重资源，构造一次不随会话切换重建。
+ * 应用级容器。管理 AgentEngine、LlmService、ToolService、MCP 连接等重资源，构造一次不随会话切换重建。
  * 会话级组件委托给 {@link AgentSession}，按 sessionId 创建/恢复，运行结束后释放。
  * <p>
- * EonAgent 为无状态单例，每次会话通过 {@link SessionContext} 注入会话级依赖。
+ * 职责：会话生命周期管理 → 组装 {@link SessionContext} → 调用引擎执行 → 释放资源。
+ * AgentEngine 为无状态单例，每次会话通过 SessionContext 注入会话级依赖。
  */
 @Component
 public class AgentRuntime {
@@ -45,7 +46,7 @@ public class AgentRuntime {
     // ── 应用级组件
     private final AgentConfig config;
     private final ContentCompressor compressor;
-    private final LlmClient llmClient;
+    private final LlmService llmService;
     private final ToolService toolService;
     private final MemoryStore memoryStore;
     private final HttpConfig httpConfig;
@@ -64,7 +65,7 @@ public class AgentRuntime {
                         ObjectMapper objectMapper,
                         HttpConfig httpConfig,
                         ContentCompressor contentCompressor,
-                        LlmClient llmClient,
+                        LlmService llmService,
                         SessionIndexStore sessionIndexStore,
                         MemoryStore memoryStore,
                         ResourceLoader resourceLoader) {
@@ -72,7 +73,7 @@ public class AgentRuntime {
         this.objectMapper = objectMapper;
         this.httpConfig = httpConfig;
         this.compressor = contentCompressor;
-        this.llmClient = llmClient;
+        this.llmService = llmService;
         this.sessionIndexStore = sessionIndexStore;
         this.memoryStore = memoryStore;
 
@@ -87,7 +88,7 @@ public class AgentRuntime {
         connectMcpServers();
 
         // 引擎单例：只注入应用级依赖
-        this.agent = new AgentEngine(config, llmClient, toolService, systemPrompt);
+        this.agent = new AgentEngine(config, llmService, toolService, systemPrompt);
 
         log.info("AgentRuntime 就绪: {} 个工具", toolService.getAllToolNames().size());
     }
@@ -123,7 +124,22 @@ public class AgentRuntime {
         }
 
         try {
-            String output = session.run(agent, request.message());
+            String userInput = request.message();
+            if (userInput == null || userInput.isBlank()) {
+                return new RunResult("输入不能为空。", actualSessionId);
+            }
+
+            session.beginRun(userInput);
+            SessionContext ctx = session.toContext();
+            SessionState state = ctx.sessionState();
+
+            log.info("=== 会话 {} 任务开始 ===", state.getSessionId());
+            log.info("用户输入: {}", userInput.length() > 200 ? userInput.substring(0, 200) + "..." : userInput);
+
+            String output = agent.run(ctx);
+
+            log.info("=== 会话 {} 任务结束, 本次 {} 轮, 会话累计 {} tokens ===",
+                    state.getSessionId(), state.getTurnCount(), state.getUsageAccum().getTotalTokens());
             return new RunResult(output, actualSessionId);
         } finally {
             activeSessions.remove(actualSessionId);
@@ -181,7 +197,7 @@ public class AgentRuntime {
 
     /** 创建会话上下文，注入应用级依赖。 */
     private AgentSession createSession(SessionSummary resumedSession, List<AgentEventListener> externalListeners) {
-        return new AgentSession(config, llmClient, toolService, memoryStore,
+        return new AgentSession(config, llmService, toolService, memoryStore,
                 compressor, systemPrompt, resumedSession, externalListeners, objectMapper);
     }
 

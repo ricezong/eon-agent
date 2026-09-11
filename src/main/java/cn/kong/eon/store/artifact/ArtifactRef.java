@@ -1,4 +1,4 @@
-package cn.kong.eon.context.port;
+package cn.kong.eon.store.artifact;
 
 /**
  * Artifact 引用。大文本工具结果落盘后，上下文只保留此引用。

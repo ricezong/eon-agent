@@ -1,6 +1,6 @@
 package cn.kong.eon.tool;
 
-import cn.kong.eon.store.artifact.ToolResultArtifactStore;
+import cn.kong.eon.store.artifact.ArtifactStore;
 import cn.kong.eon.store.ledger.TranscriptLedger;
 import cn.kong.eon.store.memory.MemoryStore;
 import cn.kong.eon.store.snapshot.SessionSnapshotStore;
@@ -11,7 +11,7 @@ import cn.kong.eon.store.todo.TodoStore;
  */
 public record ToolContext(
         TodoStore todoStore,
-        ToolResultArtifactStore toolResultStore,
+        ArtifactStore artifactStore,
         MemoryStore memoryStore,
         TranscriptLedger transcriptLedger,
         SessionSnapshotStore snapshotStore,

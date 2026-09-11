@@ -1,8 +1,6 @@
 package cn.kong.eon.llm;
 
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.context.port.LlmStalledException;
-import cn.kong.eon.context.port.LlmCompletion;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -31,7 +29,7 @@ import org.springframework.stereotype.Component;
  * 支持同步与流式两种调用模式。
  */
 @Component
-public class LlmClient implements LlmCompletion {
+public class LlmClient implements LlmService {
     private static final Logger log = LoggerFactory.getLogger(LlmClient.class);
 
     private final AgentConfig.RetryConfig retryConfig;
@@ -75,12 +73,12 @@ public class LlmClient implements LlmCompletion {
         }
     }
 
-    /** 是否启用流式。 */
+    @Override
     public boolean isStreamEnabled() {
         return streamEnabled;
     }
 
-    /** 同步调用 LLM，含指数退避重试。 */
+    @Override
     public LlmResponse chat(List<ChatMessage> messages, List<ToolSpecification> tools) {
         int attempt = 0;
         Exception lastException = null;
@@ -135,6 +133,7 @@ public class LlmClient implements LlmCompletion {
      * @param onThinkingDelta thinking 增量回调
      * @return 完整的 LLM 响应
      */
+    @Override
     public LlmResponse streamChat(List<ChatMessage> messages, List<ToolSpecification> tools,
                                    Consumer<String> onTextDelta,
                                    Consumer<String> onThinkingDelta,
@@ -215,7 +214,6 @@ public class LlmClient implements LlmCompletion {
         }
     }
 
-    /** 无工具调用，返回模型文本回复。 */
     @Override
     public String complete(List<ChatMessage> messages) {
         LlmResponse response = chat(messages, null);

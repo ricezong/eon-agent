@@ -1,11 +1,9 @@
 package cn.kong.eon.engine.hook.posttool;
 
+import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.engine.hook.Hook;
 import cn.kong.eon.engine.hook.HookResult;
-import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.runtime.SessionState;
-import cn.kong.eon.store.todo.TodoItem;
-import cn.kong.eon.store.snapshot.SessionSnapshotStore;
 import cn.kong.eon.store.todo.TodoStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,49 +11,44 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 /**
- * 会话快照（PostTool, order=100）。todo_write 成功后：
- * ① 无进展检测；② 保存会话快照。
+ * Todo 无进展检测（PostTool, order=100）。
+ * todo_write 成功后，滑动窗口比对 Todo 快照，连续 N 步无变化则注入 nudge 警告。
+ * <p>
+ * 独立于快照开关——即使 {@code snapshot_enabled=false}，无进展检测仍然工作。
  */
-public class TodoSnapshotHook implements Hook.PostToolHook {
-    private static final Logger log = LoggerFactory.getLogger(TodoSnapshotHook.class);
+public class TodoNoProgressHook implements Hook.PostToolHook {
+    private static final Logger log = LoggerFactory.getLogger(TodoNoProgressHook.class);
 
     private static final String WARN_MSG = "连续 %s 步 Todo 无变化，请检查是否陷入循环";
 
-    private final AgentConfig config;
-    private final SessionSnapshotStore snapshotStore;
+    private final int windowSize;
     private final TodoStore todoStore;
 
-    // ── 无进展检测状态
-    private final int windowSize;
     private final Deque<String> snapshots = new ArrayDeque<>();
     private int stepsWithoutProgress = 0;
 
-    public TodoSnapshotHook(AgentConfig config, SessionSnapshotStore snapshotStore, TodoStore todoStore) {
-        this.config = config;
-        this.snapshotStore = snapshotStore;
+    public TodoNoProgressHook(AgentConfig.LoopDetectConfig loopDetectConfig, TodoStore todoStore) {
+        this.windowSize = loopDetectConfig.getNoProgressSteps();
         this.todoStore = todoStore;
-        this.windowSize = config.getLoopDetect().getNoProgressSteps();
     }
 
     @Override
     public String name() {
-        return "TodoSnapshotHook";
+        return "TodoNoProgressHook";
     }
 
     @Override
     public boolean active(SessionState state) {
-        return config.isSnapshotEnabled();
+        return true;
     }
 
     @Override
     public HookResult afterToolExecution(SessionState state, String toolName, boolean success) {
         if (!"todo_write".equals(toolName) || !success) return HookResult.ok();
 
-        // 无进展检测
         String snapshot = todoStore.getAll().toString();
         snapshots.addLast(snapshot);
         if (snapshots.size() > windowSize) {
@@ -67,18 +60,14 @@ public class TodoSnapshotHook implements Hook.PostToolHook {
             if (unique.size() == 1) {
                 stepsWithoutProgress++;
                 if (stepsWithoutProgress >= 2) {
-                    log.warn("[TodoSnapshotHook] 无进展: 连续 {} 个窗口（{} 步）未变化", stepsWithoutProgress, windowSize);
+                    log.warn("[TodoNoProgress] 无进展: 连续 {} 个窗口（{} 步）未变化",
+                            stepsWithoutProgress, windowSize);
                     state.addNudge(String.format(WARN_MSG, windowSize * stepsWithoutProgress));
                 }
             } else {
                 stepsWithoutProgress = 0;
             }
         }
-
-        // 保存快照
-        List<TodoItem> todos = todoStore.getAll();
-        snapshotStore.save(todos, state.getUsageAccum(), state.getCompressionState());
-        log.info("[TodoSnapshotHook] 已保存: todo={} 条, replayFrom={}", todos.size(), state.getCompressionState().getReplayFromSeq());
 
         return HookResult.ok();
     }

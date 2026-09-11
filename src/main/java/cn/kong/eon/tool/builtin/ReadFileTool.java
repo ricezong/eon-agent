@@ -40,7 +40,7 @@ public class ReadFileTool implements ToolExecutor {
         // artifact:// 引用：从 ArtifactStore 读取后分页返回，避免全文一次性进入上下文
         if (targetFile.startsWith(ARTIFACT_PREFIX)) {
             String refId = targetFile.substring(ARTIFACT_PREFIX.length()).trim();
-            String content = context.toolResultStore().readContent(refId);
+            String content = context.artifactStore().readContent(refId);
             if (content == null) {
                 return ToolOutcome.failure("找不到 artifact 引用: " + refId);
             }

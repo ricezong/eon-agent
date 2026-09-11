@@ -6,7 +6,7 @@ import cn.kong.eon.context.ContextWindow;
 import cn.kong.eon.context.block.CompressionLevel;
 import cn.kong.eon.context.block.ContextBlock;
 import cn.kong.eon.context.CompressionState;
-import cn.kong.eon.context.summary.LlmContextSummarizer;
+import cn.kong.eon.context.summary.ContextSummarizer;
 
 import java.util.List;
 
@@ -18,11 +18,11 @@ public class CompressionPolicy {
 
     private final CompressionSettings settings;
     private final ContentCompressor compressor;
-    private final LlmContextSummarizer summarizer;
+    private final ContextSummarizer summarizer;
 
     public CompressionPolicy(CompressionSettings settings,
                              ContentCompressor compressor,
-                             LlmContextSummarizer summarizer) {
+                             ContextSummarizer summarizer) {
         this.settings = settings;
         this.compressor = compressor;
         this.summarizer = summarizer;

@@ -1,11 +1,11 @@
 package cn.kong.eon.context.pipeline;
 
 import cn.kong.eon.context.ContentCompressor;
-import cn.kong.eon.context.port.ArtifactStore;
+import cn.kong.eon.store.artifact.ArtifactRef;
 import cn.kong.eon.context.block.BlockKind;
 import cn.kong.eon.context.block.MessageBlockCodec;
 import cn.kong.eon.context.block.ContextBlock;
-import cn.kong.eon.context.port.ArtifactRef;
+import cn.kong.eon.store.artifact.ArtifactStore;
 import dev.langchain4j.data.message.ChatMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

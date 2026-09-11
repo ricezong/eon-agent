@@ -5,14 +5,14 @@ import cn.kong.eon.context.pipeline.IngestPipeline;
 import cn.kong.eon.context.block.CompressionLevel;
 import cn.kong.eon.context.policy.CompressionPolicy;
 import cn.kong.eon.context.policy.CompressionSettings;
-import cn.kong.eon.context.summary.LlmContextSummarizer;
-import cn.kong.eon.engine.AgentEngine;
+import cn.kong.eon.context.summary.ContextSummarizer;
 import cn.kong.eon.engine.guard.ToolCircuitBreaker;
 import cn.kong.eon.engine.hook.Hook;
 import cn.kong.eon.engine.hook.postmodel.LoopDetectHook;
 import cn.kong.eon.engine.hook.postmodel.ToolValidationHook;
 import cn.kong.eon.engine.hook.postmodel.TruncationHook;
-import cn.kong.eon.engine.hook.posttool.TodoSnapshotHook;
+import cn.kong.eon.engine.hook.posttool.SessionSnapshotHook;
+import cn.kong.eon.engine.hook.posttool.TodoNoProgressHook;
 import cn.kong.eon.engine.hook.posttool.ToolFailureHook;
 import cn.kong.eon.engine.hook.premodel.BudgetHook;
 import cn.kong.eon.engine.hook.premodel.ContextCompressionHook;
@@ -21,14 +21,13 @@ import cn.kong.eon.engine.hook.pretool.GateHook;
 import cn.kong.eon.engine.exec.ToolCallDispatcher;
 import cn.kong.eon.engine.exec.TurnMessageWriter;
 import cn.kong.eon.engine.stop.StopHandler;
-import cn.kong.eon.logging.Slf4JAgentEventListener;
 import cn.kong.eon.event.AgentEvent;
 import cn.kong.eon.event.AgentEventListener;
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.llm.LlmClient;
+import cn.kong.eon.llm.LlmService;
 import cn.kong.eon.store.snapshot.RestoreMode;
 import cn.kong.eon.store.snapshot.SessionSnapshot;
-import cn.kong.eon.store.artifact.ToolResultArtifactStore;
+import cn.kong.eon.store.artifact.ArtifactStore;
 import cn.kong.eon.store.ledger.TranscriptLedger;
 import cn.kong.eon.store.memory.MemoryStore;
 import cn.kong.eon.store.snapshot.SessionSnapshotStore;
@@ -50,10 +49,11 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * 会话。封装会话级组件：TranscriptLedger、SessionState、TodoStore、Hook 列表等。
- * 随会话切换而创建/销毁，应用级组件（LlmClient、ToolService、MCP、EonAgent）不在此处。
+ * 会话级组件容器。装配并持有会话级组件：TranscriptLedger、SessionState、TodoStore、Hook 列表等。
+ * 随会话切换而创建/销毁，应用级组件（LlmService、ToolService、MCP、AgentEngine）不在此处。
  * <p>
- * 职责：装配会话级组件 → 组装 {@link SessionContext} → 交给引擎执行 → 释放资源。
+ * 职责：装配会话级组件 → 通过 {@link #toContext()} 暴露给引擎 → 释放资源。
+ * 不负责执行编排（组装 SessionContext 后调用引擎的动作由 {@link AgentRuntime} 负责）。
  */
 public class AgentSession {
 
@@ -61,7 +61,7 @@ public class AgentSession {
 
     // ── 应用级依赖（运行时使用，不持有所有权）
     private final AgentConfig config;
-    private final LlmClient llmClient;
+    private final LlmService llmService;
     private final ToolService toolService;
     private final MemoryStore memoryStore;
     private final ContentCompressor compressor;
@@ -72,7 +72,7 @@ public class AgentSession {
     private final String sessionId;
     private final SessionSummary resumedSession;
     private final TodoStore todoStore;
-    private final ToolResultArtifactStore toolResultStore;
+    private final ArtifactStore artifactStore;
     private final SessionSnapshotStore snapshotStore;
     private final IngestPipeline ingestPipeline;
     private final TranscriptLedger transcriptLedger;
@@ -81,7 +81,8 @@ public class AgentSession {
     private final CompressionPolicy compressionPolicy;
     private final ToolCircuitBreaker circuitBreaker;
     private final LoopDetectHook loopDetectHook;
-    private final TodoSnapshotHook todoSnapshotHook;
+    private final TodoNoProgressHook todoNoProgressHook;
+    private final SessionSnapshotHook sessionSnapshotHook;
     private final ToolContext toolContext;
     private final ToolCallDispatcher toolDispatcher;
     private final TurnMessageWriter messageWriter;
@@ -91,7 +92,7 @@ public class AgentSession {
 
     /** 创建会话上下文，注入应用级依赖。 */
     public AgentSession(AgentConfig appConfig,
-                        LlmClient llmClient,
+                        LlmService llmService,
                         ToolService toolService,
                         MemoryStore memoryStore,
                         ContentCompressor compressor,
@@ -100,7 +101,7 @@ public class AgentSession {
                         List<AgentEventListener> externalListeners,
                         ObjectMapper objectMapper) {
         this.config = appConfig;
-        this.llmClient = llmClient;
+        this.llmService = llmService;
         this.toolService = toolService;
         this.memoryStore = memoryStore;
         this.compressor = compressor;
@@ -120,7 +121,7 @@ public class AgentSession {
 
         // ── 2. 存储
         this.todoStore = new TodoStore();
-        this.toolResultStore = new ToolResultArtifactStore(sessionDir.resolve("tool-results"));
+        this.artifactStore = new ArtifactStore(sessionDir.resolve("tool-results"));
         this.snapshotStore = new SessionSnapshotStore(sessionDir.resolve("state.json"), objectMapper);
         this.ingestPipeline = createContextPipeline();
 
@@ -160,19 +161,19 @@ public class AgentSession {
 
         // ── 6. 工具上下文
         this.toolContext = new ToolContext(
-                todoStore, toolResultStore, memoryStore,
+                todoStore, artifactStore, memoryStore,
                 transcriptLedger, snapshotStore, pathResolver, null);
 
         // ── 7. 运行时组件
         var ldc = config.getLoopDetect();
         this.circuitBreaker = new ToolCircuitBreaker(ldc);
         this.loopDetectHook = new LoopDetectHook(ldc, circuitBreaker);
-        this.todoSnapshotHook = new TodoSnapshotHook(config, snapshotStore, todoStore);
+        this.todoNoProgressHook = new TodoNoProgressHook(ldc, todoStore);
+        this.sessionSnapshotHook = new SessionSnapshotHook(config, snapshotStore, todoStore);
         this.compressionPolicy = createCompressionPolicy();
 
-        // 组装 listeners：Slf4JAgentEventListener + 外部 SSE listeners
+        // 组装 listeners：
         this.listeners = new ArrayList<>();
-        this.listeners.add(new Slf4JAgentEventListener());
         this.listeners.addAll(externalListeners != null ? externalListeners : List.of());
 
         // ── 8. 引擎协作组件（会话级，随会话创建/销毁）
@@ -199,32 +200,30 @@ public class AgentSession {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    //  运行
+    //  上下文打包
     // ═══════════════════════════════════════════════════════════════════
 
-    /** 运行一轮对话。 */
-    public String run(AgentEngine agent, String userInput) {
-        if (userInput == null || userInput.isBlank()) {
-            return "输入不能为空。";
-        }
-
-        sessionState.beginRun(userInput);
-        circuitBreaker.reset();
-        loopDetectHook.reset();
-        todoSnapshotHook.reset();
-
-        log.info("=== 会话 {} 任务开始 ===", sessionState.getSessionId());
-        log.info("用户输入: {}", userInput.length() > 200 ? userInput.substring(0, 200) + "..." : userInput);
-
-        SessionContext ctx = new SessionContext(
+    /**
+     * 将会话级组件打包为 {@link SessionContext}，供无状态引擎使用。
+     * 调用方负责在调用前重置任务级状态（{@link #beginRun}），
+     * 并在调用引擎后处理输出。
+     */
+    public SessionContext toContext() {
+        return new SessionContext(
                 sessionState, transcriptLedger, toolContext,
                 circuitBreaker, listeners, hooks,
                 toolDispatcher, messageWriter, stopHandler);
+    }
 
-        String output = agent.run(ctx);
-        log.info("=== 会话 {} 任务结束, 本次 {} 轮, 会话累计 {} tokens ===",
-                sessionState.getSessionId(), sessionState.getTurnCount(), sessionState.getUsageAccum().getTotalTokens());
-        return output;
+    /**
+     * 重置任务级状态，为新一轮对话做准备。
+     * 由 {@link AgentRuntime} 在调用引擎前调用。
+     */
+    public void beginRun(String userInput) {
+        sessionState.beginRun(userInput);
+        circuitBreaker.reset();
+        loopDetectHook.reset();
+        todoNoProgressHook.reset();
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -269,14 +268,14 @@ public class AgentSession {
         var ctx = config.getContext();
         log.info("入站管线已装配 (落盘阈值 {} 字符, 保留 {} 字符)",
                 ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
-        return new IngestPipeline(compressor, toolResultStore,
+        return new IngestPipeline(compressor, artifactStore,
                 ctx.getSpillThresholdChars(), ctx.getSpillKeepChars());
     }
 
     private CompressionPolicy createCompressionPolicy() {
         var ctxCfg = config.getContext();
         var comp = ctxCfg.getCompression();
-        LlmContextSummarizer summarizer = new LlmContextSummarizer(llmClient, transcriptPath,
+        ContextSummarizer summarizer = new ContextSummarizer(llmService, transcriptPath,
                 ctxCfg.getSummarizeMaxInputChars(), ctxCfg.getSummarizeMaxOutputChars());
         CompressionLevel turnLevel = parseTurnLevel(comp.getTurnLevel());
         log.info("压缩策略已装配: 水位 {}/{}/{} | 轮数周期 {} 档位 {} | 尾部保护 {} 块 | 参数裁剪阈值 {} 字符",
@@ -317,7 +316,8 @@ public class AgentSession {
                 new GateHook(toolService, config),
 
                 new ToolFailureHook(circuitBreaker),
-                todoSnapshotHook
+                todoNoProgressHook,
+                sessionSnapshotHook
         );
     }
 

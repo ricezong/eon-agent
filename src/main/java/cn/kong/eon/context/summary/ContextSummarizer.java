@@ -3,8 +3,7 @@ package cn.kong.eon.context.summary;
 import cn.kong.eon.context.ContextWindow;
 import cn.kong.eon.context.block.BlockKind;
 import cn.kong.eon.context.block.ContextBlock;
-import cn.kong.eon.context.port.LlmStalledException;
-import cn.kong.eon.context.port.LlmCompletion;
+import cn.kong.eon.llm.LlmService;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -19,17 +18,17 @@ import java.util.List;
  * 摘要生成器。对保护区之外的块生成结构化摘要，供 SUMMARIZE 档在删除原文前保住信息。
  * 内容超长时分段摘要，不硬截断。
  */
-public class LlmContextSummarizer {
-    private static final Logger log = LoggerFactory.getLogger(LlmContextSummarizer.class);
+public class ContextSummarizer {
+    private static final Logger log = LoggerFactory.getLogger(ContextSummarizer.class);
 
-    private final LlmCompletion llmCompletion;
+    private final LlmService llmService;
     private final String transcriptPath;
     private final int maxInputChars;
     private final int maxOutputChars;
 
-    public LlmContextSummarizer(LlmCompletion llmCompletion, String transcriptPath,
-                                int maxInputChars, int maxOutputChars) {
-        this.llmCompletion = llmCompletion;
+    public ContextSummarizer(LlmService llmService, String transcriptPath,
+                             int maxInputChars, int maxOutputChars) {
+        this.llmService = llmService;
         this.transcriptPath = transcriptPath != null ? transcriptPath : "(transcript 路径不可用)";
         this.maxInputChars = maxInputChars;
         this.maxOutputChars = maxOutputChars;
@@ -194,14 +193,11 @@ public class LlmContextSummarizer {
                 UserMessage.from(prompt));
 
         try {
-            String summary = llmCompletion.complete(messages);
+            String summary = llmService.complete(messages);
             return (summary != null && !summary.isBlank()) ? summary : null;
-        } catch (LlmStalledException e) {
+        } catch (Exception e) {
             log.error("[Summary] LLM 不可用（{}），第 {}/{} 段跳过: {}",
                     e.getMessage(), index, total, e.getMessage());
-            return null;
-        } catch (Exception e) {
-            log.error("[Summary] 第 {}/{} 段摘要异常: {}", index, total, e.getMessage());
             return null;
         }
     }
