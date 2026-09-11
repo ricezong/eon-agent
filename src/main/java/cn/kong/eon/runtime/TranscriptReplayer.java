@@ -44,7 +44,7 @@ public class TranscriptReplayer {
 
     /**
      * 读取账本，还原为事件列表。
-     * 由调用方用 {@code TurnEventFormatter} 格式化，即可与实时 SSE 输出结构完全一致。
+     * 由调用方用 {@code AgentEventFormatter} 格式化，即可与实时 SSE 输出结构完全一致。
      */
     public List<AgentEvent> replay(Path transcriptPath) {
         List<AgentEvent> events = new ArrayList<>();

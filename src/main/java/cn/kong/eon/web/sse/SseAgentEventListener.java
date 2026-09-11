@@ -13,7 +13,7 @@ import java.util.Map;
 /**
  * SSE 事件监听器。将 AgentEvent 序列化为 SSE 帧推送到前端。
  * <p>
- * 事件格式化委托给 {@link TurnEventFormatter}，与恢复渲染共用同一套格式化代码。
+ * 事件格式化委托给 {@link AgentEventFormatter}，与恢复渲染共用同一套格式化代码。
  */
 public class SseAgentEventListener implements AgentEventListener {
     private static final Logger log = LoggerFactory.getLogger(SseAgentEventListener.class);
@@ -29,7 +29,7 @@ public class SseAgentEventListener implements AgentEventListener {
     @Override
     public void onEvent(AgentEvent event) {
         try {
-            Map<String, Object> data = event.accept(new TurnEventFormatter());
+            Map<String, Object> data = event.accept(new AgentEventFormatter());
 
             String json = mapper.writeValueAsString(data);
             emitter.send(SseEmitter.event().name(event.type()).data(json));

@@ -12,11 +12,11 @@ public class Slf4JAgentEventListener implements AgentEventListener {
 
     @Override
     public void onEvent(AgentEvent event) {
-        event.accept(new Slf4jEventLogger());
+        event.accept(new Slf4JEventLogger());
     }
 
     /** 日志格式化 Visitor。 */
-    private static class Slf4jEventLogger implements AgentEventVisitor<Void> {
+    private static class Slf4JEventLogger implements AgentEventVisitor<Void> {
 
         @Override
         public Void visitDelta(AgentDelta e) {

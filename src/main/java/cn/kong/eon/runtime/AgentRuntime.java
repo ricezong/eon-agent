@@ -79,7 +79,7 @@ public class AgentRuntime {
         this.systemPrompt = loadSystemPrompt(config.getContext().getSystemPromptPath(), resourceLoader);
         log.info("系统提示词已加载: {} 字符", systemPrompt.length());
 
-        this.toolService = createToolRegistry();
+        this.toolService = createToolService();
         connectMcpServers();
 
         log.info("AgentRuntime 就绪: {} 个工具", toolService.getAllToolNames().size());
@@ -152,7 +152,7 @@ public class AgentRuntime {
     //  Getter
     // ═══════════════════════════════════════════════════════════════════
 
-    public SessionIndexStore getSessionRegistry() { return sessionIndexStore; }
+    public SessionIndexStore getSessionIndexStore() { return sessionIndexStore; }
 
     /** 获取指定会话的账本路径（不需要会话已加载）。 */
     public Path getTranscriptPath(String sessionId) {
@@ -193,7 +193,7 @@ public class AgentRuntime {
         return "";
     }
 
-    private ToolService createToolRegistry() {
+    private ToolService createToolService() {
         ToolService registry = new ToolService(
                 config.getTools().getWhitelist(), objectMapper);
 

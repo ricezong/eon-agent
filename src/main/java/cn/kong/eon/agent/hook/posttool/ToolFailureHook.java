@@ -14,10 +14,10 @@ import org.slf4j.LoggerFactory;
 public class ToolFailureHook implements Hook.PostToolHook {
     private static final Logger log = LoggerFactory.getLogger(ToolFailureHook.class);
 
-    private final ToolCircuitBreaker tracker;
+    private final ToolCircuitBreaker circuitBreaker;
 
-    public ToolFailureHook(ToolCircuitBreaker tracker) {
-        this.tracker = tracker;
+    public ToolFailureHook(ToolCircuitBreaker circuitBreaker) {
+        this.circuitBreaker = circuitBreaker;
     }
 
     @Override
@@ -37,7 +37,7 @@ public class ToolFailureHook implements Hook.PostToolHook {
 
     @Override
     public HookResult afterToolExecution(SessionState state, String toolName, boolean success) {
-        String msg = tracker.record(toolName, success);
+        String msg = circuitBreaker.record(toolName, success);
         if (!msg.isEmpty()) {
             log.warn("[ToolFailureHook] {}", msg);
             state.addNudge(msg);

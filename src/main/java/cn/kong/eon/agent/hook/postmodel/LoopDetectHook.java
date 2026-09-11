@@ -27,15 +27,15 @@ public class LoopDetectHook implements Hook.PostModelHook {
 
     private final int warnThreshold;
     private final int stopThreshold;
-    private final ToolCircuitBreaker tracker;
+    private final ToolCircuitBreaker circuitBreaker;
 
     /** 指纹 → 调用次数，同一轮内累计 */
     private final Map<String, Integer> callFingerprintCount = new HashMap<>();
 
-    public LoopDetectHook(AgentConfig.LoopDetectConfig cfg, ToolCircuitBreaker tracker) {
+    public LoopDetectHook(AgentConfig.LoopDetectConfig cfg, ToolCircuitBreaker circuitBreaker) {
         this.warnThreshold = cfg.getRepeatWarn();
         this.stopThreshold = cfg.getRepeatStop();
-        this.tracker = tracker;
+        this.circuitBreaker = circuitBreaker;
     }
 
     @Override
@@ -61,7 +61,7 @@ public class LoopDetectHook implements Hook.PostModelHook {
         }
 
         for (ToolExecutionRequest req : requests) {
-            if (tracker.isTripped(req.name())) {
+            if (circuitBreaker.isTripped(req.name())) {
                 continue;
             }
 

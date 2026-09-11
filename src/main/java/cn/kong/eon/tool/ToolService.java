@@ -16,7 +16,7 @@ public class ToolService {
 
     private final Map<String, ToolDescriptor> tools = new LinkedHashMap<>();
     private final Set<String> whitelist;
-    private final ArgumentTypeCoercer sanitizer;
+    private final ArgumentTypeCoercer coercer;
     private final ObjectMapper objectMapper;
 
     private final Map<String, RemoteToolInvoker> mcpToolSources = new HashMap<>();
@@ -25,7 +25,7 @@ public class ToolService {
     public ToolService(Set<String> whitelist, ObjectMapper objectMapper) {
         this.whitelist = whitelist != null ? whitelist : new HashSet<>();
         this.objectMapper = objectMapper;
-        this.sanitizer = new ArgumentTypeCoercer(objectMapper);
+        this.coercer = new ArgumentTypeCoercer(objectMapper);
     }
 
     /** 注册本地工具（受白名单过滤）。 */
@@ -98,9 +98,9 @@ public class ToolService {
         ToolDescriptor descriptor = tools.get(name);
         if (descriptor != null) {
             try {
-                // 根据工具 Schema 清洗参数类型
-                Map<String, Object> sanitized = sanitizer.sanitize(descriptor.getSpecification(), arguments);
-                ToolOutcome result = descriptor.getExecutor().execute(sanitized, state, context);
+                // 根据工具 Schema 转换参数类型
+                Map<String, Object> coerced = coercer.coerce(descriptor.getSpecification(), arguments);
+                ToolOutcome result = descriptor.getExecutor().execute(coerced, state, context);
                 log.debug("本地工具执行: {} -> 成功={} {} 字符", name, result.success(), result.content().length());
                 return result;
             } catch (Exception e) {

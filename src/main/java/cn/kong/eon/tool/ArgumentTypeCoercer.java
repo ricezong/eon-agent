@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 参数类型清洗器。根据工具 Schema 声明的类型，对 LLM 返回的参数做类型转换。
+ * 参数类型转换器。根据工具 Schema 声明的类型，对 LLM 返回的参数做类型强制转换。
  */
 public class ArgumentTypeCoercer {
     private static final Logger log = LoggerFactory.getLogger(ArgumentTypeCoercer.class);
@@ -22,8 +22,8 @@ public class ArgumentTypeCoercer {
         this.objectMapper = objectMapper;
     }
 
-    /** 根据 Schema 清洗参数，返回新 Map（不修改原 Map）。 */
-    public Map<String, Object> sanitize(ToolSpecification spec, Map<String, Object> args) {
+    /** 根据 Schema 转换参数类型，返回新 Map（不修改原 Map）。 */
+    public Map<String, Object> coerce(ToolSpecification spec, Map<String, Object> args) {
         if (args == null || args.isEmpty()) return args;
         if (spec == null || spec.parameters() == null) return args;
 
@@ -37,9 +37,9 @@ public class ArgumentTypeCoercer {
             Object raw = cleaned.get(propName);
             if (raw == null) continue;
 
-            Object fixed = sanitizeValue(propName, schema, raw);
+            Object fixed = coerceValue(propName, schema, raw);
             if (fixed != raw) {
-                log.debug("[参数清洗] {}: {} ({}) -> {} ({})",
+                log.debug("[参数类型转换] {}: {} ({}) -> {} ({})",
                         propName, raw, raw.getClass().getSimpleName(),
                         fixed, fixed != null ? fixed.getClass().getSimpleName() : "null");
                 cleaned.put(propName, fixed);
@@ -49,7 +49,7 @@ public class ArgumentTypeCoercer {
     }
 
     /** 根据 Schema 类型分发转换。 */
-    private Object sanitizeValue(String propName, JsonSchemaElement schema, Object raw) {
+    private Object coerceValue(String propName, JsonSchemaElement schema, Object raw) {
         if (schema instanceof JsonArraySchema) {
             return toArray(raw);
         }

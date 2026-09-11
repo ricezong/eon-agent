@@ -50,10 +50,10 @@ public class EonAgent {
 
     // ── 协作组件
     private final CopyOnWriteArrayList<AgentEventListener> listeners;
-    private final ToolCallDispatcher toolHandler;
+    private final ToolCallDispatcher toolDispatcher;
     private final StopHandler stopHandler;
-    private final TurnMessageWriter flusher;
-    private final ToolCircuitBreaker tracker;
+    private final TurnMessageWriter messageWriter;
+    private final ToolCircuitBreaker circuitBreaker;
 
     // ── Hook 列表（按阶段分组）
     private final List<Hook.PreModelHook> preModelHooks = new ArrayList<>();
@@ -75,7 +75,7 @@ public class EonAgent {
                     TranscriptLedger transcriptLedger,
                     String basePrompt,
                     ToolContext toolContext,
-                    ToolCircuitBreaker tracker,
+                    ToolCircuitBreaker circuitBreaker,
                     List<AgentEventListener> listeners,
                     ObjectMapper objectMapper) {
         this.config = config;
@@ -84,13 +84,13 @@ public class EonAgent {
         this.transcriptLedger = transcriptLedger;
         this.basePrompt = basePrompt;
         this.toolContext = toolContext;
-        this.tracker = tracker;
+        this.circuitBreaker = circuitBreaker;
         this.listeners = new CopyOnWriteArrayList<>(listeners != null ? listeners : List.of());
         this.tokenCountEstimator = new OpenAiTokenCountEstimator("gpt-4o");
-        this.toolHandler = new ToolCallDispatcher(
-                toolService, toolContext, this::emit, tracker,
+        this.toolDispatcher = new ToolCallDispatcher(
+                toolService, toolContext, this::emit, circuitBreaker,
                 config.getTools().getParallelism(), objectMapper);
-        this.flusher = new TurnMessageWriter(transcriptLedger);
+        this.messageWriter = new TurnMessageWriter(transcriptLedger);
         this.stopHandler = new StopHandler(config, this::emit);
     }
 
@@ -117,7 +117,7 @@ public class EonAgent {
     }
 
     public void shutdown() {
-        toolHandler.shutdown();
+        toolDispatcher.shutdown();
         log.info("EonAgent 资源已释放");
     }
 
@@ -242,12 +242,12 @@ public class EonAgent {
             }
 
             // ── 阶段 7：推进熔断冷却 ──
-            tracker.tickCooldown();
+            circuitBreaker.tickCooldown();
 
             return new LoopAction.Continue();
         } finally {
             // ── 阶段 8：消息回填 ──
-            flusher.flush(state);
+            messageWriter.flush(state);
         }
     }
 
@@ -259,7 +259,7 @@ public class EonAgent {
         }
 
         // 执行工具（ToolCallDispatcher 内部发出 agent.tool_use 和 agent.tool_result）
-        List<ToolCallRecord> results = toolHandler.execute(state);
+        List<ToolCallRecord> results = toolDispatcher.execute(state);
 
         // PostTool Hooks
         for (int i = 0; i < requests.size(); i++) {
@@ -278,7 +278,7 @@ public class EonAgent {
     }
 
     private LoopAction finishSkip(SessionState state) {
-        tracker.tickCooldown();
+        circuitBreaker.tickCooldown();
         return new LoopAction.Continue();
     }
 

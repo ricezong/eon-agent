@@ -8,7 +8,7 @@ import cn.kong.eon.web.dto.SessionListItem;
 import cn.kong.eon.event.AgentEvent;
 import cn.kong.eon.event.AgentEventListener;
 import cn.kong.eon.web.sse.SseAgentEventListener;
-import cn.kong.eon.web.sse.TurnEventFormatter;
+import cn.kong.eon.web.sse.AgentEventFormatter;
 import cn.kong.eon.runtime.TranscriptReplayer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -32,15 +32,15 @@ import java.util.concurrent.ExecutorService;
 public class AgentController {
     private static final Logger log = LoggerFactory.getLogger(AgentController.class);
 
-    private final AgentRuntime app;
+    private final AgentRuntime runtime;
     private final ExecutorService sseExecutor;
     private final ObjectMapper objectMapper;
 
     @Autowired
-    public AgentController(AgentRuntime app,
+    public AgentController(AgentRuntime runtime,
                            @Qualifier("sseExecutor") ExecutorService sseExecutor,
                            ObjectMapper objectMapper) {
-        this.app = app;
+        this.runtime = runtime;
         this.sseExecutor = sseExecutor;
         this.objectMapper = objectMapper;
     }
@@ -64,7 +64,7 @@ public class AgentController {
                 List<AgentEventListener> listeners = new ArrayList<>();
                 listeners.add(new SseAgentEventListener(emitter, objectMapper));
 
-                RunResult result = app.run(request, listeners);
+                RunResult result = runtime.run(request, listeners);
                 emitter.send(SseEmitter.event().name("agent.message.final")
                         .data(Map.of("content", result.content(), "session_id", result.sessionId())));
                 emitter.complete();
@@ -85,7 +85,7 @@ public class AgentController {
     /** 中断指定会话的当前任务。 */
     @PostMapping("/interrupt")
     public Map<String, Object> interrupt(@RequestBody InterruptRequest request) {
-        boolean interrupted = app.interrupt(request.sessionId());
+        boolean interrupted = runtime.interrupt(request.sessionId());
         return Map.of("status", interrupted ? "interrupted" : "no_session");
     }
 
@@ -97,7 +97,7 @@ public class AgentController {
     @GetMapping("/sessions")
     public List<SessionListItem> listSessions(
             @RequestParam(required = false, defaultValue = "default") String userId) {
-        var sessions = app.getSessionRegistry().list(userId);
+        var sessions = runtime.getSessionIndexStore().list(userId);
         List<SessionListItem> result = new ArrayList<>();
         for (int i = 0; i < sessions.size(); i++) {
             var s = sessions.get(i);
@@ -116,7 +116,7 @@ public class AgentController {
     @DeleteMapping("/sessions/{sessionId}")
     public Map<String, Object> deleteSession(@PathVariable String sessionId,
             @RequestParam(required = false, defaultValue = "default") String userId) {
-        boolean deleted = app.getSessionRegistry().delete(userId, sessionId);
+        boolean deleted = runtime.getSessionIndexStore().delete(userId, sessionId);
         return Map.of("status", deleted ? "deleted" : "not_found", "session_id", sessionId);
     }
 
@@ -125,11 +125,11 @@ public class AgentController {
      */
     @GetMapping("/sessions/{sessionId}")
     public List<Map<String, Object>> getSession(@PathVariable String sessionId) {
-        var transcriptPath = app.getTranscriptPath(sessionId);
+        var transcriptPath = runtime.getTranscriptPath(sessionId);
         TranscriptReplayer replayer = new TranscriptReplayer(objectMapper);
         List<AgentEvent> events = replayer.replay(transcriptPath);
         // 与实时 SSE 共用同一个格式化器，保证恢复渲染与实时渲染结构一致
-        TurnEventFormatter formatter = new TurnEventFormatter();
+        AgentEventFormatter formatter = new AgentEventFormatter();
         List<Map<String, Object>> rendered = new ArrayList<>(events.size());
         for (AgentEvent event : events) {
             rendered.add(event.accept(formatter));

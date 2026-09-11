@@ -71,7 +71,7 @@ public class AgentSession {
     private final String transcriptPath;
     private final SessionState sessionState;
     private final CompressionPolicy compressionPolicy;
-    private final ToolCircuitBreaker tracker;
+    private final ToolCircuitBreaker circuitBreaker;
     private final LoopDetectHook loopDetectHook;
     private final TodoSnapshotHook todoSnapshotHook;
     private final EonAgent agent;
@@ -155,8 +155,8 @@ public class AgentSession {
 
         // ── 7. 运行时组件
         var ldc = config.getLoopDetect();
-        this.tracker = new ToolCircuitBreaker(ldc);
-        this.loopDetectHook = new LoopDetectHook(ldc, tracker);
+        this.circuitBreaker = new ToolCircuitBreaker(ldc);
+        this.loopDetectHook = new LoopDetectHook(ldc, circuitBreaker);
         this.todoSnapshotHook = new TodoSnapshotHook(config, snapshotStore, todoStore);
         this.compressionPolicy = createCompressionPolicy();
 
@@ -168,7 +168,7 @@ public class AgentSession {
         this.agent = new EonAgent(
                 config, llmClient, toolService,
                 transcriptLedger, systemPrompt,
-                toolContext, tracker, listeners, objectMapper);
+                toolContext, circuitBreaker, listeners, objectMapper);
         registerHooks();
 
         log.info("会话 {} 已就绪: {} 个工具, {} 个 hook, {} 个 listener",
@@ -186,7 +186,7 @@ public class AgentSession {
         }
 
         sessionState.beginRun(userInput);
-        tracker.reset();
+        circuitBreaker.reset();
         loopDetectHook.reset();
         todoSnapshotHook.reset();
 
@@ -209,12 +209,12 @@ public class AgentSession {
     }
 
     /** 动态注册事件监听器。 */
-    public void addTurnListener(AgentEventListener listener) {
+    public void addListener(AgentEventListener listener) {
         agent.addListener(listener);
     }
 
     /** 动态移除事件监听器。 */
-    public void removeTurnListener(AgentEventListener listener) {
+    public void removeListener(AgentEventListener listener) {
         agent.removeListener(listener);
     }
 
@@ -224,9 +224,9 @@ public class AgentSession {
 
     public String getSessionId() { return sessionId; }
     public SessionSummary getResumedSession() { return resumedSession; }
-    public TranscriptLedger getJsonlStore() { return transcriptLedger; }
+    public TranscriptLedger getTranscriptLedger() { return transcriptLedger; }
     public SessionState getSessionState() { return sessionState; }
-    public ToolService getToolRegistry() { return toolService; }
+    public ToolService getToolService() { return toolService; }
 
     // ═══════════════════════════════════════════════════════════════════
     //  内部装配
@@ -293,7 +293,7 @@ public class AgentSession {
 
         agent.addHook(new GateHook(toolService, config));
 
-        agent.addHook(new ToolFailureHook(tracker));
+        agent.addHook(new ToolFailureHook(circuitBreaker));
         agent.addHook(todoSnapshotHook);
     }
 

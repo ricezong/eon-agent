@@ -34,7 +34,7 @@ public class ToolCallDispatcher {
 
     private final ToolService toolService;
     private final ToolContext toolContext;
-    private final ToolCircuitBreaker tracker;
+    private final ToolCircuitBreaker circuitBreaker;
     private final ExecutorService parallelExecutor;
     private final Consumer<AgentEvent> emitter;
 
@@ -43,13 +43,13 @@ public class ToolCallDispatcher {
     public ToolCallDispatcher(ToolService toolService,
                               ToolContext toolContext,
                               Consumer<AgentEvent> emitter,
-                              ToolCircuitBreaker tracker,
+                              ToolCircuitBreaker circuitBreaker,
                               int parallelism,
                               ObjectMapper objectMapper) {
         this.toolService = toolService;
         this.toolContext = toolContext;
         this.emitter = emitter;
-        this.tracker = tracker;
+        this.circuitBreaker = circuitBreaker;
         this.objectMapper = objectMapper;
         this.parallelExecutor = Executors.newFixedThreadPool(Math.max(1, parallelism), r -> {
             Thread t = new Thread(r, "tool-exec");
@@ -118,8 +118,8 @@ public class ToolCallDispatcher {
         emit(AgentToolUse.now(turnId, req.id(), req.name(), req.arguments()));
 
         // 熔断拦截
-        if (tracker.isTripped(req.name())) {
-            String msg = tracker.trippedMessage(req.name());
+        if (circuitBreaker.isTripped(req.name())) {
+            String msg = circuitBreaker.trippedMessage(req.name());
             log.warn("[ToolExecution] 工具 '{}' 已熔断，跳过执行", req.name());
             return syntheticError(req, msg, state);
         }
