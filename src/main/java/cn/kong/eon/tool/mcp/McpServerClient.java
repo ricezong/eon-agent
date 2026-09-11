@@ -60,12 +60,7 @@ public class McpServerClient implements RemoteToolInvoker {
             return Collections.emptyList();
         }
         try {
-            List<ToolSpecification> tools = mcpClient.listTools();
-            log.info("MCP 服务 '{}' 提供 {} 个工具", serverKey, tools.size());
-            for (ToolSpecification t : tools) {
-                log.info("  - {}: {}", t.name(), t.description() != null ? t.description() : "");
-            }
-            return tools;
+            return mcpClient.listTools();
         } catch (Exception e) {
             log.error("从 '{}' 获取 MCP 工具列表失败: {}", serverKey, e.getMessage(), e);
             return Collections.emptyList();
