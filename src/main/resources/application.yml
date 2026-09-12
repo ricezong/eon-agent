@@ -76,8 +76,8 @@ eon:
     jitter: 0.2                             # 抖动系数
 
   storage:
-    base_dir: "/home/workspace/sessions"      # 会话数据根目录: base_dir/{sessionId}/
-    db_path: "/home/workspace/sessions/eon.db" # SQLite 索引数据库路径
+    base_dir: "./home/workspace/sessions"      # 会话数据根目录: base_dir/{sessionId}/
+    db_path: "./home/workspace/sessions/eon.db" # SQLite 索引数据库路径
 
   # 活跃会话上下文缓存（SessionScope）
   session:
