@@ -150,7 +150,8 @@ public class SessionScopeLoader {
                 throw new RuntimeException("创建工作区子目录失败: " + sub, e);
             }
         }
-        return new PathResolver(sessionDir.toAbsolutePath().toString(), config.getTools().isSandboxEnabled());
+        Path downloadDir = sessionDir.resolve("download").toAbsolutePath().normalize();
+        return new PathResolver(downloadDir.toString(), sessionDir.toAbsolutePath().normalize().toString(), config.getTools().isSandboxEnabled());
     }
 
     private IngestPipeline createContextPipeline(ArtifactStore artifactStore) {

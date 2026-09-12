@@ -262,7 +262,7 @@ public class AgentEngine {
         contextBuilder.setTokenCountEstimator(tokenCountEstimator);
         contextBuilder.setSystemPrompt(basePrompt);
         contextBuilder.setSummary(r.session().compressionState().getLastSummary());
-        contextBuilder.setEnvironment(new EnvironmentContext().render());
+        contextBuilder.setEnvironment(EnvironmentContext.of(r.session().pathResolver().sessionDir()).render());
         contextBuilder.setMemories(r.session().memoryStore().renderForInjection());
         contextBuilder.setWindow(r.session().ledger().window());
 
