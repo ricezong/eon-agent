@@ -20,11 +20,6 @@ public class ArtifactStore {
 
     public ArtifactStore(Path artifactDir) {
         this.artifactDir = artifactDir;
-        try {
-            Files.createDirectories(artifactDir);
-        } catch (IOException e) {
-            throw new RuntimeException("创建 artifact 目录失败: " + artifactDir, e);
-        }
     }
 
     /** 保存大文本为 artifact，返回引用。 */

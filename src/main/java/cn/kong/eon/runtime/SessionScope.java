@@ -5,7 +5,7 @@ import cn.kong.eon.context.policy.CompressionPolicy;
 import cn.kong.eon.engine.guard.ToolCircuitBreaker;
 import cn.kong.eon.llm.TokenUsage;
 import cn.kong.eon.store.artifact.ArtifactStore;
-import cn.kong.eon.store.ledger.TranscriptLedger;
+import cn.kong.eon.store.ledger.LedgerStore;
 import cn.kong.eon.store.memory.MemoryStore;
 import cn.kong.eon.store.snapshot.SessionSnapshotStore;
 import cn.kong.eon.store.todo.TodoStore;
@@ -28,9 +28,9 @@ public final class SessionScope {
     // ── 不变部分（装配一次）
     private final String sessionId;
     /** 会话账本路径。压缩摘要需要它做兜底文案，故作为会话级不变量存下来。 */
-    private final String transcriptPath;
+    private final String ledgerPath;
     private final boolean snapshotEnabled;
-    private final TranscriptLedger ledger;
+    private final LedgerStore ledger;
     private final TodoStore todoStore;
     private final ArtifactStore artifactStore;
     private final SessionSnapshotStore snapshotStore;
@@ -49,9 +49,9 @@ public final class SessionScope {
     private final ReentrantLock runLock = new ReentrantLock();
 
     public SessionScope(String sessionId,
-                        String transcriptPath,
+                        String ledgerPath,
                         boolean snapshotEnabled,
-                        TranscriptLedger ledger,
+                        LedgerStore ledger,
                         TodoStore todoStore,
                         ArtifactStore artifactStore,
                         SessionSnapshotStore snapshotStore,
@@ -62,7 +62,7 @@ public final class SessionScope {
                         TokenUsage usageAccum,
                         CompressionState compressionState) {
         this.sessionId = sessionId;
-        this.transcriptPath = transcriptPath;
+        this.ledgerPath = ledgerPath;
         this.snapshotEnabled = snapshotEnabled;
         this.ledger = ledger;
         this.todoStore = todoStore;
@@ -158,8 +158,8 @@ public final class SessionScope {
     // ═══════════════════════════════════════════════════════════════════
 
     public String sessionId() { return sessionId; }
-    public String transcriptPath() { return transcriptPath; }
-    public TranscriptLedger ledger() { return ledger; }
+    public String ledgerPath() { return ledgerPath; }
+    public LedgerStore ledger() { return ledger; }
     public TodoStore todoStore() { return todoStore; }
     public ArtifactStore artifactStore() { return artifactStore; }
     public SessionSnapshotStore snapshotStore() { return snapshotStore; }

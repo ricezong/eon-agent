@@ -66,6 +66,9 @@ public class AgentChatServiceImpl implements AgentChatService {
         // 而此时还没进 try 块，release 不会执行，会话会卡在 RUNNING 直到 TTL 淘汰（默认 24 小时）
         if (isNew) {
             sessionIndexStore.insert(sessionId, userId, deriveTitle(userInput));
+        } else {
+            // 已有会话收到新用户消息，递增用户消息计数
+            sessionIndexStore.incrementUserMessageCount(sessionId);
         }
 
         // 缓存命中则跳过账本回放；同 session 已有任务在跑时按 busyPolicy 拒绝或排队
@@ -86,6 +89,8 @@ public class AgentChatServiceImpl implements AgentChatService {
             return new RunResult(output, sessionId);
         } finally {
             try {
+                // 任务结束后更新索引：message_count 取账本实际行数
+                sessionIndexStore.touch(sessionId, scope.ledger().getMessageCount());
                 registry.release(sessionId);
             } finally {
                 if (ctx != null) {

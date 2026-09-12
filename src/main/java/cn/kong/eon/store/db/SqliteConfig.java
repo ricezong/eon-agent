@@ -3,48 +3,69 @@ package cn.kong.eon.store.db;
 import cn.kong.eon.config.AgentConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
+import javax.sql.DataSource;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 
 /**
- * SQLite 数据库管理。负责连接、建表、WAL 模式开启。
+ * SQLite 基础设施配置。
+ * <p>
+ * 职责：建目录 → 创建单例 DataSource（连接复用） → 建表（DDL） → 设置 WAL/FK PRAGMA。
+ * 使用 SQLite JDBC 内置的连接池（{@code org.sqlite.SQLiteDataSource}），
+ * 避免每次操作都 {@code DriverManager.getConnection()} 创建裸连接。
  */
-@Component
-public class DatabaseManager {
-    private static final Logger log = LoggerFactory.getLogger(DatabaseManager.class);
+@Configuration
+public class SqliteConfig {
 
-    private final String dbPath;
+    private static final Logger log = LoggerFactory.getLogger(SqliteConfig.class);
 
-    public DatabaseManager(AgentConfig config) {
-        this.dbPath = config.getStorage().getDbPath();
+    /**
+     * SQLite 单例 DataSource。
+     * <p>
+     * SQLite 的 {@code SQLiteDataSource} 内部维护连接池，多次调用 {@code getConnection()}
+     * 复用同一个文件句柄。WAL 模式与外键约束在首次连接时通过 PRAGMA 设置，
+     * 后续从池中取出的连接继承这些设置。
+     */
+    @Bean
+    public DataSource dataSource(AgentConfig config) {
+        String dbPath = config.getStorage().getDbPath();
+
+        // 建目录
         try {
             Path path = Path.of(dbPath).toAbsolutePath();
             Files.createDirectories(path.getParent());
-        } catch (Exception e) {
+        } catch (IOException e) {
             throw new RuntimeException("创建数据库目录失败: " + dbPath, e);
         }
-        initSchema();
+
+        org.sqlite.SQLiteDataSource ds = new org.sqlite.SQLiteDataSource();
+        ds.setUrl("jdbc:sqlite:" + dbPath);
+
+        // 初始化：PRAGMA + DDL
+        initSchema(ds);
         log.info("SQLite 已就绪: {}", dbPath);
+        return ds;
     }
 
-    public Connection getConnection() throws SQLException {
-        Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute("PRAGMA journal_mode=WAL");
-            stmt.execute("PRAGMA foreign_keys=ON");
-        }
-        return conn;
-    }
-
-    private void initSchema() {
-        try (Connection conn = getConnection();
+    /**
+     * 建表。在 DataSource 创建后、Bean 注册前执行，保证表结构就绪。
+     */
+    private void initSchema(DataSource ds) {
+        try (Connection conn = ds.getConnection();
              Statement stmt = conn.createStatement()) {
+
+            // WAL 模式：读写并发不互斥
+            stmt.execute("PRAGMA journal_mode=WAL");
+            // 外键约束
+            stmt.execute("PRAGMA foreign_keys=ON");
+
             stmt.execute("""
                     CREATE TABLE IF NOT EXISTS chat_sessions (
                         session_id          TEXT PRIMARY KEY,

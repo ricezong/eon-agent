@@ -4,7 +4,7 @@ import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.event.AgentEvent;
 import cn.kong.eon.runtime.SessionRegistry;
 import cn.kong.eon.store.index.SessionIndexStore;
-import cn.kong.eon.store.ledger.TranscriptReplayer;
+import cn.kong.eon.store.ledger.LedgerReplayer;
 import cn.kong.eon.web.dto.SessionListItem;
 import cn.kong.eon.web.sse.AgentEventFormatter;
 import org.slf4j.Logger;
@@ -27,13 +27,13 @@ public class AgentSessionServiceImpl implements AgentSessionService {
     private final AgentConfig config;
     private final SessionIndexStore indexStore;
     private final SessionRegistry registry;
-    private final TranscriptReplayer replayer;
+    private final LedgerReplayer replayer;
     private final AgentEventFormatter formatter;
 
     public AgentSessionServiceImpl(AgentConfig config,
                                    SessionIndexStore indexStore,
                                    SessionRegistry registry,
-                                   TranscriptReplayer replayer,
+                                   LedgerReplayer replayer,
                                    AgentEventFormatter formatter) {
         this.config = config;
         this.indexStore = indexStore;
@@ -70,7 +70,7 @@ public class AgentSessionServiceImpl implements AgentSessionService {
 
     @Override
     public List<Map<String, Object>> getSessionEvents(String sessionId) {
-        List<AgentEvent> events = replayer.replay(transcriptPath(sessionId));
+        List<AgentEvent> events = replayer.replay(ledgerPath(sessionId));
         // 与实时 SSE 共用同一个格式化器实例，保证恢复渲染与实时渲染结构一致
         List<Map<String, Object>> rendered = new ArrayList<>(events.size());
         for (AgentEvent event : events) {
@@ -80,10 +80,10 @@ public class AgentSessionServiceImpl implements AgentSessionService {
     }
 
     /** 指定会话的账本路径（不需要会话已加载）。 */
-    private Path transcriptPath(String sessionId) {
+    private Path ledgerPath(String sessionId) {
         return Path.of(config.getStorage().getBaseDir())
                 .toAbsolutePath().normalize()
                 .resolve(sessionId)
-                .resolve("transcript.jsonl");
+                .resolve("ledger.jsonl");
     }
 }

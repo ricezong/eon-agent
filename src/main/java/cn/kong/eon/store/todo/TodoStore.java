@@ -17,13 +17,12 @@ public class TodoStore {
     private final AtomicInteger idCounter = new AtomicInteger(0);
 
     /** 全量替换 Todo 列表。 */
-    public synchronized List<TodoItem> replaceAll(List<TodoItem> newTodos, int currentTurn) {
+    public synchronized List<TodoItem> replaceAll(List<TodoItem> newTodos) {
         todos.clear();
         for (TodoItem t : newTodos) {
             if (t.getId() == null || t.getId().isBlank()) {
                 t.setId(generateId());
             }
-            t.setLastModifiedTurn(currentTurn);
             todos.put(t.getId(), t);
         }
         log.debug("TodoStore 全量替换: {} 个条目", todos.size());
@@ -31,12 +30,11 @@ public class TodoStore {
     }
 
     /** 按 id 合并：已存在 id 更新内容/状态，新 id 追加。 */
-    public synchronized List<TodoItem> mergeById(List<TodoItem> newTodos, int currentTurn) {
+    public synchronized List<TodoItem> mergeById(List<TodoItem> newTodos) {
         for (TodoItem t : newTodos) {
             if (t.getId() == null || t.getId().isBlank()) {
                 t.setId(generateId());
             }
-            t.setLastModifiedTurn(currentTurn);
             todos.put(t.getId(), t);
         }
         log.debug("TodoStore 合并: 共 {} 个条目", todos.size());

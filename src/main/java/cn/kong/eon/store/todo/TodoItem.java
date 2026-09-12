@@ -20,7 +20,6 @@ public class TodoItem {
     private String notes;
     private String blockReason;         // 阻塞原因
     private int version;                // 乐观锁版本
-    private int lastModifiedTurn;
 
     public TodoItem() {
         this.dependsOn = new ArrayList<>();
@@ -116,14 +115,6 @@ public class TodoItem {
 
     public void setVersion(int version) {
         this.version = version;
-    }
-
-    public int getLastModifiedTurn() {
-        return lastModifiedTurn;
-    }
-
-    public void setLastModifiedTurn(int lastModifiedTurn) {
-        this.lastModifiedTurn = lastModifiedTurn;
     }
 
     @Override

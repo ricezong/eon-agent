@@ -69,9 +69,9 @@ public class TodoWriteTool implements ToolExecutor {
 
         List<TodoItem> result;
         if (merge) {
-            result = runtime.todoStore().mergeById(items, runtime.turn());
+            result = runtime.todoStore().mergeById(items);
         } else {
-            result = runtime.todoStore().replaceAll(items, runtime.turn());
+            result = runtime.todoStore().replaceAll(items);
         }
 
         // 全部完成/取消时清空 TodoStore，使 Todo 不再注入上下文

@@ -16,17 +16,17 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 账本回放器。读取 transcript.jsonl，将 SerializedMessage 还原为 AgentEvent 列表。
+ * 账本回放器。读取 ledger.jsonl，将 SerializedMessage 还原为 AgentEvent 列表。
  * 映射规则：user→不产出事件；ai(无toolCalls)→AgentThinking+AgentMessage；
  * ai(有toolCalls)→AgentThinking+AgentToolUse×N；tool→AgentToolResult；system→跳过。
  */
 @Component
-public class TranscriptReplayer {
-    private static final Logger log = LoggerFactory.getLogger(TranscriptReplayer.class);
+public class LedgerReplayer {
+    private static final Logger log = LoggerFactory.getLogger(LedgerReplayer.class);
 
     private final ObjectMapper mapper;
 
-    public TranscriptReplayer(ObjectMapper mapper) {
+    public LedgerReplayer(ObjectMapper mapper) {
         this.mapper = mapper;
     }
 
@@ -34,24 +34,24 @@ public class TranscriptReplayer {
      * 读取账本，还原为事件列表。
      * 由调用方用 {@code AgentEventFormatter} 格式化，即可与实时 SSE 输出结构完全一致。
      */
-    public List<AgentEvent> replay(Path transcriptPath) {
+    public List<AgentEvent> replay(Path ledgerPath) {
         List<AgentEvent> events = new ArrayList<>();
-        if (!Files.exists(transcriptPath)) {
-            log.warn("账本不存在: {}", transcriptPath);
+        if (!Files.exists(ledgerPath)) {
+            log.warn("账本不存在: {}", ledgerPath);
             return events;
         }
 
         try {
-            List<String> lines = Files.readAllLines(transcriptPath);
+            List<String> lines = Files.readAllLines(ledgerPath);
             String turnId = "replay_" + UUID.randomUUID().toString().substring(0, 8);
 
             for (int i = 0; i < lines.size(); i++) {
                 String line = lines.get(i);
                 if (line.isBlank()) continue;
 
-                TranscriptLedger.SerializedMessage sm;
+                LedgerStore.SerializedMessage sm;
                 try {
-                    sm = mapper.readValue(line, TranscriptLedger.SerializedMessage.class);
+                    sm = mapper.readValue(line, LedgerStore.SerializedMessage.class);
                 } catch (Exception e) {
                     log.warn("回放时反序列化失败，跳过第 {} 行: {}", i, e.getMessage());
                     continue;
@@ -65,7 +65,7 @@ public class TranscriptReplayer {
 
             log.info("账本回放完成: {} 行 → {} 个事件", lines.size(), events.size());
         } catch (IOException e) {
-            log.error("读取账本失败: {}", transcriptPath, e);
+            log.error("读取账本失败: {}", ledgerPath, e);
         }
 
         return events;
@@ -74,7 +74,7 @@ public class TranscriptReplayer {
     /**
      * 将单条 SerializedMessage 转为对应的 AgentEvent 列表。
      */
-    private List<AgentEvent> toEvents(TranscriptLedger.SerializedMessage sm, String turnId, int seq) {
+    private List<AgentEvent> toEvents(LedgerStore.SerializedMessage sm, String turnId, int seq) {
         List<AgentEvent> events = new ArrayList<>();
         Instant ts = Instant.now();
 
@@ -88,7 +88,7 @@ public class TranscriptReplayer {
 
             // 有工具调用 → tool_use 事件
             if (sm.toolCalls != null && !sm.toolCalls.isEmpty()) {
-                for (TranscriptLedger.ToolCallRef ref : sm.toolCalls) {
+                for (LedgerStore.ToolCallRef ref : sm.toolCalls) {
                     events.add(new AgentToolUse(turnId, ref.id, ref.name,
                             ref.arguments, ts));
                 }

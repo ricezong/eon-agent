@@ -37,7 +37,7 @@ public class ContextCompressionHook implements Hook.PreModelHook {
         ContextMetrics before = r.turn().prompt().metrics();
 
         CompressionLevel level = r.session().compressionPolicy()
-                .apply(window, before, cs, r.task().turnCount(), r.session().transcriptPath());
+                .apply(window, before, cs, r.task().turnCount(), r.session().ledgerPath());
         if (!level.enabled()) {
             return HookResult.ok();
         }

@@ -18,17 +18,17 @@ public final class RunContext implements AutoCloseable {
 
     private final SessionScope session;
     private final TaskScope task;
-    private final Consumer<AgentEvent> emitter;
     private TurnScope turn;
+    private final Consumer<AgentEvent> emitter;
 
     public RunContext(SessionScope session,
                       TaskScope task,
                       List<AgentEventListener> listeners) {
         this.session = session;
         this.task = task;
-        this.emitter = buildEmitter(listeners);
         // 占位轮，引擎每轮调用 nextTurn() 后替换
         this.turn = new TurnScope(0);
+        this.emitter = buildEmitter(listeners);
         session.bindRun(this);
     }
 

@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
+import javax.sql.DataSource;
 import java.sql.*;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -17,10 +18,10 @@ import java.util.Optional;
 public class SessionIndexRepository {
     private static final Logger log = LoggerFactory.getLogger(SessionIndexRepository.class);
 
-    private final DatabaseManager dbManager;
+    private final DataSource dataSource;
 
-    public SessionIndexRepository(DatabaseManager dbManager) {
-        this.dbManager = dbManager;
+    public SessionIndexRepository(DataSource dataSource) {
+        this.dataSource = dataSource;
     }
 
     public record SessionIndex(
@@ -35,8 +36,8 @@ public class SessionIndexRepository {
 
     public void insert(String sessionId, String userId, String title) {
         String now = Instant.now().toString();
-        String sql = "INSERT INTO chat_sessions (session_id, user_id, title, created_at, last_active_at) VALUES (?, ?, ?, ?, ?)";
-        try (Connection conn = dbManager.getConnection();
+        String sql = "INSERT INTO chat_sessions (session_id, user_id, title, created_at, last_active_at, user_message_count) VALUES (?, ?, ?, ?, ?, 1)";
+        try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, sessionId);
             ps.setString(2, userId);
@@ -52,7 +53,7 @@ public class SessionIndexRepository {
     public List<SessionIndex> list(String userId) {
         String sql = "SELECT session_id, user_id, title, created_at, last_active_at, message_count, user_message_count FROM chat_sessions WHERE user_id = ? ORDER BY last_active_at DESC";
         List<SessionIndex> result = new ArrayList<>();
-        try (Connection conn = dbManager.getConnection();
+        try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, userId);
             try (ResultSet rs = ps.executeQuery()) {
@@ -71,7 +72,7 @@ public class SessionIndexRepository {
 
         // 先精确匹配
         String exactSql = "SELECT session_id, user_id, title, created_at, last_active_at, message_count, user_message_count FROM chat_sessions WHERE user_id = ? AND session_id = ?";
-        try (Connection conn = dbManager.getConnection();
+        try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(exactSql)) {
             ps.setString(1, userId);
             ps.setString(2, idOrPrefix);
@@ -85,7 +86,7 @@ public class SessionIndexRepository {
         // 前缀匹配
         String prefixSql = "SELECT session_id, user_id, title, created_at, last_active_at, message_count, user_message_count FROM chat_sessions WHERE user_id = ? AND session_id LIKE ?";
         List<SessionIndex> matches = new ArrayList<>();
-        try (Connection conn = dbManager.getConnection();
+        try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(prefixSql)) {
             ps.setString(1, userId);
             ps.setString(2, idOrPrefix + "%");
@@ -102,7 +103,7 @@ public class SessionIndexRepository {
 
     public boolean delete(String userId, String sessionId) {
         String sql = "DELETE FROM chat_sessions WHERE user_id = ? AND session_id = ?";
-        try (Connection conn = dbManager.getConnection();
+        try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, userId);
             ps.setString(2, sessionId);
@@ -113,17 +114,29 @@ public class SessionIndexRepository {
         }
     }
 
-    public void touch(String sessionId, int messageCount, int userMessageCount) {
-        String sql = "UPDATE chat_sessions SET last_active_at = ?, message_count = ?, user_message_count = ?, updated_at = datetime('now') WHERE session_id = ?";
-        try (Connection conn = dbManager.getConnection();
+    /** 更新活跃时间与账本消息总数。任务结束时调用。 */
+    public void touch(String sessionId, int messageCount) {
+        String sql = "UPDATE chat_sessions SET last_active_at = ?, message_count = ?, updated_at = datetime('now') WHERE session_id = ?";
+        try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, Instant.now().toString());
             ps.setInt(2, messageCount);
-            ps.setInt(3, userMessageCount);
-            ps.setString(4, sessionId);
+            ps.setString(3, sessionId);
             ps.executeUpdate();
         } catch (SQLException e) {
             log.error("更新会话索引失败: {}", sessionId, e);
+        }
+    }
+
+    /** 用户消息数 +1。已有会话收到新用户消息时调用。 */
+    public void incrementUserMessageCount(String sessionId) {
+        String sql = "UPDATE chat_sessions SET user_message_count = user_message_count + 1, updated_at = datetime('now') WHERE session_id = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, sessionId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            log.error("递增用户消息数失败: {}", sessionId, e);
         }
     }
 

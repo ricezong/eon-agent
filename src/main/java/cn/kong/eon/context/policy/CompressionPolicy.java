@@ -31,10 +31,10 @@ public class CompressionPolicy {
     /**
      * 执行本轮压缩。
      *
-     * @param transcriptPath 会话账本路径，仅在 SUMMARIZE 档透传给摘要器（用于兜底文案与提示词）
+     * @param ledgerPath 会话账本路径，仅在 SUMMARIZE 档透传给摘要器（用于兜底文案与提示词）
      */
     public CompressionLevel apply(ContextWindow window, ContextMetrics metrics,
-                                  CompressionState state, int turnCount, String transcriptPath) {
+                                  CompressionState state, int turnCount, String ledgerPath) {
         CompressionLevel level = resolveLevel(metrics, turnCount);
         if (!level.enabled()) {
             return CompressionLevel.NONE;
@@ -45,7 +45,7 @@ public class CompressionPolicy {
 
         boolean disposed;
         if (level == CompressionLevel.SUMMARIZE) {
-            String summary = summarizer.summarize(window, protectedFrom, state.getLastSummary(), transcriptPath);
+            String summary = summarizer.summarize(window, protectedFrom, state.getLastSummary(), ledgerPath);
             if (summary == null) {
                 return CompressionLevel.NONE;
             }

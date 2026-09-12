@@ -23,8 +23,8 @@ import java.util.Set;
  * JSONL 消息存储。磁盘 append-only 账本（永不修改）+ 内存 ContextWindow 上下文视图（可改写）。
  * 消息序号由本类发放（唯一知道账本长度的地方），回放与常规入站共用序号。
  */
-public class TranscriptLedger {
-    private static final Logger log = LoggerFactory.getLogger(TranscriptLedger.class);
+public class LedgerStore {
+    private static final Logger log = LoggerFactory.getLogger(LedgerStore.class);
 
     private final Path jsonlFile;
     private final ObjectMapper mapper;
@@ -33,17 +33,12 @@ public class TranscriptLedger {
     /** 下一条消息的序号，等于账本当前行数 */
     private int messageCount = 0;
 
-    public TranscriptLedger(Path jsonlFile, IngestPipeline pipeline, int replayFrom, ObjectMapper objectMapper) {
+    public LedgerStore(Path jsonlFile, IngestPipeline pipeline, int replayFrom, ObjectMapper objectMapper) {
         this.jsonlFile = jsonlFile;
         this.mapper = objectMapper;
         this.pipeline = pipeline;
-        try {
-            Files.createDirectories(jsonlFile.getParent());
-            if (Files.exists(jsonlFile)) {
-                loadAll(replayFrom);
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("JSONL 存储初始化失败: " + jsonlFile, e);
+        if (Files.exists(jsonlFile)) {
+            loadAll(replayFrom);
         }
     }
 
@@ -218,5 +213,9 @@ public class TranscriptLedger {
         public String id;
         public String name;
         public String arguments;
+    }
+
+    public int getMessageCount() {
+        return messageCount;
     }
 }

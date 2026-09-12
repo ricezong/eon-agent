@@ -72,9 +72,14 @@ public class SessionIndexStore {
         indexRepo.insert(sessionId, userId, title);
     }
 
-    /** 更新活跃时间与消息数。 */
-    public void touch(String sessionId, int messageCount, int userMessageCount) {
-        indexRepo.touch(sessionId, messageCount, userMessageCount);
+    /** 更新活跃时间与账本消息总数。任务结束时调用。 */
+    public void touch(String sessionId, int messageCount) {
+        indexRepo.touch(sessionId, messageCount);
+    }
+
+    /** 用户消息数 +1。已有会话收到新用户消息时调用。 */
+    public void incrementUserMessageCount(String sessionId) {
+        indexRepo.incrementUserMessageCount(sessionId);
     }
 
     private SessionSummary toSummary(SessionIndex idx) {

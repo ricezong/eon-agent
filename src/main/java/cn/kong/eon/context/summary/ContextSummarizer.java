@@ -37,7 +37,7 @@ public class ContextSummarizer {
      * 分段摘要中某段失败时跳过，全部失败才用兜底提示。
      */
     public String summarize(ContextWindow window, int protectedFrom,
-                            String existingSummary, String transcriptPath) {
+                            String existingSummary, String ledgerPath) {
         List<ContextBlock> removable = collectRemovable(window, protectedFrom);
         if (removable.isEmpty()) {
             return null;
@@ -48,7 +48,7 @@ public class ContextSummarizer {
         boolean anySuccess = false;
 
         for (int i = 0; i < segments.size(); i++) {
-            String merged = generateSummary(segments.get(i), summary, i + 1, segments.size(), transcriptPath);
+            String merged = generateSummary(segments.get(i), summary, i + 1, segments.size(), ledgerPath);
             if (merged == null || merged.isBlank()) {
                 log.warn("[Summary] 第 {}/{} 段摘要失败，跳过", i + 1, segments.size());
                 continue;
@@ -59,16 +59,16 @@ public class ContextSummarizer {
 
         if (!anySuccess) {
             log.warn("[Summary] 全部 {} 段摘要均失败，使用兜底摘要", segments.size());
-            return fallback(summary, transcriptPath);
+            return fallback(summary, ledgerPath);
         }
         return summary;
     }
 
     /** 全部段落失败时的兜底提示。 */
-    private static String fallback(String existingSummary, String transcriptPath) {
+    private static String fallback(String existingSummary, String ledgerPath) {
         if (existingSummary != null && !existingSummary.isBlank()) return existingSummary;
         return "[摘要失败] 历史对话摘要生成失败，完整对话记录: "
-                + (transcriptPath != null ? transcriptPath : "(transcript 路径不可用)");
+                + (ledgerPath != null ? ledgerPath : "(账本路径不可用)");
     }
 
     /**
@@ -140,7 +140,7 @@ public class ContextSummarizer {
      * 调用 LLM 把一段对话增量合并进已有摘要。
      */
     private String generateSummary(String segmentText, String existingSummary,
-                                   int index, int total, String transcriptPath) {
+                                   int index, int total, String ledgerPath) {
         String existingSection = StringUtils.isNotBlank(existingSummary) ? existingSummary : "(无旧摘要，首次生成)";
         String segmentHint = "";
         if (total > 1) {
@@ -188,7 +188,7 @@ public class ContextSummarizer {
                 === 待摘要的对话片段 ===
                 %s
                 """.formatted(maxOutputChars, segmentHint,
-                        transcriptPath != null ? transcriptPath : "(transcript 路径不可用)",
+                        ledgerPath != null ? ledgerPath : "(账本路径不可用)",
                         existingSection, segmentText);
 
         List<ChatMessage> messages = List.of(
