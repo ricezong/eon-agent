@@ -2,6 +2,7 @@ package cn.kong.eon.engine;
 
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.context.ContextBuilder;
+import cn.kong.eon.context.dynamic.EnvironmentContext;
 import cn.kong.eon.engine.exec.ToolCallDispatcher;
 import cn.kong.eon.engine.exec.TurnMessageWriter;
 import cn.kong.eon.engine.hook.Hook;
@@ -261,6 +262,7 @@ public class AgentEngine {
         contextBuilder.setTokenCountEstimator(tokenCountEstimator);
         contextBuilder.setSystemPrompt(basePrompt);
         contextBuilder.setSummary(r.session().compressionState().getLastSummary());
+        contextBuilder.setEnvironment(new EnvironmentContext().render());
         contextBuilder.setMemories(r.session().memoryStore().renderForInjection());
         contextBuilder.setWindow(r.session().ledger().window());
 

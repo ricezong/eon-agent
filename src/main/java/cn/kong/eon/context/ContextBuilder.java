@@ -14,13 +14,14 @@ import java.util.Map;
 
 /**
  * 上下文构建器。分层组装发送给 LLM 的 messages：
- * System → Memories → Summary → Transcript → Todo → Nudges。
+ * System → Memories → Summary → Environment → HistoryMsg → Todo → Nudges。
  */
 public class ContextBuilder {
 
     private String systemPrompt;
     private String memories;
     private String summary;
+    private String environment;
     private String todo;
     private String nudges;
     private ContextWindow window;
@@ -39,6 +40,10 @@ public class ContextBuilder {
         this.summary = summary;
     }
 
+    public void setEnvironment(String environment) {
+        this.environment = environment;
+    }
+
     public void setMemories(String memories) {
         this.memories = memories;
     }
@@ -51,7 +56,7 @@ public class ContextBuilder {
         this.nudges = nudges;
     }
 
-    /** 设置 transcript 数据源。 */
+    /** 设置 historyMsg 数据源。 */
     public void setWindow(ContextWindow window) {
         this.window = window;
     }
@@ -60,8 +65,8 @@ public class ContextBuilder {
         return window;
     }
 
-    /** transcript 的消息视图。 */
-    public List<ChatMessage> getTranscript() {
+    /** historyMsg 的消息视图。 */
+    public List<ChatMessage> getHistoryMsg() {
         return window != null ? window.toMessages() : List.of();
     }
 
@@ -94,9 +99,12 @@ public class ContextBuilder {
         if (summary != null && !summary.isBlank()) {
             result.add(UserMessage.from("summary", wrap("summary", summary)));
         }
-        List<ChatMessage> transcript = getTranscript();
-        if (!transcript.isEmpty()) {
-            result.addAll(transcript);
+        if (environment != null && !environment.isBlank()) {
+            result.add(UserMessage.from("environment", wrap("environment", environment)));
+        }
+        List<ChatMessage> historyMsg = getHistoryMsg();
+        if (!historyMsg.isEmpty()) {
+            result.addAll(historyMsg);
         }
         if (todo != null && !todo.isBlank()) {
             result.add(UserMessage.from("todo", wrap("todo", todo)));
@@ -116,13 +124,13 @@ public class ContextBuilder {
     /** 完整度量。 */
     public ContextMetrics metrics() {
         Map<BlockKind, Long> byKind = tokensByKind();
-        long transcript = 0;
+        long msgToken = 0;
         for (long v : byKind.values()) {
-            transcript += v;
+            msgToken += v;
         }
 
         return new ContextMetrics(
-                transcript,
+                msgToken,
                 anchorTokens(),
                 toolSchemaTokens,
                 outputReserveTokens,
@@ -145,6 +153,7 @@ public class ContextBuilder {
         long tokens = 0;
         if (systemPrompt != null) tokens += estimate(systemPrompt);
         if (summary != null) tokens += estimate(summary);
+        if (environment != null) tokens += estimate(environment);
         if (memories != null) tokens += estimate(memories);
         if (todo != null) tokens += estimate(todo);
         if (nudges != null) tokens += estimate(nudges);

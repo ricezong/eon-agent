@@ -10,20 +10,20 @@ import java.util.Map;
  */
 public final class ContextMetrics {
 
-    private final long transcriptTokens;
+    private final long historyMsgTokens;
     private final long anchorTokens;
     private final long toolSchemaTokens;
     private final long outputReserveTokens;
     private final long contextMaxTokens;
     private final Map<BlockKind, Long> tokensByKind;
 
-    public ContextMetrics(long transcriptTokens,
+    public ContextMetrics(long historyMsgTokens,
                           long anchorTokens,
                           long toolSchemaTokens,
                           long outputReserveTokens,
                           long contextMaxTokens,
                           Map<BlockKind, Long> tokensByKind) {
-        this.transcriptTokens = transcriptTokens;
+        this.historyMsgTokens = historyMsgTokens;
         this.anchorTokens = anchorTokens;
         this.toolSchemaTokens = toolSchemaTokens;
         this.outputReserveTokens = outputReserveTokens;
@@ -41,7 +41,7 @@ public final class ContextMetrics {
 
     /** 单轮真实发送 token 数。 */
     public long sentTokens() {
-        return transcriptTokens + anchorTokens + toolSchemaTokens + outputReserveTokens;
+        return historyMsgTokens + anchorTokens + toolSchemaTokens + outputReserveTokens;
     }
 
     /** 构成分解的可读形式。 */
