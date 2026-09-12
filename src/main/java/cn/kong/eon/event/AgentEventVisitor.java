@@ -21,6 +21,8 @@ public interface AgentEventVisitor<T> {
 
     T visitError(SessionError e);
 
+    T visitUserMessage(UserMessage e);
+
     /** 未知事件类型兜底。 */
     T visitUnknown(AgentEvent e);
 }

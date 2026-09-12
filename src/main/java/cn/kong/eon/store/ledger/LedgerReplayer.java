@@ -17,8 +17,8 @@ import java.util.UUID;
 
 /**
  * 账本回放器。读取 ledger.jsonl，将 SerializedMessage 还原为 AgentEvent 列表。
- * 映射规则：user→不产出事件；ai(无toolCalls)→AgentThinking+AgentMessage；
- * ai(有toolCalls)→AgentThinking+AgentToolUse×N；tool→AgentToolResult；system→跳过。
+ * 映射规则：user→UserMessage；ai→AgentThinking?+AgentMessage?+AgentToolUse×N；
+ * tool→AgentToolResult；system→跳过。结尾补发 session.status(idle/replay_completed)。
  */
 @Component
 public class LedgerReplayer {
@@ -60,9 +60,7 @@ public class LedgerReplayer {
                 events.addAll(toEvents(sm, turnId, i));
             }
 
-            // 补发一个最终的 session.status: idle
             events.add(SessionStatus.idle("replay_completed"));
-
             log.info("账本回放完成: {} 行 → {} 个事件", lines.size(), events.size());
         } catch (IOException e) {
             log.error("读取账本失败: {}", ledgerPath, e);
@@ -71,45 +69,53 @@ public class LedgerReplayer {
         return events;
     }
 
-    /**
-     * 将单条 SerializedMessage 转为对应的 AgentEvent 列表。
-     */
+    /** 将单条 SerializedMessage 转为对应的 AgentEvent 列表（system 与未知类型不产生事件）。 */
     private List<AgentEvent> toEvents(LedgerStore.SerializedMessage sm, String turnId, int seq) {
-        List<AgentEvent> events = new ArrayList<>();
         Instant ts = Instant.now();
+        return switch (sm.type) {
+            case "ai" -> aiToEvents(sm, turnId, seq, ts);
+            case "user" -> userToEvents(sm, ts);
+            case "tool" -> toolToEvents(sm, turnId, ts);
+            default -> List.of();
+        };
+    }
 
-        if ("ai".equals(sm.type)) {
-            String messageId = "msg_replay_" + seq;
+    /** ai 消息：thinking、文本、工具调用各自独立还原，文本不因伴随工具调用而丢弃。 */
+    private List<AgentEvent> aiToEvents(LedgerStore.SerializedMessage sm, String turnId,
+                                        int seq, Instant ts) {
+        List<AgentEvent> events = new ArrayList<>();
 
-            // thinking 事件
-            if (sm.thinking != null && !sm.thinking.isBlank()) {
-                events.add(new AgentThinking(turnId, sm.thinking, ts));
-            }
-
-            // 有工具调用 → tool_use 事件
-            if (sm.toolCalls != null && !sm.toolCalls.isEmpty()) {
-                for (LedgerStore.ToolCallRef ref : sm.toolCalls) {
-                    events.add(new AgentToolUse(turnId, ref.id, ref.name,
-                            ref.arguments, ts));
-                }
-            } else if (sm.content != null && !sm.content.isBlank()) {
-                // 无工具调用 → engine.message 事件
-                events.add(new AgentMessage(turnId, messageId,
-                        List.of(ContentPart.text(sm.content)), ts));
-            }
-        } else if ("tool".equals(sm.type)) {
-            // tool_result 事件
-            boolean success = Boolean.TRUE.equals(sm.success);
-            String content = sm.content != null ? sm.content : "";
-            ToolResultView structured = sm.toolResultView != null
-                    ? sm.toolResultView : ToolResultView.text(content);
-            events.add(new AgentToolResult(turnId, sm.toolCallId,
-                    sm.toolName != null ? sm.toolName : "unknown",
-                    content, structured, success, ts));
+        if (sm.thinking != null && !sm.thinking.isBlank()) {
+            events.add(new AgentThinking(turnId, sm.thinking, ts));
         }
-        // user 和 system 消息不产出前端渲染事件
-
+        if (sm.content != null && !sm.content.isBlank()) {
+            events.add(new AgentMessage(turnId, "msg_replay_" + seq,
+                    List.of(ContentPart.text(sm.content)), ts));
+        }
+        if (sm.toolCalls != null) {
+            for (LedgerStore.ToolCallRef ref : sm.toolCalls) {
+                events.add(new AgentToolUse(turnId, ref.id, ref.name, ref.arguments, ts));
+            }
+        }
         return events;
     }
 
+    /** user 消息：还原为用户消息事件，前端据此恢复用户气泡并切分回复轮次。 */
+    private List<AgentEvent> userToEvents(LedgerStore.SerializedMessage sm, Instant ts) {
+        if (sm.content == null || sm.content.isBlank()) {
+            return List.of();
+        }
+        return List.of(new UserMessage(sm.content, ts));
+    }
+
+    /** tool 消息：还原为工具结果事件，缺失的结构化视图回退为纯文本视图。 */
+    private List<AgentEvent> toolToEvents(LedgerStore.SerializedMessage sm, String turnId,
+                                          Instant ts) {
+        String content = sm.content != null ? sm.content : "";
+        ToolResultView view = sm.toolResultView != null
+                ? sm.toolResultView : ToolResultView.text(content);
+        return List.of(new AgentToolResult(turnId, sm.toolCallId,
+                sm.toolName != null ? sm.toolName : "unknown",
+                content, view, Boolean.TRUE.equals(sm.success), ts));
+    }
 }

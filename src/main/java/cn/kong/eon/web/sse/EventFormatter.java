@@ -89,6 +89,13 @@ public class EventFormatter implements AgentEventVisitor<Map<String, Object>> {
     }
 
     @Override
+    public Map<String, Object> visitUserMessage(UserMessage e) {
+        Map<String, Object> data = base(e);
+        data.put("content", e.content());
+        return data;
+    }
+
+    @Override
     public Map<String, Object> visitUnknown(AgentEvent e) {
         return base(e);
     }
