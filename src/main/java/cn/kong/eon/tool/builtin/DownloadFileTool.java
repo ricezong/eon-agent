@@ -5,7 +5,7 @@ import cn.kong.eon.tool.PathResolver;
 import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
-import cn.kong.eon.tool.ToolOutcome;
+import cn.kong.eon.tool.ToolResult;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
@@ -50,15 +50,15 @@ public class DownloadFileTool implements ToolExecutor {
     }
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
+    public ToolResult execute(Map<String, Object> arguments, ToolRuntime runtime) {
         String url = (String) arguments.get("url");
         if (url == null || url.isBlank()) {
-            return ToolOutcome.failure("缺少 'url' 参数");
+            return ToolResult.failure("缺少 'url' 参数");
         }
 
         String fileName = (String) arguments.get("file_name");
         if (fileName == null || fileName.isBlank()) {
-            return ToolOutcome.failure("缺少 'file_name' 参数");
+            return ToolResult.failure("缺少 'file_name' 参数");
         }
 
         String resolvedUrl = url.trim();
@@ -68,7 +68,7 @@ public class DownloadFileTool implements ToolExecutor {
         try {
             localPath = resolver.resolve(fileName);
         } catch (IllegalArgumentException e) {
-            return ToolOutcome.failure("路径解析失败: " + e.getMessage());
+            return ToolResult.failure("路径解析失败: " + e.getMessage());
         }
 
         try {
@@ -85,14 +85,14 @@ public class DownloadFileTool implements ToolExecutor {
                     request, HttpResponse.BodyHandlers.ofInputStream());
 
             if (response.statusCode() != 200) {
-                return ToolOutcome.failure("下载失败：HTTP " + response.statusCode());
+                return ToolResult.failure("下载失败：HTTP " + response.statusCode());
             }
 
             long contentLength = response.headers()
                     .firstValueAsLong("content-length")
                     .orElse(-1);
             if (contentLength > maxFileSize) {
-                return ToolOutcome.failure("文件过大：" + formatSize(contentLength)
+                return ToolResult.failure("文件过大：" + formatSize(contentLength)
                         + "，上限 " + formatSize(maxFileSize));
             }
 
@@ -106,7 +106,7 @@ public class DownloadFileTool implements ToolExecutor {
             // 再次检查实际写入大小
             if (bytesWritten > maxFileSize) {
                 Files.deleteIfExists(localPath);
-                return ToolOutcome.failure("文件过大：" + formatSize(bytesWritten)
+                return ToolResult.failure("文件过大：" + formatSize(bytesWritten)
                         + "，上限 " + formatSize(maxFileSize));
             }
 
@@ -114,17 +114,17 @@ public class DownloadFileTool implements ToolExecutor {
 
             String sizeDesc = formatSize(bytesWritten);
             String modelContent = "文件下载成功: " + fileName + "（" + sizeDesc + "）";
-            return ToolOutcome.successFile(modelContent, fileName, sizeDesc);
+            return ToolResult.successFile(modelContent, fileName, sizeDesc);
 
         } catch (java.net.ConnectException e) {
             log.error("download_file 连接失败: {}", e.getMessage());
-            return ToolOutcome.failure("连接失败: " + e.getMessage());
+            return ToolResult.failure("连接失败: " + e.getMessage());
         } catch (java.net.SocketTimeoutException e) {
             log.error("download_file 超时: {}", e.getMessage());
-            return ToolOutcome.failure("下载超时: " + e.getMessage());
+            return ToolResult.failure("下载超时: " + e.getMessage());
         } catch (Exception e) {
             log.error("download_file 失败: {}", e.getMessage(), e);
-            return ToolOutcome.failure("下载失败: " + e.getMessage());
+            return ToolResult.failure("下载失败: " + e.getMessage());
         }
     }
 

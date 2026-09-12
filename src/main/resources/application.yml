@@ -97,7 +97,7 @@ eon:
       - "todo_write"
       - "update_memory"
       - "web_fetch"
-      - "AskQuestion"
+      - "ask_question"
       - "web_search"
     sandbox_enabled: true                   # 路径沙箱开关
     parallelism: 4                          # 并行工具执行线程数

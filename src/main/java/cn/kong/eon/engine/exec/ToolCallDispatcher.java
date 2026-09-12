@@ -5,7 +5,7 @@ import cn.kong.eon.event.AgentToolResult;
 import cn.kong.eon.event.AgentToolUse;
 import cn.kong.eon.runtime.RunContext;
 import cn.kong.eon.tool.ToolRuntime;
-import cn.kong.eon.tool.ToolOutcome;
+import cn.kong.eon.tool.ToolResult;
 import cn.kong.eon.tool.ToolService;
 import cn.kong.eon.tool.model.ToolCallRecord;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -24,14 +24,14 @@ import java.util.concurrent.*;
 
 /**
  * 工具执行处理器。封装工具执行全流程：参数解析 → 执行 → 事件发射。
- * 支持并行执行，串行豁免清单（todo_write/AskQuestion）强制串行。
+ * 支持并行执行，串行豁免清单（todo_write/ask_question）强制串行。
  */
 @Component
 public class ToolCallDispatcher {
     private static final Logger log = LoggerFactory.getLogger(ToolCallDispatcher.class);
 
     /** 顺序敏感或交互互斥的工具强制串行。 */
-    private static final Set<String> SERIAL_ONLY = Set.of("todo_write", "AskQuestion");
+    private static final Set<String> SERIAL_ONLY = Set.of("todo_write", "ask_question");
 
     private final ToolService toolService;
     private final ExecutorService parallelExecutor;
@@ -123,7 +123,7 @@ public class ToolCallDispatcher {
         }
 
         Map<String, Object> args = parseArgs(req.arguments());
-        ToolOutcome outcome = toolService.execute(req.name(), args, runtime);
+        ToolResult outcome = toolService.execute(req.name(), args, runtime);
 
         // 发出 engine.tool_result 事件
         r.emit(AgentToolResult.now(turnId, req.id(), req.name(),
@@ -135,7 +135,7 @@ public class ToolCallDispatcher {
     /** 合成错误结果（用于异常隔离）。 */
     private ToolCallRecord syntheticError(RunContext r, ToolExecutionRequest req, String errorMsg) {
         String turnId = r.task().turnId();
-        ToolOutcome outcome = ToolOutcome.failure(errorMsg);
+        ToolResult outcome = ToolResult.failure(errorMsg);
 
         r.emit(AgentToolResult.now(turnId, req.id(), req.name(),
                 outcome.content(), outcome.toolResultView(), false));

@@ -92,18 +92,18 @@ public class ToolService {
     }
 
     /** 执行工具（本地或 MCP），返回执行结果。 */
-    public ToolOutcome execute(String name, Map<String, Object> arguments, ToolRuntime runtime) {
+    public ToolResult execute(String name, Map<String, Object> arguments, ToolRuntime runtime) {
         ToolDescriptor descriptor = tools.get(name);
         if (descriptor != null) {
             try {
                 // 根据工具 Schema 转换参数类型
                 Map<String, Object> coerced = coercer.coerce(descriptor.getSpecification(), arguments);
-                ToolOutcome result = descriptor.getExecutor().execute(coerced, runtime);
+                ToolResult result = descriptor.getExecutor().execute(coerced, runtime);
                 log.debug("本地工具执行: {} -> 成功={} {} 字符", name, result.success(), result.content().length());
                 return result;
             } catch (Exception e) {
                 log.error("本地工具执行失败: {}", name, e);
-                return ToolOutcome.failure("工具执行失败: " + e.getMessage());
+                return ToolResult.failure("工具执行失败: " + e.getMessage());
             }
         }
 
@@ -111,16 +111,16 @@ public class ToolService {
         if (remoteTools != null) {
             try {
                 String argsJson = convertArgsToJson(arguments);
-                ToolOutcome result = remoteTools.invoke(name, argsJson);
+                ToolResult result = remoteTools.invoke(name, argsJson);
                 log.debug("远程工具执行: {} -> 成功={} {} 字符", name, result.success(), result.content().length());
                 return result;
             } catch (Exception e) {
                 log.error("远程工具执行失败: {}", name, e);
-                return ToolOutcome.failure("远程工具执行失败: " + e.getMessage());
+                return ToolResult.failure("远程工具执行失败: " + e.getMessage());
             }
         }
 
-        return ToolOutcome.failure("工具不存在: " + name);
+        return ToolResult.failure("工具不存在: " + name);
     }
 
     /** 获取工具权限（MCP 工具默认 READONLY）。 */

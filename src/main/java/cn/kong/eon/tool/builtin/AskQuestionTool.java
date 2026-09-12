@@ -4,7 +4,7 @@ import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
-import cn.kong.eon.tool.ToolOutcome;
+import cn.kong.eon.tool.ToolResult;
 import cn.kong.eon.tool.InteractionCallback;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
- * AskQuestion 工具：向用户收集结构化多选答案。通过交互回调暂停 Agent，等待用户恢复。
+ * ask_question 工具：向用户收集结构化多选答案。通过交互回调暂停 Agent，等待用户恢复。
  */
 public class AskQuestionTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(AskQuestionTool.class);
@@ -35,7 +35,7 @@ public class AskQuestionTool implements ToolExecutor {
     ) {
     }
 
-    @Tool(name = "AskQuestion", value = {
+    @Tool(name = "ask_question", value = {
             "向用户收集结构化的多选答案。提供一个或多个带选项的问题，在适合多选时设置 allow_multiple。",
             "当你需要通过结构化的问题格式从用户处收集特定信息时使用此工具。",
             "每个问题应包含：唯一 id；清晰的提示文本；至少 2 个选项；可选的 allow_multiple 标志。"
@@ -60,14 +60,14 @@ public class AskQuestionTool implements ToolExecutor {
      * {@code ToolCallDispatcher} 装配，然后恢复下面的回调分支。
      */
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
+    public ToolResult execute(Map<String, Object> arguments, ToolRuntime runtime) {
         Object questionsObj = arguments.get("questions");
         if (!(questionsObj instanceof List<?> rawQuestions) || rawQuestions.isEmpty()) {
-            return ToolOutcome.failure("缺少或空的 'questions' 参数");
+            return ToolResult.failure("缺少或空的 'questions' 参数");
         }
 
-        log.info("AskQuestion 被调用但交互回调未接入: {} 个问题, 会话={}",
+        log.info("ask_question 被调用但交互回调未接入: {} 个问题, 会话={}",
                 rawQuestions.size(), runtime.sessionId());
-        return ToolOutcome.failure("交互回调不可用，无法向用户提问。");
+        return ToolResult.failure("交互回调不可用，无法向用户提问。");
     }
 }

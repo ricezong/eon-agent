@@ -4,7 +4,7 @@ import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
-import cn.kong.eon.tool.ToolOutcome;
+import cn.kong.eon.tool.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -72,14 +72,14 @@ public class WebSearchTool implements ToolExecutor {
     }
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
+    public ToolResult execute(Map<String, Object> arguments, ToolRuntime runtime) {
         String query = (String) arguments.get("query");
         if (query == null || query.isBlank()) {
-            return ToolOutcome.failure("缺少 'query' 参数");
+            return ToolResult.failure("缺少 'query' 参数");
         }
 
         if (apiKey == null || apiKey.isBlank()) {
-            return ToolOutcome.failure("百度千帆 API Key 未配置（请检查 application.yml 的 eon.web_search.api_key 或环境变量 QIANFAN_API_KEY）");
+            return ToolResult.failure("百度千帆 API Key 未配置（请检查 application.yml 的 eon.web_search.api_key 或环境变量 QIANFAN_API_KEY）");
         }
 
         int topK = arguments.containsKey("max_results")
@@ -98,11 +98,11 @@ public class WebSearchTool implements ToolExecutor {
 
             ObjectNode body = buildRequestBody(query, topK, siteFilter, recencyFilter);
             String responseJson = callApi(body);
-            return ToolOutcome.success(parseResponse(responseJson, query));
+            return ToolResult.success(parseResponse(responseJson, query));
 
         } catch (Exception e) {
             log.error("WebSearch(千帆) 失败: {}", e.getMessage(), e);
-            return ToolOutcome.failure("搜索失败: " + e.getMessage());
+            return ToolResult.failure("搜索失败: " + e.getMessage());
         }
     }
 

@@ -6,7 +6,7 @@ import cn.kong.eon.store.memory.MemoryStore.MemoryItem;
 import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
-import cn.kong.eon.tool.ToolOutcome;
+import cn.kong.eon.tool.ToolResult;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import org.slf4j.Logger;
@@ -42,7 +42,7 @@ public class UpdateMemoryTool implements ToolExecutor {
     }
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
+    public ToolResult execute(Map<String, Object> arguments, ToolRuntime runtime) {
         MemoryStore memoryStore = runtime.memoryStore();
         String action = (String) arguments.getOrDefault("action", "create");
 
@@ -52,49 +52,49 @@ public class UpdateMemoryTool implements ToolExecutor {
                     String title = (String) arguments.get("title");
                     String content = (String) arguments.get("knowledge_to_store");
                     if (title == null || title.isBlank()) {
-                        yield ToolOutcome.failure("create 操作需要 'title' 参数");
+                        yield ToolResult.failure("create 操作需要 'title' 参数");
                     }
                     if (content == null || content.isBlank()) {
-                        yield ToolOutcome.failure("create 操作需要 'knowledge_to_store' 参数");
+                        yield ToolResult.failure("create 操作需要 'knowledge_to_store' 参数");
                     }
                     MemoryItem item = memoryStore.create(title, content);
                     log.info("Memory 已创建: {} - {}", item.id, title);
-                    yield ToolOutcome.success("记忆创建成功。\nID: " + item.id + "\n标题: " + title);
+                    yield ToolResult.success("记忆创建成功。\nID: " + item.id + "\n标题: " + title);
                 }
                 case "update" -> {
                     String id = (String) arguments.get("existing_knowledge_id");
                     if (id == null || id.isBlank()) {
-                        yield ToolOutcome.failure("update 操作需要 'existing_knowledge_id' 参数");
+                        yield ToolResult.failure("update 操作需要 'existing_knowledge_id' 参数");
                     }
                     String title = (String) arguments.get("title");
                     String content = (String) arguments.get("knowledge_to_store");
                     if ((title == null || title.isBlank()) && (content == null || content.isBlank())) {
-                        yield ToolOutcome.failure("update 操作至少需要提供 'title' 或 'knowledge_to_store' 中的一个");
+                        yield ToolResult.failure("update 操作至少需要提供 'title' 或 'knowledge_to_store' 中的一个");
                     }
                     MemoryItem item = memoryStore.update(id, title, content);
                     log.info("Memory 已更新: {}", id);
-                    yield ToolOutcome.success("记忆更新成功。\nID: " + id + "\n标题: " + item.title);
+                    yield ToolResult.success("记忆更新成功。\nID: " + id + "\n标题: " + item.title);
                 }
                 case "delete" -> {
                     String id = (String) arguments.get("existing_knowledge_id");
                     if (id == null || id.isBlank()) {
-                        yield ToolOutcome.failure("delete 操作需要 'existing_knowledge_id' 参数");
+                        yield ToolResult.failure("delete 操作需要 'existing_knowledge_id' 参数");
                     }
                     boolean deleted = memoryStore.delete(id);
                     if (deleted) {
                         log.info("Memory 已删除: {}", id);
-                        yield ToolOutcome.success("记忆删除成功。\nID: " + id);
+                        yield ToolResult.success("记忆删除成功。\nID: " + id);
                     } else {
-                        yield ToolOutcome.failure("记忆不存在或无法删除: " + id);
+                        yield ToolResult.failure("记忆不存在或无法删除: " + id);
                     }
                 }
-                default -> ToolOutcome.failure("未知操作: " + action + "。有效操作：create、update、delete");
+                default -> ToolResult.failure("未知操作: " + action + "。有效操作：create、update、delete");
             };
         } catch (IllegalArgumentException e) {
-            return ToolOutcome.failure(e.getMessage());
+            return ToolResult.failure(e.getMessage());
         } catch (Exception e) {
             log.error("update_memory 失败: {}", e.getMessage(), e);
-            return ToolOutcome.failure("记忆操作失败: " + e.getMessage());
+            return ToolResult.failure("记忆操作失败: " + e.getMessage());
         }
     }
 }

@@ -16,5 +16,5 @@ public interface RemoteToolInvoker {
     List<ToolSpecification> listTools();
 
     /** 执行远程工具调用，argumentsJson 为 JSON 字符串。 */
-    ToolOutcome invoke(String toolName, String argumentsJson);
+    ToolResult invoke(String toolName, String argumentsJson);
 }

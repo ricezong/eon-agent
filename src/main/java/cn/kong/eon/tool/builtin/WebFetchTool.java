@@ -4,7 +4,7 @@ import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
-import cn.kong.eon.tool.ToolOutcome;
+import cn.kong.eon.tool.ToolResult;
 import com.vladsch.flexmark.html2md.converter.FlexmarkHtmlConverter;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -86,10 +86,10 @@ public class WebFetchTool implements ToolExecutor {
 
     @Override
     @SuppressWarnings("unchecked")
-    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
+    public ToolResult execute(Map<String, Object> arguments, ToolRuntime runtime) {
         Object urlsObj = arguments.get("urls");
         if (!(urlsObj instanceof List<?> rawUrls) || rawUrls.isEmpty()) {
-            return ToolOutcome.failure("缺少或空的 'urls' 参数");
+            return ToolResult.failure("缺少或空的 'urls' 参数");
         }
 
         List<String> urls = new ArrayList<>();
@@ -118,7 +118,7 @@ public class WebFetchTool implements ToolExecutor {
         cleanCache();
 
         output.insert(0, String.format("已获取 %d 个 URL：%d 个成功，%d 个失败。\n\n", urls.size(), success, failed));
-        return ToolOutcome.success(output.toString());
+        return ToolResult.success(output.toString());
     }
 
     /** 抓取单个 URL 内容，HTML 转 markdown，超长截断。 */

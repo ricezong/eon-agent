@@ -4,7 +4,7 @@ import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
-import cn.kong.eon.tool.ToolOutcome;
+import cn.kong.eon.tool.ToolResult;
 import cn.kong.eon.tool.PathResolver;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -23,14 +23,14 @@ public class WriteFileTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(WriteFileTool.class);
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
+    public ToolResult execute(Map<String, Object> arguments, ToolRuntime runtime) {
         String filePath = (String) arguments.get("file_path");
         if (filePath == null || filePath.isBlank()) {
-            return ToolOutcome.failure("缺少 'file_path' 参数");
+            return ToolResult.failure("缺少 'file_path' 参数");
         }
         String contents = (String) arguments.get("contents");
         if (contents == null) {
-            return ToolOutcome.failure("缺少 'contents' 参数");
+            return ToolResult.failure("缺少 'contents' 参数");
         }
 
         PathResolver resolver = runtime.pathResolver();
@@ -38,7 +38,7 @@ public class WriteFileTool implements ToolExecutor {
         try {
             resolvedPath = resolver.resolve(filePath);
         } catch (IllegalArgumentException e) {
-            return ToolOutcome.failure("路径解析失败: " + e.getMessage());
+            return ToolResult.failure("路径解析失败: " + e.getMessage());
         }
 
         try {
@@ -50,11 +50,11 @@ public class WriteFileTool implements ToolExecutor {
 
             String modelContent = "文件写入成功: " + filePath + "（" + lineCount + " 行，" + contents.length() + " 字符）";
             String sizeDesc = lineCount + " 行, " + contents.length() + " 字符";
-            return ToolOutcome.successFile(modelContent, filePath, sizeDesc);
+            return ToolResult.successFile(modelContent, filePath, sizeDesc);
 
         } catch (IOException e) {
             log.error("write 失败: {}", e.getMessage());
-            return ToolOutcome.failure("写入文件失败: " + e.getMessage());
+            return ToolResult.failure("写入文件失败: " + e.getMessage());
         }
     }
 

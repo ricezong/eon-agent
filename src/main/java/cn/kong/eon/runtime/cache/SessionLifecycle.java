@@ -1,4 +1,4 @@
-package cn.kong.eon.runtime;
+package cn.kong.eon.runtime.cache;
 
 /**
  * 会话状态。用于 {@link SessionScope} 的并发互斥与缓存过期策略判定。

@@ -14,7 +14,7 @@ public interface ToolExecutor {
      * @param arguments 模型传入的参数
      * @param runtime   本次调用的工具上下文（已含 turn / sessionId）
      */
-    ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime);
+    ToolResult execute(Map<String, Object> arguments, ToolRuntime runtime);
 
     /** 释放工具持有的资源，应用关闭时由 ToolService.closeAll() 统一调用。 */
     default void close() {

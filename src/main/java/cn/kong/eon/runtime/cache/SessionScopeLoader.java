@@ -1,4 +1,4 @@
-package cn.kong.eon.runtime;
+package cn.kong.eon.runtime.cache;
 
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.context.ContentCompressor;
@@ -6,7 +6,7 @@ import cn.kong.eon.context.pipeline.IngestPipeline;
 import cn.kong.eon.context.policy.CompressionPolicy;
 import cn.kong.eon.engine.guard.ToolCircuitBreaker;
 import cn.kong.eon.store.artifact.ArtifactStore;
-import cn.kong.eon.store.index.SessionIndexStore.SessionSummary;
+import cn.kong.eon.store.index.SessionMeta;
 import cn.kong.eon.store.ledger.LedgerStore;
 import cn.kong.eon.store.memory.MemoryStore;
 import cn.kong.eon.store.snapshot.RestoreMode;
@@ -55,9 +55,9 @@ public class SessionScopeLoader {
      * 装配一个会话上下文（含账本回放）。
      *
      * @param sessionId 会话 ID
-     * @param resumed   恢复已有会话时的索引摘要；新建会话传 null
+     * @param meta   恢复已有会话时的索引摘要；新建会话传 null
      */
-    public SessionScope load(String sessionId, SessionSummary resumed) {
+    public SessionScope load(String sessionId, SessionMeta meta) {
         // ── 1. 工作区
         Path sessionBaseDir = Path.of(config.getStorage().getBaseDir()).toAbsolutePath().normalize();
         Path sessionDir = sessionBaseDir.resolve(sessionId);
@@ -72,7 +72,7 @@ public class SessionScopeLoader {
         // ── 3. 快照 → 回放起点
         Path jsonlPath = sessionDir.resolve("ledger.jsonl");
         long ledgerSize = countJsonlLines(jsonlPath);
-        SessionSnapshot snapshot = resumed != null ? snapshotStore.load() : null;
+        SessionSnapshot snapshot = meta != null ? snapshotStore.load() : null;
         RestoreMode mode = RestoreMode.of(snapshot, ledgerSize);
         int replayFrom = mode == RestoreMode.RESUME ? snapshot.getCompressionState().getReplayFromSeq() : 0;
         if (mode == RestoreMode.LOAD && snapshot != null) {
@@ -93,7 +93,7 @@ public class SessionScopeLoader {
                     snapshot.getCompressionState().getLastSummary() != null
                             ? snapshot.getCompressionState().getLastSummary().length() : 0,
                     snapshot.getUsageAccum() != null ? snapshot.getUsageAccum().getTotalTokens() : 0);
-        } else if (resumed != null) {
+        } else if (meta != null) {
             log.info("会话 {} 无快照（未调用过 todo_write），按全量历史启动", sessionId);
         } else {
             log.info("会话 {} 已初始化, ledger: {}", sessionId, ledgerPath);

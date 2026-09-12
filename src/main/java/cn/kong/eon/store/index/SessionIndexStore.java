@@ -5,13 +5,11 @@ import cn.kong.eon.store.db.SessionIndexRepository;
 import cn.kong.eon.store.db.SessionIndexRepository.SessionIndex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -38,21 +36,16 @@ public class SessionIndexStore {
         }
     }
 
-    public record SessionSummary(
-            String sessionId,
-            String title,
-            Instant lastActivityAt,
-            long messageCount
-    ) {}
 
-    public List<SessionSummary> list(String userId) {
+
+    public List<SessionMeta> list(String userId) {
         return indexRepo.list(userId).stream()
                 .map(this::toSummary)
-                .sorted(Comparator.comparing(SessionSummary::lastActivityAt).reversed())
+                .sorted(Comparator.comparing(SessionMeta::lastActivityAt).reversed())
                 .toList();
     }
 
-    public Optional<SessionSummary> find(String userId, String idOrPrefix) {
+    public Optional<SessionMeta> find(String userId, String idOrPrefix) {
         return indexRepo.find(userId, idOrPrefix).map(this::toSummary);
     }
 
@@ -82,8 +75,8 @@ public class SessionIndexStore {
         indexRepo.incrementUserMessageCount(sessionId);
     }
 
-    private SessionSummary toSummary(SessionIndex idx) {
-        return new SessionSummary(
+    private SessionMeta toSummary(SessionIndex idx) {
+        return new SessionMeta(
                 idx.sessionId(),
                 idx.title() != null ? idx.title() : idx.sessionId(),
                 idx.lastActiveAt(),

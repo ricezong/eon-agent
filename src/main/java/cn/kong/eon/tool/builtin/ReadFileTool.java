@@ -4,7 +4,7 @@ import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
-import cn.kong.eon.tool.ToolOutcome;
+import cn.kong.eon.tool.ToolResult;
 import cn.kong.eon.tool.PathResolver;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -27,10 +27,10 @@ public class ReadFileTool implements ToolExecutor {
     private static final String ARTIFACT_PREFIX = "artifact://";
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
+    public ToolResult execute(Map<String, Object> arguments, ToolRuntime runtime) {
         String targetFile = (String) arguments.get("target_file");
         if (targetFile == null || targetFile.isBlank()) {
-            return ToolOutcome.failure("缺少 'target_file' 参数");
+            return ToolResult.failure("缺少 'target_file' 参数");
         }
 
         Integer offset = arguments.containsKey("offset") ? (Integer) arguments.get("offset") : null;
@@ -41,7 +41,7 @@ public class ReadFileTool implements ToolExecutor {
             String refId = targetFile.substring(ARTIFACT_PREFIX.length()).trim();
             String content = runtime.artifactStore().readContent(refId);
             if (content == null) {
-                return ToolOutcome.failure("找不到 artifact 引用: " + refId);
+                return ToolResult.failure("找不到 artifact 引用: " + refId);
             }
             log.info("read_file: artifact://{} ({} 字符)", refId, content.length());
             return paginate(content, offset, limit, refId);
@@ -52,14 +52,14 @@ public class ReadFileTool implements ToolExecutor {
         try {
             filePath = resolver.resolve(targetFile);
         } catch (IllegalArgumentException e) {
-            return ToolOutcome.failure("路径解析失败: " + e.getMessage());
+            return ToolResult.failure("路径解析失败: " + e.getMessage());
         }
 
         if (!Files.exists(filePath)) {
-            return ToolOutcome.failure("文件不存在: " + targetFile);
+            return ToolResult.failure("文件不存在: " + targetFile);
         }
         if (!Files.isRegularFile(filePath)) {
-            return ToolOutcome.failure("不是普通文件: " + targetFile);
+            return ToolResult.failure("不是普通文件: " + targetFile);
         }
 
         try {
@@ -68,14 +68,14 @@ public class ReadFileTool implements ToolExecutor {
             return paginate(content, offset, limit);
         } catch (IOException e) {
             log.error("read_file 失败: {}", e.getMessage());
-            return ToolOutcome.failure("读取文件失败: " + e.getMessage());
+            return ToolResult.failure("读取文件失败: " + e.getMessage());
         }
     }
 
     /**
      * 行分页：offset 从 1 开始，limit 上限 DEFAULT_LIMIT。截断时附带页脚提示。
      */
-        ToolOutcome paginate(String content, Integer offset, Integer limit) {
+        ToolResult paginate(String content, Integer offset, Integer limit) {
         return paginate(content, offset, limit, null);
     }
 
@@ -83,15 +83,15 @@ public class ReadFileTool implements ToolExecutor {
      * 行分页：offset 从 1 开始，limit 上限 DEFAULT_LIMIT。截断时附带页脚提示。
      * artifactId 非空时，structuredContent 为 artifact 类型，前端可点击展开原文。
      */
-    private ToolOutcome paginate(String content, Integer offset, Integer limit, String artifactId) {
+    private ToolResult paginate(String content, Integer offset, Integer limit, String artifactId) {
         String[] lines = content.split("\n", -1);
         int totalLines = lines.length;
 
         if (totalLines == 1 && lines[0].isEmpty()) {
             if (artifactId != null) {
-                return ToolOutcome.successArtifact("内容为空。", artifactId);
+                return ToolResult.successArtifact("内容为空。", artifactId);
             }
-            return ToolOutcome.success("内容为空。");
+            return ToolResult.success("内容为空。");
         }
 
         int startLine = offset != null ? Math.max(offset, 1) : 1;
@@ -102,9 +102,9 @@ public class ReadFileTool implements ToolExecutor {
             log.info("read_file: offset {} 超出总行数 {}", startLine, totalLines);
             String msg = "起始行 " + startLine + " 超出总行数（共 " + totalLines + " 行）。";
             if (artifactId != null) {
-                return ToolOutcome.successArtifact(msg, artifactId);
+                return ToolResult.successArtifact(msg, artifactId);
             }
-            return ToolOutcome.success(msg);
+            return ToolResult.success(msg);
         }
 
         int count = endLine - startLine + 1;
@@ -119,9 +119,9 @@ public class ReadFileTool implements ToolExecutor {
 
         log.info("read_file: 第 {}-{} 行，共 {} 行", startLine, endLine, totalLines);
         if (artifactId != null) {
-            return ToolOutcome.successArtifact(result, artifactId);
+            return ToolResult.successArtifact(result, artifactId);
         }
-        return ToolOutcome.success(result);
+        return ToolResult.success(result);
     }
 
     @Tool(name = "read_file", value = {

@@ -2,7 +2,7 @@ package cn.kong.eon.web.service;
 
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.event.AgentEvent;
-import cn.kong.eon.runtime.SessionRegistry;
+import cn.kong.eon.runtime.cache.SessionRegistry;
 import cn.kong.eon.store.index.SessionIndexStore;
 import cn.kong.eon.store.ledger.LedgerReplayer;
 import cn.kong.eon.web.dto.SessionListItem;

@@ -4,7 +4,7 @@ import cn.kong.eon.tool.ToolPermission;
 import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
-import cn.kong.eon.tool.ToolOutcome;
+import cn.kong.eon.tool.ToolResult;
 import cn.kong.eon.tool.PathResolver;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -28,7 +28,7 @@ public class ListDirTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(ListDirTool.class);
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
+    public ToolResult execute(Map<String, Object> arguments, ToolRuntime runtime) {
         String targetDir = (String) arguments.get("target_directory");
         boolean defaulted = targetDir == null || targetDir.isBlank();
         if (defaulted) {
@@ -40,14 +40,14 @@ public class ListDirTool implements ToolExecutor {
         try {
             dirPath = resolver.resolve(targetDir);
         } catch (IllegalArgumentException e) {
-            return ToolOutcome.failure("路径解析失败: " + e.getMessage());
+            return ToolResult.failure("路径解析失败: " + e.getMessage());
         }
 
         if (!Files.exists(dirPath)) {
-            return ToolOutcome.failure("目录不存在: " + targetDir);
+            return ToolResult.failure("目录不存在: " + targetDir);
         }
         if (!Files.isDirectory(dirPath)) {
-            return ToolOutcome.failure("不是目录: " + targetDir);
+            return ToolResult.failure("不是目录: " + targetDir);
         }
 
         try (Stream<Path> stream = Files.list(dirPath)) {
@@ -81,12 +81,12 @@ public class ListDirTool implements ToolExecutor {
             sb.append("\n").append(entries.size()).append(" 个条目");
             log.info("list_dir: {} ({} 个条目)", dirPath, entries.size());
 
-            return ToolOutcome.success(sb.toString(),
+            return ToolResult.success(sb.toString(),
                     ToolResultView.dirList(dirPath.toString(), dirEntries));
 
         } catch (IOException e) {
             log.error("list_dir 失败: {}", e.getMessage());
-            return ToolOutcome.failure("列出目录失败: " + e.getMessage());
+            return ToolResult.failure("列出目录失败: " + e.getMessage());
         }
     }
 

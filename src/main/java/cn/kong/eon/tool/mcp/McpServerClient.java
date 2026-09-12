@@ -1,7 +1,7 @@
 package cn.kong.eon.tool.mcp;
 
 import cn.kong.eon.tool.RemoteToolInvoker;
-import cn.kong.eon.tool.ToolOutcome;
+import cn.kong.eon.tool.ToolResult;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.mcp.client.DefaultMcpClient;
@@ -67,9 +67,9 @@ public class McpServerClient implements RemoteToolInvoker {
 
     /** 执行 MCP 工具调用。 */
     @Override
-    public ToolOutcome invoke(String toolName, String argumentsJson) {
+    public ToolResult invoke(String toolName, String argumentsJson) {
         if (mcpClient == null) {
-            return ToolOutcome.failure("MCP 客户端未连接");
+            return ToolResult.failure("MCP 客户端未连接");
         }
         try {
             ToolExecutionRequest request = ToolExecutionRequest.builder()
@@ -79,10 +79,10 @@ public class McpServerClient implements RemoteToolInvoker {
             ToolExecutionResult result = mcpClient.executeTool(request);
             String resultText = result != null ? result.resultText() : "";
             log.debug("MCP 工具 '{}' 执行完成，结果 {} 字符", toolName, resultText != null ? resultText.length() : 0);
-            return ToolOutcome.success(resultText != null ? resultText : "");
+            return ToolResult.success(resultText != null ? resultText : "");
         } catch (Exception e) {
             log.error("MCP 工具执行失败: {} - {}", toolName, e.getMessage(), e);
-            return ToolOutcome.failure("MCP 工具执行失败: " + e.getMessage());
+            return ToolResult.failure("MCP 工具执行失败: " + e.getMessage());
         }
     }
 

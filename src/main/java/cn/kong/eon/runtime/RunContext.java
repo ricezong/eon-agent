@@ -2,6 +2,7 @@ package cn.kong.eon.runtime;
 
 import cn.kong.eon.event.AgentEvent;
 import cn.kong.eon.event.AgentEventListener;
+import cn.kong.eon.runtime.cache.SessionScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

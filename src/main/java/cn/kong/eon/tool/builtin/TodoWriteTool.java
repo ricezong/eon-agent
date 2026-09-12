@@ -7,7 +7,7 @@ import cn.kong.eon.store.todo.TodoStore;
 import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
-import cn.kong.eon.tool.ToolOutcome;
+import cn.kong.eon.tool.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
@@ -32,10 +32,10 @@ public class TodoWriteTool implements ToolExecutor {
     }
 
     @Override
-    public ToolOutcome execute(Map<String, Object> arguments, ToolRuntime runtime) {
+    public ToolResult execute(Map<String, Object> arguments, ToolRuntime runtime) {
         Object todosObj = arguments.get("todos");
         if (!(todosObj instanceof List<?> todosList) || todosList.isEmpty()) {
-            return ToolOutcome.failure("缺少或空的 'todos' 参数");
+            return ToolResult.failure("缺少或空的 'todos' 参数");
         }
 
         boolean merge = Boolean.TRUE.equals(arguments.get("merge"));
@@ -48,10 +48,10 @@ public class TodoWriteTool implements ToolExecutor {
             String statusStr = node.path("status").asText("pending");
 
             if (id.isBlank()) {
-                return ToolOutcome.failure("每个待办事项必须有非空的 'id'");
+                return ToolResult.failure("每个待办事项必须有非空的 'id'");
             }
             if (content.isBlank()) {
-                return ToolOutcome.failure("每个待办事项必须有非空的 'content'");
+                return ToolResult.failure("每个待办事项必须有非空的 'content'");
             }
 
             TodoStatus status = parseStatus(statusStr);
@@ -63,7 +63,7 @@ public class TodoWriteTool implements ToolExecutor {
 
         // 校验单一焦点：同一时间只能有一个任务处于 in_progress
         if (!runtime.todoStore().validateSingleFocus(items)) {
-            return ToolOutcome.failure(
+            return ToolResult.failure(
                     "多个待办事项处于 'in_progress' 状态。同一时间只能有一个任务处于进行中状态。");
         }
 
@@ -80,13 +80,13 @@ public class TodoWriteTool implements ToolExecutor {
         if (allDone) {
             runtime.todoStore().clear();
             log.info("todo_write: 全部完成/取消，已清空 TodoStore");
-            return ToolOutcome.success("所有任务已完成。\n" + formatTodoList(result));
+            return ToolResult.success("所有任务已完成。\n" + formatTodoList(result));
         }
 
         String progress = TodoStore.formatProgress(result);
         log.info("todo_write: {} items (merge={}), {}", result.size(), merge, progress);
 
-        return ToolOutcome.success("待办列表已更新。 " + progress + "\n" + formatTodoList(result));
+        return ToolResult.success("待办列表已更新。 " + progress + "\n" + formatTodoList(result));
     }
 
     /** 解析状态字符串为枚举值。 */

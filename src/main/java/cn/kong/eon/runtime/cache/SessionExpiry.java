@@ -1,7 +1,5 @@
-package cn.kong.eon.config;
+package cn.kong.eon.runtime.cache;
 
-import cn.kong.eon.runtime.SessionScope;
-import cn.kong.eon.runtime.SessionLifecycle;
 import com.github.benmanes.caffeine.cache.Expiry;
 
 import java.time.Duration;

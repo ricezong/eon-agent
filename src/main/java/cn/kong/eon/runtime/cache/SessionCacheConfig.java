@@ -1,7 +1,6 @@
-package cn.kong.eon.config;
+package cn.kong.eon.runtime.cache;
 
-import cn.kong.eon.runtime.SessionScope;
-import cn.kong.eon.runtime.SessionScopeRemovalListener;
+import cn.kong.eon.config.AgentConfig;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.context.annotation.Bean;
