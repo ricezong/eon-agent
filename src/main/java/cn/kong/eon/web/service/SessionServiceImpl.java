@@ -6,7 +6,7 @@ import cn.kong.eon.runtime.cache.SessionRegistry;
 import cn.kong.eon.store.index.SessionIndexStore;
 import cn.kong.eon.store.ledger.LedgerReplayer;
 import cn.kong.eon.web.dto.SessionListItem;
-import cn.kong.eon.web.sse.AgentEventFormatter;
+import cn.kong.eon.web.sse.EventFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,21 +20,21 @@ import java.util.Map;
  * 会话管理：索引查询/删除（含缓存失效）、账本回放与事件格式化。
  */
 @Service
-public class AgentSessionServiceImpl implements AgentSessionService {
+public class SessionServiceImpl implements SessionService {
 
-    private static final Logger log = LoggerFactory.getLogger(AgentSessionServiceImpl.class);
+    private static final Logger log = LoggerFactory.getLogger(SessionServiceImpl.class);
 
     private final AgentConfig config;
     private final SessionIndexStore indexStore;
     private final SessionRegistry registry;
     private final LedgerReplayer replayer;
-    private final AgentEventFormatter formatter;
+    private final EventFormatter formatter;
 
-    public AgentSessionServiceImpl(AgentConfig config,
-                                   SessionIndexStore indexStore,
-                                   SessionRegistry registry,
-                                   LedgerReplayer replayer,
-                                   AgentEventFormatter formatter) {
+    public SessionServiceImpl(AgentConfig config,
+                              SessionIndexStore indexStore,
+                              SessionRegistry registry,
+                              LedgerReplayer replayer,
+                              EventFormatter formatter) {
         this.config = config;
         this.indexStore = indexStore;
         this.registry = registry;

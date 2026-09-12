@@ -11,8 +11,8 @@ import cn.kong.eon.store.index.SessionMeta;
 import cn.kong.eon.web.dto.ChatRequest;
 import cn.kong.eon.web.exception.SessionBusyException;
 import cn.kong.eon.web.exception.SessionNotFoundException;
-import cn.kong.eon.web.sse.AgentEventFormatter;
-import cn.kong.eon.web.sse.SseAgentEventListener;
+import cn.kong.eon.web.sse.EventFormatter;
+import cn.kong.eon.web.sse.SseEventListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,9 +29,9 @@ import java.util.concurrent.ExecutorService;
  * 对话编排服务。创建 SseEmitter，异步执行引擎任务，事件实时推送前端。
  */
 @Service
-public class AgentChatServiceImpl implements AgentChatService {
+public class ChatServiceImpl implements ChatService {
 
-    private static final Logger log = LoggerFactory.getLogger(AgentChatServiceImpl.class);
+    private static final Logger log = LoggerFactory.getLogger(ChatServiceImpl.class);
 
     private final AgentConfig config;
     private final SessionIndexStore sessionIndexStore;
@@ -39,15 +39,15 @@ public class AgentChatServiceImpl implements AgentChatService {
     private final AgentEngine agent;
     private final ExecutorService sseExecutor;
     private final ObjectMapper objectMapper;
-    private final AgentEventFormatter formatter;
+    private final EventFormatter formatter;
 
-    public AgentChatServiceImpl(AgentConfig config,
-                                SessionIndexStore sessionIndexStore,
-                                SessionRegistry registry,
-                                AgentEngine agent,
-                                @Qualifier("sseExecutor") ExecutorService sseExecutor,
-                                ObjectMapper objectMapper,
-                                AgentEventFormatter formatter) {
+    public ChatServiceImpl(AgentConfig config,
+                           SessionIndexStore sessionIndexStore,
+                           SessionRegistry registry,
+                           AgentEngine agent,
+                           @Qualifier("sseExecutor") ExecutorService sseExecutor,
+                           ObjectMapper objectMapper,
+                           EventFormatter formatter) {
         this.config = config;
         this.sessionIndexStore = sessionIndexStore;
         this.registry = registry;
@@ -126,7 +126,7 @@ public class AgentChatServiceImpl implements AgentChatService {
         try {
             TaskScope task = new TaskScope(userInput, config.getLoopDetect());
             ctx = new RunContext(scope, task,
-                    List.of(new SseAgentEventListener(emitter, objectMapper, formatter)));
+                    List.of(new SseEventListener(emitter, objectMapper, formatter)));
 
             log.info("=== 会话 {} 任务开始 ===", sessionId);
             log.info("用户输入: {}", userInput.length() > 200 ? userInput.substring(0, 200) + "..." : userInput);

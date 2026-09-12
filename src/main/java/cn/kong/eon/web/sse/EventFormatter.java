@@ -11,7 +11,7 @@ import java.util.Map;
  * 实时渲染和恢复渲染共用此格式化器，保证两套链路输出格式完全一致。
  */
 @Component
-public class AgentEventFormatter implements AgentEventVisitor<Map<String, Object>> {
+public class EventFormatter implements AgentEventVisitor<Map<String, Object>> {
 
     @Override
     public Map<String, Object> visitDelta(AgentDelta e) {

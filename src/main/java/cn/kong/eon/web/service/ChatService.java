@@ -6,7 +6,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 /**
  * 对话编排服务。
  */
-public interface AgentChatService {
+public interface ChatService {
 
     /**
      * 流式对话，返回 SseEmitter，引擎事件实时推送前端。

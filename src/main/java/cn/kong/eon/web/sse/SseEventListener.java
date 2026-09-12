@@ -14,15 +14,15 @@ import java.util.Map;
  * SSE 事件监听器。将 AgentEvent 序列化为 SSE 帧推送到前端。
  * 事件格式化委托给 AgentEventFormatter，与恢复渲染共用同一套格式化代码。
  */
-public class SseAgentEventListener implements AgentEventListener {
-    private static final Logger log = LoggerFactory.getLogger(SseAgentEventListener.class);
+public class SseEventListener implements AgentEventListener {
+    private static final Logger log = LoggerFactory.getLogger(SseEventListener.class);
 
     private final SseEmitter emitter;
     private final ObjectMapper mapper;
-    private final AgentEventFormatter formatter;
+    private final EventFormatter formatter;
 
-    public SseAgentEventListener(SseEmitter emitter, ObjectMapper objectMapper,
-                                 AgentEventFormatter formatter) {
+    public SseEventListener(SseEmitter emitter, ObjectMapper objectMapper,
+                            EventFormatter formatter) {
         this.emitter = emitter;
         this.mapper = objectMapper;
         this.formatter = formatter;

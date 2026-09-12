@@ -10,7 +10,7 @@ import java.util.Map;
  * <p>
  * 职责：会话索引查询/删除（含缓存失效）、账本回放与事件格式化。不负责执行编排。
  */
-public interface AgentSessionService {
+public interface SessionService {
 
     List<SessionListItem> listSessions(String userId);
 

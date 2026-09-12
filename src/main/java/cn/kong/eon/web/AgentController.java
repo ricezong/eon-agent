@@ -3,8 +3,8 @@ package cn.kong.eon.web;
 import cn.kong.eon.web.dto.ChatRequest;
 import cn.kong.eon.web.dto.InterruptRequest;
 import cn.kong.eon.web.dto.SessionListItem;
-import cn.kong.eon.web.service.AgentChatService;
-import cn.kong.eon.web.service.AgentSessionService;
+import cn.kong.eon.web.service.ChatService;
+import cn.kong.eon.web.service.SessionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -18,12 +18,12 @@ import java.util.Map;
 @RequestMapping("/api")
 public class AgentController {
 
-    private final AgentChatService chatService;
-    private final AgentSessionService sessionService;
+    private final ChatService chatService;
+    private final SessionService sessionService;
 
     @Autowired
-    public AgentController(AgentChatService chatService,
-                           AgentSessionService sessionService) {
+    public AgentController(ChatService chatService,
+                           SessionService sessionService) {
         this.chatService = chatService;
         this.sessionService = sessionService;
     }
