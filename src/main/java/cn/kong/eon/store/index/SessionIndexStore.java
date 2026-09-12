@@ -40,13 +40,13 @@ public class SessionIndexStore {
 
     public List<SessionMeta> list(String userId) {
         return indexRepo.list(userId).stream()
-                .map(this::toSummary)
+                .map(this::toMeta)
                 .sorted(Comparator.comparing(SessionMeta::lastActivityAt).reversed())
                 .toList();
     }
 
     public Optional<SessionMeta> find(String userId, String idOrPrefix) {
-        return indexRepo.find(userId, idOrPrefix).map(this::toSummary);
+        return indexRepo.find(userId, idOrPrefix).map(this::toMeta);
     }
 
     /** 硬删除：删除 SQLite 记录 + 会话目录。 */
@@ -75,12 +75,13 @@ public class SessionIndexStore {
         indexRepo.incrementUserMessageCount(sessionId);
     }
 
-    private SessionMeta toSummary(SessionIndex idx) {
+    private SessionMeta toMeta(SessionIndex idx) {
         return new SessionMeta(
                 idx.sessionId(),
                 idx.title() != null ? idx.title() : idx.sessionId(),
                 idx.lastActiveAt(),
-                idx.messageCount()
+                idx.messageCount(),
+                idx.userMessageCount()
         );
     }
 

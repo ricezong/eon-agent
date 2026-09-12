@@ -6,5 +6,6 @@ public record SessionMeta(
         String sessionId,
         String title,
         Instant lastActivityAt,
-        long messageCount
+        long messageCount,
+        long userMessageCount
 ) {}

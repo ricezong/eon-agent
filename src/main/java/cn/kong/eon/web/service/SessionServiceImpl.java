@@ -52,7 +52,7 @@ public class SessionServiceImpl implements SessionService {
                     i + 1,
                     s.sessionId(),
                     s.title(),
-                    s.messageCount(),
+                    s.userMessageCount(),
                     s.lastActivityAt().toString()
             ));
         }
