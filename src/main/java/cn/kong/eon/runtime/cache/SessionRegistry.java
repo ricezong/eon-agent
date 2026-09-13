@@ -1,7 +1,6 @@
 package cn.kong.eon.runtime.cache;
 
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.store.index.SessionMeta;
 import cn.kong.eon.web.exception.SessionBusyException;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
@@ -38,17 +37,11 @@ public class SessionRegistry {
     /**
      * 获取会话上下文并占用它（IDLE → RUNNING）。
      *
+     * @param resumed true = 续接已有会话（需加载快照）；false = 本次新建
      * @throws SessionBusyException 已有任务在执行且 busyPolicy=REJECT
      */
-    public SessionScope acquire(String sessionId, SessionMeta meta) {
-        SessionScope scope = cache.get(sessionId, k -> loader.load(k, meta));
-
-        // 防御：条目在极窄的时序窗口内被关闭，重建后再占用
-        if (scope.status() == SessionLifecycle.CLOSED) {
-            log.warn("会话 {} 缓存条目已关闭，重建", sessionId);
-            cache.invalidate(sessionId);
-            scope = cache.get(sessionId, k -> loader.load(k, meta));
-        }
+    public SessionScope acquire(String sessionId, boolean resumed) {
+        SessionScope scope = cache.get(sessionId, k -> loader.load(k, resumed));
 
         if (scope.tryAcquire()) {
             return scope;

@@ -1,12 +1,13 @@
 package cn.kong.eon.runtime.cache;
 
 import cn.kong.eon.config.AgentConfig;
+import cn.kong.eon.context.CompressionState;
 import cn.kong.eon.context.ContentCompressor;
 import cn.kong.eon.context.pipeline.IngestPipeline;
 import cn.kong.eon.context.policy.CompressionPolicy;
 import cn.kong.eon.engine.guard.ToolCircuitBreaker;
+import cn.kong.eon.llm.TokenUsage;
 import cn.kong.eon.store.artifact.ArtifactStore;
-import cn.kong.eon.store.index.SessionMeta;
 import cn.kong.eon.store.ledger.LedgerStore;
 import cn.kong.eon.store.memory.MemoryStore;
 import cn.kong.eon.store.snapshot.RestoreMode;
@@ -55,9 +56,9 @@ public class SessionScopeLoader {
      * 装配一个会话上下文（含账本回放）。
      *
      * @param sessionId 会话 ID
-     * @param meta   恢复已有会话时的索引摘要；新建会话传 null
+     * @param resumed true = 续接已有会话（加载快照）；false = 本次新建
      */
-    public SessionScope load(String sessionId, SessionMeta meta) {
+    public SessionScope load(String sessionId, boolean resumed) {
         // ── 1. 工作区
         Path sessionBaseDir = Path.of(config.getStorage().getBaseDir()).toAbsolutePath().normalize();
         Path sessionDir = sessionBaseDir.resolve(sessionId);
@@ -69,12 +70,26 @@ public class SessionScopeLoader {
         SessionSnapshotStore snapshotStore = new SessionSnapshotStore(sessionDir.resolve("state.json"), objectMapper);
         IngestPipeline ingestPipeline = createContextPipeline(artifactStore);
 
-        // ── 3. 快照 → 回放起点
+        // ── 3. 账本
         Path jsonlPath = sessionDir.resolve("ledger.jsonl");
+        String ledgerPath = jsonlPath.toAbsolutePath().toString();
+
+        if (!resumed) {
+            // ═══ 新建会话：无需快照，从第 0 行开始 ═══
+            LedgerStore ledger = new LedgerStore(jsonlPath, ingestPipeline, 0, objectMapper);
+            log.info("会话 {} 已初始化, ledger: {}", sessionId, ledgerPath);
+
+            return buildScope(sessionId, ledgerPath, ledger, todoStore, artifactStore,
+                    snapshotStore, pathResolver, circuitBreaker(),
+                    null, null);
+        }
+
+        // ═══ 续接会话：加载快照，按自洽性选择恢复模式 ═══
         long ledgerSize = countJsonlLines(jsonlPath);
-        SessionSnapshot snapshot = meta != null ? snapshotStore.load() : null;
+        SessionSnapshot snapshot = snapshotStore.load();
         RestoreMode mode = RestoreMode.of(snapshot, ledgerSize);
         int replayFrom = mode == RestoreMode.RESUME ? snapshot.getCompressionState().getReplayFromSeq() : 0;
+
         if (mode == RestoreMode.LOAD && snapshot != null) {
             log.warn("会话 {} 快照不自洽（水位 {} / 账本 {} 行 / 摘要 {}），改为全量回放",
                     sessionId, snapshot.getCompressionState().getReplayFromSeq(),
@@ -82,8 +97,6 @@ public class SessionScopeLoader {
                     snapshot.getCompressionState().getLastSummary() != null ? "有" : "无");
         }
 
-        // ── 4. 账本回放
-        String ledgerPath = jsonlPath.toAbsolutePath().toString();
         LedgerStore ledger = new LedgerStore(jsonlPath, ingestPipeline, replayFrom, objectMapper);
 
         if (snapshot != null) {
@@ -93,32 +106,16 @@ public class SessionScopeLoader {
                     snapshot.getCompressionState().getLastSummary() != null
                             ? snapshot.getCompressionState().getLastSummary().length() : 0,
                     snapshot.getUsageAccum() != null ? snapshot.getUsageAccum().getTotalTokens() : 0);
-        } else if (meta != null) {
-            log.info("会话 {} 无快照（未调用过 todo_write），按全量历史启动", sessionId);
         } else {
-            log.info("会话 {} 已初始化, ledger: {}", sessionId, ledgerPath);
+            log.info("会话 {} 无快照，按全量历史启动", sessionId);
         }
 
-        // ── 5. 运行时组件
-        var ldc = config.getLoopDetect();
-        ToolCircuitBreaker circuitBreaker = new ToolCircuitBreaker(ldc);
-
-        SessionScope scope = new SessionScope(
-                sessionId,
-                ledgerPath,
-                config.isSnapshotEnabled(),
-                ledger,
-                todoStore,
-                artifactStore,
-                snapshotStore,
-                pathResolver,
-                memoryStore,
-                circuitBreaker,
-                compressionPolicy,
+        SessionScope scope = buildScope(sessionId, ledgerPath, ledger, todoStore, artifactStore,
+                snapshotStore, pathResolver, circuitBreaker(),
                 snapshot != null ? snapshot.getUsageAccum() : null,
                 snapshot != null ? snapshot.getCompressionState() : null);
 
-        // ── 6. 快照恢复
+        // 快照恢复：todo 列表 + 压缩水位线
         if (snapshot != null) {
             if (mode == RestoreMode.RESUME && snapshot.getCompressionState() != null) {
                 scope.compressionState().setLastSummary(snapshot.getCompressionState().getLastSummary());
@@ -130,6 +127,31 @@ public class SessionScopeLoader {
         }
 
         return scope;
+    }
+
+    private ToolCircuitBreaker circuitBreaker() {
+        return new ToolCircuitBreaker(config.getLoopDetect());
+    }
+
+    private SessionScope buildScope(String sessionId, String ledgerPath, LedgerStore ledger,
+                                    TodoStore todoStore, ArtifactStore artifactStore,
+                                    SessionSnapshotStore snapshotStore, PathResolver pathResolver,
+                                    ToolCircuitBreaker circuitBreaker,
+                                    TokenUsage usageAccum, CompressionState compressionState) {
+        return new SessionScope(
+                sessionId,
+                ledgerPath,
+                config.isSnapshotEnabled(),
+                ledger,
+                todoStore,
+                artifactStore,
+                snapshotStore,
+                pathResolver,
+                memoryStore,
+                circuitBreaker,
+                compressionPolicy,
+                usageAccum,
+                compressionState);
     }
 
     // ═══════════════════════════════════════════════════════════════════

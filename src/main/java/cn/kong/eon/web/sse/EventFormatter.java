@@ -6,12 +6,28 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * SSE 事件格式化器（Visitor）。将 AgentEvent 转为前端渲染所需的 Map 结构。
- * 实时渲染和恢复渲染共用此格式化器，保证两套链路输出格式完全一致。
- */
+/** 将 AgentEvent 转为前端渲染所需的 Map。实时与回放两条链路共用。 */
 @Component
 public class EventFormatter implements AgentEventVisitor<Map<String, Object>> {
+
+    /** 所有事件统一携带的会话 ID 字段名。 */
+    public static final String SESSION_ID_FIELD = "session_id";
+
+    /** sessionId 走参数而非成员字段，使本类无状态、可被多个会话共享。 */
+    public Map<String, Object> format(AgentEvent event, String sessionId) {
+        Map<String, Object> data = event.accept(this);
+        data.put(SESSION_ID_FIELD, sessionId);
+        return data;
+    }
+
+    @Override
+    public Map<String, Object> visitSessionStart(SessionStart e) {
+        Map<String, Object> data = base(e);
+        if (e.title() != null) {
+            data.put("title", e.title());
+        }
+        return data;
+    }
 
     @Override
     public Map<String, Object> visitDelta(AgentDelta e) {

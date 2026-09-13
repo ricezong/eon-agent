@@ -67,38 +67,22 @@ public class SessionIndexRepository {
         return result;
     }
 
-    public Optional<SessionIndex> find(String userId, String idOrPrefix) {
-        if (idOrPrefix == null || idOrPrefix.isBlank()) return Optional.empty();
+    public Optional<SessionIndex> find(String userId, String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) return Optional.empty();
 
         // 先精确匹配
         String exactSql = "SELECT session_id, user_id, title, created_at, last_active_at, message_count, user_message_count FROM chat_sessions WHERE user_id = ? AND session_id = ?";
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(exactSql)) {
             ps.setString(1, userId);
-            ps.setString(2, idOrPrefix);
+            ps.setString(2, sessionId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) return Optional.of(mapRow(rs));
             }
         } catch (SQLException e) {
-            log.error("精确查找会话失败: {}", idOrPrefix, e);
+            log.error("精确查找会话失败: {}", sessionId, e);
         }
-
-        // 前缀匹配
-        String prefixSql = "SELECT session_id, user_id, title, created_at, last_active_at, message_count, user_message_count FROM chat_sessions WHERE user_id = ? AND session_id LIKE ?";
-        List<SessionIndex> matches = new ArrayList<>();
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(prefixSql)) {
-            ps.setString(1, userId);
-            ps.setString(2, idOrPrefix + "%");
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    matches.add(mapRow(rs));
-                }
-            }
-        } catch (SQLException e) {
-            log.error("前缀查找会话失败: {}", idOrPrefix, e);
-        }
-        return matches.size() == 1 ? Optional.of(matches.get(0)) : Optional.empty();
+        return Optional.empty();
     }
 
     public boolean delete(String userId, String sessionId) {

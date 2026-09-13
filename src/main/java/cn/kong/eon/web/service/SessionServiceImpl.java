@@ -2,6 +2,7 @@ package cn.kong.eon.web.service;
 
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.event.AgentEvent;
+import cn.kong.eon.event.SessionStart;
 import cn.kong.eon.runtime.cache.SessionRegistry;
 import cn.kong.eon.store.index.SessionIndexStore;
 import cn.kong.eon.store.ledger.LedgerReplayer;
@@ -70,11 +71,14 @@ public class SessionServiceImpl implements SessionService {
 
     @Override
     public List<Map<String, Object>> getSessionEvents(String sessionId) {
-        List<AgentEvent> events = replayer.replay(ledgerPath(sessionId));
-        // 与实时 SSE 共用同一个格式化器实例，保证恢复渲染与实时渲染结构一致
+        List<AgentEvent> events = new ArrayList<>();
+        // session.start 不落盘，回放时补发首帧，使两条链路的事件形状一致
+        events.add(SessionStart.now(sessionId, null));
+        events.addAll(replayer.replay(ledgerPath(sessionId)));
+
         List<Map<String, Object>> rendered = new ArrayList<>(events.size());
         for (AgentEvent event : events) {
-            rendered.add(event.accept(formatter));
+            rendered.add(formatter.format(event, sessionId));
         }
         return rendered;
     }

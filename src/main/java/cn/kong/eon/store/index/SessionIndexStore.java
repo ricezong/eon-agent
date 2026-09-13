@@ -45,8 +45,8 @@ public class SessionIndexStore {
                 .toList();
     }
 
-    public Optional<SessionMeta> find(String userId, String idOrPrefix) {
-        return indexRepo.find(userId, idOrPrefix).map(this::toMeta);
+    public Optional<SessionMeta> find(String userId, String sessionId) {
+        return indexRepo.find(userId, sessionId).map(this::toMeta);
     }
 
     /** 硬删除：删除 SQLite 记录 + 会话目录。 */

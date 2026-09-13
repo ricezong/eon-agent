@@ -23,6 +23,8 @@ public interface AgentEventVisitor<T> {
 
     T visitUserMessage(UserMessage e);
 
+    T visitSessionStart(SessionStart e);
+
     /** 未知事件类型兜底。 */
     T visitUnknown(AgentEvent e);
 }

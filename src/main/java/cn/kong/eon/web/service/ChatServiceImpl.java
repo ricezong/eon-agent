@@ -2,10 +2,11 @@ package cn.kong.eon.web.service;
 
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.engine.AgentEngine;
+import cn.kong.eon.event.SessionStart;
 import cn.kong.eon.runtime.RunContext;
+import cn.kong.eon.runtime.TaskScope;
 import cn.kong.eon.runtime.cache.SessionRegistry;
 import cn.kong.eon.runtime.cache.SessionScope;
-import cn.kong.eon.runtime.TaskScope;
 import cn.kong.eon.store.index.SessionIndexStore;
 import cn.kong.eon.store.index.SessionMeta;
 import cn.kong.eon.web.dto.ChatRequest;
@@ -18,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
@@ -25,9 +27,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 
-/**
- * 对话编排服务。创建 SseEmitter，异步执行引擎任务，事件实时推送前端。
- */
+/** 对话编排服务。会话身份解析（新建/续接）与引擎执行。 */
 @Service
 public class ChatServiceImpl implements ChatService {
 
@@ -58,12 +58,34 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public SseEmitter chat(ChatRequest request) {
+    public SseEmitter chat(ChatRequest request, String userId) {
+        // 同步阶段：解析会话身份（新建或续接），确保校验失败时不留脏数据
+        String requestedId = request.sessionId();
+        String sessionId;
+        boolean created;
+        String sessionTitle;
+
+        if (!StringUtils.hasText(requestedId)) {
+            sessionId = UUID.randomUUID().toString();
+            sessionTitle = deriveTitle(request.message());
+            sessionIndexStore.insert(sessionId, userId, sessionTitle);
+            created = true;
+            log.info("新建会话 {} (userId={})", sessionId, userId);
+        } else {
+            SessionMeta meta = sessionIndexStore.find(userId, requestedId)
+                    .orElseThrow(() -> new SessionNotFoundException(requestedId));
+            // 取索引中的完整 ID：直接用 requestedId 会让前缀成为会话身份，导致上下文串行
+            sessionId = meta.sessionId();
+            sessionTitle = meta.title();
+            sessionIndexStore.incrementUserMessageCount(sessionId);
+            created = false;
+        }
+
         SseEmitter emitter = new SseEmitter(300_000L); // 5 分钟超时
 
         sseExecutor.execute(() -> {
             try {
-                runChat(request, emitter);
+                execute(sessionId, created, sessionTitle, request.message(), emitter);
             } catch (Exception e) {
                 log.error("SSE 对话失败", e);
                 try {
@@ -79,54 +101,18 @@ public class ChatServiceImpl implements ChatService {
         return emitter;
     }
 
-    /** 校验输入，按新旧会话分别处理后执行引擎任务。 */
-    private void runChat(ChatRequest request, SseEmitter emitter) {
-        String userInput = request.message();
-        if (userInput == null || userInput.isBlank()) {
-            throw new IllegalArgumentException("输入不能为空。");
-        }
-
-        String requestedId = request.sessionId();
-        String userId = request.userId() != null ? request.userId() : "default";
-        boolean isNew = requestedId == null || requestedId.isBlank();
-
-        String sessionId;
-        SessionMeta meta;
-        if (isNew) {
-            sessionId = createSession(userId, userInput);
-            meta = null;
-        } else {
-            sessionId = resolveExistingSession(userId, requestedId);
-            meta = sessionIndexStore.find(userId, requestedId).orElse(null);
-        }
-
-        executeTask(sessionId, userInput, meta, emitter);
-    }
-
-    /** 创建新会话：生成 ID 并写入索引。 */
-    private String createSession(String userId, String userInput) {
-        String sessionId = UUID.randomUUID().toString();
-        sessionIndexStore.insert(sessionId, userId, deriveTitle(userInput));
-        return sessionId;
-    }
-
-    /** 校验会话存在并递增用户消息计数。 */
-    private String resolveExistingSession(String userId, String requestedId) {
-        sessionIndexStore.find(userId, requestedId)
-                .orElseThrow(() -> new SessionNotFoundException(requestedId));
-        sessionIndexStore.incrementUserMessageCount(requestedId);
-        return requestedId;
-    }
-
-    /** 占用会话上下文，调引擎执行任务，结束后释放状态。 */
-    private void executeTask(String sessionId, String userInput, SessionMeta meta, SseEmitter emitter) {
-        SessionScope scope = registry.acquire(sessionId, meta);
+    /** 占用会话上下文，发出会话身份首帧，调引擎执行任务，结束后释放状态。 */
+    private void execute(String sessionId, boolean created, String title, String userInput, SseEmitter emitter) {
+        SessionScope scope = registry.acquire(sessionId, !created);
 
         RunContext ctx = null;
         try {
             TaskScope task = new TaskScope(userInput, config.getLoopDetect());
             ctx = new RunContext(scope, task,
-                    List.of(new SseEventListener(emitter, objectMapper, formatter)));
+                    List.of(new SseEventListener(emitter, objectMapper, formatter, sessionId)));
+
+            // 首帧：把会话身份交付客户端
+            ctx.emit(SessionStart.now(sessionId, title));
 
             log.info("=== 会话 {} 任务开始 ===", sessionId);
             log.info("用户输入: {}", userInput.length() > 200 ? userInput.substring(0, 200) + "..." : userInput);
@@ -155,6 +141,11 @@ public class ChatServiceImpl implements ChatService {
         return "runtime_error";
     }
 
+    /** 从用户输入派生会话标题（前 10 字符）。 */
+    private static String deriveTitle(String seed) {
+        return seed.length() <= 10 ? seed : seed.substring(0, 10);
+    }
+
     @Override
     public boolean interrupt(String sessionId) {
         return registry.find(sessionId)
@@ -167,11 +158,5 @@ public class ChatServiceImpl implements ChatService {
                     return true;
                 })
                 .orElse(false);
-    }
-
-    /** 从用户输入派生会话标题（前 10 字符）。 */
-    private static String deriveTitle(String userInput) {
-        if (userInput == null) return "新会话";
-        return userInput.length() <= 10 ? userInput : userInput.substring(0, 10);
     }
 }

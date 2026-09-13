@@ -18,6 +18,9 @@ import java.util.Map;
 @RequestMapping("/api")
 public class AgentController {
 
+    private static final String USER_ID_HEADER = "X-User-Id";
+    private static final String DEFAULT_USER_ID = "default";
+
     private final ChatService chatService;
     private final SessionService sessionService;
 
@@ -28,43 +31,37 @@ public class AgentController {
         this.sessionService = sessionService;
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    //  对话
-    // ═══════════════════════════════════════════════════════════════════
-
-    /** 流式对话，sessionId 为空时自动创建新会话。 */
+    /** 流式对话，sessionId 为空时自动创建新会话。会话身份由首帧 session.start 交付。 */
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chat(@RequestBody ChatRequest request) {
-        return chatService.chat(request);
+    public SseEmitter chat(@RequestBody ChatRequest request,
+                           @RequestHeader(name = USER_ID_HEADER, defaultValue = DEFAULT_USER_ID) String userId) {
+        // 前置校验：否则会先建会话行再报错，留下脏数据
+        if (request.message() == null || request.message().isBlank()) {
+            throw new IllegalArgumentException("输入不能为空。");
+        }
+        return chatService.chat(request, userId);
     }
 
-    /** 中断指定会话的当前任务。 */
     @PostMapping("/interrupt")
     public Map<String, Object> interrupt(@RequestBody InterruptRequest request) {
         boolean interrupted = chatService.interrupt(request.sessionId());
         return Map.of("status", interrupted ? "interrupted" : "no_session");
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    //  会话管理
-    // ═══════════════════════════════════════════════════════════════════
-
-    /** 列出历史会话。 */
     @GetMapping("/sessions")
     public List<SessionListItem> listSessions(
-            @RequestParam(required = false, defaultValue = "default") String userId) {
+            @RequestHeader(name = USER_ID_HEADER, defaultValue = DEFAULT_USER_ID) String userId) {
         return sessionService.listSessions(userId);
     }
 
-    /** 删除会话。 */
     @DeleteMapping("/sessions/{sessionId}")
     public Map<String, Object> deleteSession(@PathVariable String sessionId,
-            @RequestParam(required = false, defaultValue = "default") String userId) {
+            @RequestHeader(name = USER_ID_HEADER, defaultValue = DEFAULT_USER_ID) String userId) {
         boolean deleted = sessionService.deleteSession(userId, sessionId);
         return Map.of("status", deleted ? "deleted" : "not_found", "session_id", sessionId);
     }
 
-    /** 恢复会话，回放账本事件。 */
+    /** 回放账本事件。 */
     @GetMapping("/sessions/{sessionId}")
     public List<Map<String, Object>> getSession(@PathVariable String sessionId) {
         return sessionService.getSessionEvents(sessionId);
