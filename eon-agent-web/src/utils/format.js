@@ -82,12 +82,6 @@ export function deriveTitle(text) {
   return text.length <= 10 ? text : text.slice(0, 10)
 }
 
-/** 截断文本 */
-export function truncate(text, max = 120) {
-  if (!text) return ''
-  return text.length > max ? `${text.slice(0, max)}…` : text
-}
-
 /** 复制到剪贴板（带降级） */
 export async function copyText(text) {
   try {

@@ -5,16 +5,13 @@
 const P = (d, extra = '') => `<path d="${d}"/>${extra}`
 const C = (cx, cy, r) => `<circle cx="${cx}" cy="${cy}" r="${r}"/>`
 const R = (x, y, w, h, rx = 2) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"/>`
-const L = (x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`
 
 export const ICONS = {
   plus: P('M12 5v14M5 12h14'),
   send: P('M22 2 11 13M22 2 15 22l-4-9-9-4 20-7z'),
-  stop: R(6, 6, 12, 12, 3),
   trash: P('M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6'),
   menu: P('M3 6h18M3 12h18M3 18h18'),
   close: P('M18 6 6 18M6 6l12 12'),
-  chevronLeft: P('m15 18-6-6 6-6'),
   chevronRight: P('m9 18 6-6-6-6'),
   chevronDown: P('m6 9 6 6 6-6'),
   sparkles:
@@ -41,31 +38,20 @@ export const ICONS = {
   alert: P('M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z') + P('M12 9v4M12 17h.01'),
   zap: P('M13 2 3 14h8l-1 8 10-12h-8l1-8z'),
   activity: P('M3 12h4l3-8 4 16 3-8h4'),
-  sliders: P('M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0') + C(16, 6, 2) + C(10, 12, 2) + C(18, 18, 2),
   book: P('M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z'),
   code: P('m8 8-4 4 4 4M16 8l4 4-4 4'),
-  cpu: R(5, 5, 14, 14) + R(9, 9, 6, 6, 1) + P('M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3'),
   database:
     `<ellipse cx="12" cy="5" rx="8" ry="3"/>` + P('M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5') + P('M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3'),
   plug: P('M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-6 6 6 6 0 0 1-6-6z') + P('M12 17v5'),
   user: C(12, 8, 4) + P('M4 21a8 8 0 0 1 16 0'),
-  clock: C(12, 12, 9) + P('M12 7v5l3 2'),
-  terminal: R(3, 4, 18, 16) + P('m7 9 3 3-3 3M13 15h4'),
-  wrench: P('M14.7 6.3a4 4 0 0 0 5.7 5.7l-9.9 9.9a2 2 0 0 1-2.8 0l-2.9-2.9a2 2 0 0 1 0-2.8z'),
   layers: P('m12 2 9 5-9 5-9-5 9-5z') + P('m3 12 9 5 9-5M3 17l9 5 9-5'),
   external: P('M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3'),
-  panelLeft: R(3, 3, 18, 18) + L(9, 3, 9, 21),
   shield: P('M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z'),
   loader: P('M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1 7 17M17 7l2.1-2.1'),
   edit: P('M12 20h9') + P('M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'),
   image: R(3, 3, 18, 18) + C(8.5, 8.5, 1.6) + P('m21 15-5-5L5 21'),
-  mic: R(9, 2, 6, 12, 3) + P('M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8'),
-  idea: P('M12 2a7 7 0 0 0-4 12.8V17h8v-2.2A7 7 0 0 0 12 2z') + P('M9 21h6'),
-  bot: R(5, 8, 14, 12, 3) + P('M12 8V4M9 4h6') + C(9.5, 14, 1.2) + C(14.5, 14, 1.2) + P('M9.5 18h5'),
   arrowDown: P('M12 5v14M6 13l6 6 6-6'),
-  arrowRight: P('M5 12h14M13 6l6 6-6 6'),
-  filter: P('M3 5h18l-7 8v6l-4 2v-8z'),
-  more: C(5, 12, 1.4) + C(12, 12, 1.4) + C(19, 12, 1.4)
+  arrowRight: P('M5 12h14M13 6l6 6-6 6')
 }
 
 export default ICONS

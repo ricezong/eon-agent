@@ -48,6 +48,16 @@ watch(
   }
 )
 
+// 切换会话：直接落到新会话底部。两个会话消息条数恰好相同时 length watch 不会触发
+watch(
+  () => session.currentId,
+  async () => {
+    await nextTick()
+    stick.value = true
+    toBottom(false)
+  }
+)
+
 onMounted(() => {
   nextTick(() => toBottom(false))
   // 流式过程中持续吸底（打字机每帧都在变高）

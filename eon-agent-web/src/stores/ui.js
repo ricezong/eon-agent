@@ -1,12 +1,10 @@
 /** 界面状态：侧边栏开合、移动端抽屉、确认弹窗。 */
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 
 export const useUiStore = defineStore('ui', () => {
   const isMobile = ref(typeof window !== 'undefined' && window.innerWidth <= 900)
   const drawerOpen = ref(false)
-
-  const sidebarVisible = computed(() => !isMobile.value || drawerOpen.value)
 
   function syncViewport() {
     if (typeof window === 'undefined') return
@@ -22,5 +20,5 @@ export const useUiStore = defineStore('ui', () => {
     drawerOpen.value = false
   }
 
-  return { isMobile, drawerOpen, sidebarVisible, syncViewport, toggleDrawer, closeDrawer }
+  return { isMobile, drawerOpen, syncViewport, toggleDrawer, closeDrawer }
 })

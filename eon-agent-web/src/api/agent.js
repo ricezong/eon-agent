@@ -23,8 +23,8 @@ export function chatStream({ sessionId, message, userId, kbId, modelId, retryMes
 }
 
 /** 中断指定会话的当前任务。返回 'interrupted' | 'no_session' */
-export async function interruptSession(sessionId) {
-  const res = await http.post('/interrupt', { sessionId })
+export async function interruptSession(sessionId, userId) {
+  const res = await http.post('/interrupt', { sessionId }, { headers: userHeaders(userId) })
   return res?.status || 'no_session'
 }
 
@@ -32,8 +32,8 @@ export async function interruptSession(sessionId) {
  * 提交提问答案。答案直接交给阻塞中的 ask_question——本轮不中断，后端会把它作为工具结果继续跑。
  * 返回 'answered' | 'no_pending'（会话已不在等待回答）。
  */
-export async function answerQuestion(sessionId, answers) {
-  const res = await http.post('/answer', { sessionId, answers })
+export async function answerQuestion(sessionId, answers, userId) {
+  const res = await http.post('/answer', { sessionId, answers }, { headers: userHeaders(userId) })
   return res?.status || 'no_pending'
 }
 
@@ -72,9 +72,3 @@ export function fileRawUrl(sessionId, path, download = false) {
   return `${API_BASE}/sessions/${encodeURIComponent(sessionId)}/files/raw?${q}`
 }
 
-/** 连通性探测（复用会话列表接口）。 */
-export async function ping(userId) {
-  const started = performance.now()
-  await listSessions(userId)
-  return Math.round(performance.now() - started)
-}

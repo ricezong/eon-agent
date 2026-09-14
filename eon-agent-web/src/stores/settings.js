@@ -17,9 +17,26 @@ function load() {
 
 const saved = load()
 
+/** crypto.randomUUID 只在安全上下文可用（https 或 localhost），其余环境回退到时间戳 + 随机串。 */
+function randomId() {
+  if (globalThis.crypto?.randomUUID) return crypto.randomUUID()
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
+}
+
+/**
+ * 匿名设备标识：首访生成并固化。后端按它隔离会话索引，
+ * 清站点数据 / 换浏览器都会产生新 id——旧会话仍在磁盘上，只是不再出现在列表里。
+ */
+function ensureUserId() {
+  if (saved.userId) return saved.userId
+  saved.userId = 'u-' + randomId()
+  localStorage.setItem(KEY, JSON.stringify(saved))
+  return saved.userId
+}
+
 export const useSettingsStore = defineStore('settings', () => {
-  /** 后端按 userId 隔离会话索引，默认与后端 defaultValue 一致 */
-  const userId = ref(saved.userId || 'default')
+  /** 后端按 userId 隔离会话索引；不填时后端回落到 default */
+  const userId = ref(ensureUserId())
   /** 打字机速度（字符/秒） */
   const typeSpeed = ref(saved.typeSpeed || 340)
   /** 流式输出时是否自动滚动到底部 */
@@ -49,14 +66,5 @@ export const useSettingsStore = defineStore('settings', () => {
 
   watch(typeSpeed, (v) => setSpeed(v))
 
-  function reset() {
-    userId.value = 'default'
-    typeSpeed.value = 340
-    autoScroll.value = true
-    expandThinking.value = false
-    collapseToolResult.value = true
-    htmlPreviewScripts.value = true
-  }
-
-  return { userId, typeSpeed, autoScroll, expandThinking, collapseToolResult, htmlPreviewScripts, reset }
+  return { userId, typeSpeed, autoScroll, expandThinking, collapseToolResult, htmlPreviewScripts }
 })

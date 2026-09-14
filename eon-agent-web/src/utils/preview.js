@@ -33,7 +33,7 @@ const EXT_LANG = {
 export const PREVIEW_MAX_BYTES = 512 * 1024
 
 /** 取扩展名（小写，不含点） */
-export function extOf(name = '') {
+function extOf(name = '') {
   const i = String(name).lastIndexOf('.')
   return i > 0 && i < name.length - 1 ? name.slice(i + 1).toLowerCase() : ''
 }

@@ -1,6 +1,5 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import AppIcon from '@/components/common/AppIcon.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useSessionStore } from '@/stores/session'
@@ -8,19 +7,12 @@ import { useUiStore } from '@/stores/ui'
 import { useSettingsStore } from '@/stores/settings'
 import { fromNow, groupOf } from '@/utils/format'
 
-const router = useRouter()
 const session = useSessionStore()
 const ui = useUiStore()
 const settings = useSettingsStore()
 
 const keyword = ref('')
 const pendingDelete = ref(null)
-
-const NAV = [
-  { to: '/', label: '对话', icon: 'message' },
-  { to: '/tools', label: '能力矩阵', icon: 'plug' },
-  { to: '/api', label: '接口与设置', icon: 'code' }
-]
 
 const groups = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
@@ -36,6 +28,9 @@ const groups = computed(() => {
   return [...map.entries()].map(([name, items]) => ({ name, items }))
 })
 
+/** 该会话是否有任务在后台运行（切换走也不会中断） */
+const isRunning = (id) => session.runningIds.includes(id)
+
 async function onSelect(id) {
   if (id === session.currentId) {
     ui.closeDrawer()
@@ -43,16 +38,14 @@ async function onSelect(id) {
   }
   try {
     await session.openSession(id)
-    if (router.currentRoute.value.path !== '/') router.push('/')
-    ui.closeDrawer()
   } catch {
     /* 错误已在 store 中提示 */
   }
+  ui.closeDrawer()
 }
 
 function onCreate() {
   session.newSession()
-  if (router.currentRoute.value.path !== '/') router.push('/')
   ui.closeDrawer()
 }
 
@@ -84,14 +77,6 @@ function confirmDelete() {
       <span>新建对话</span>
       <span class="new-chat__hint">Ctrl/⌘ + K</span>
     </button>
-
-    <!-- 主导航 -->
-    <nav class="nav">
-      <RouterLink v-for="n in NAV" :key="n.to" :to="n.to" class="nav__item" @click="ui.closeDrawer()">
-        <AppIcon :name="n.icon" :size="16" />
-        <span>{{ n.label }}</span>
-      </RouterLink>
-    </nav>
 
     <!-- 会话列表 -->
     <div class="list-head">
@@ -132,6 +117,7 @@ function confirmDelete() {
           <div class="session-item__body">
             <p class="session-item__title ellipsis">{{ s.title || '未命名会话' }}</p>
             <p class="session-item__meta">
+              <span v-if="isRunning(s.sessionId)" class="session-item__running">运行中</span>
               {{ s.messageCount || 0 }} 条 · {{ fromNow(s.lastActivityAt) }}
             </p>
           </div>
@@ -146,16 +132,15 @@ function confirmDelete() {
       </div>
     </div>
 
-    <!-- 底部用户 -->
+    <!-- 底部用户：仅展示身份，不可点 -->
     <div class="sidebar__footer">
-      <RouterLink to="/api" class="user-chip" @click="ui.closeDrawer()">
+      <div class="user-chip">
         <span class="avatar"><AppIcon name="user" :size="15" /></span>
         <span class="user-chip__body">
-          <span class="user-chip__id ellipsis">{{ settings.userId }}</span>
+          <span class="user-chip__id ellipsis" :title="settings.userId">{{ settings.userId }}</span>
           <span class="user-chip__role">本地用户 · 数据存于服务端</span>
         </span>
-        <AppIcon name="chevronRight" :size="14" />
-      </RouterLink>
+      </div>
     </div>
 
     <ConfirmDialog
@@ -251,34 +236,6 @@ function confirmDelete() {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 1px 5px;
-}
-
-/* 导航 */
-.nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.nav__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: 10px;
-  color: var(--text-soft);
-  font-size: 13.5px;
-  font-weight: 500;
-  transition: background 0.18s, color 0.18s, transform 0.18s;
-}
-.nav__item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-  transform: translateX(2px);
-}
-.nav__item.router-link-exact-active {
-  background: linear-gradient(90deg, rgba(139, 92, 246, 0.22), rgba(34, 211, 238, 0.08));
-  color: #fff;
-  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.28);
 }
 
 /* 列表头 */
@@ -419,6 +376,37 @@ function confirmDelete() {
   font-size: 11px;
   color: var(--text-muted);
 }
+
+/* 后台仍在跑的会话：切走不会中断，这里给个可见标记 */
+.session-item__running {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 5px;
+  padding: 0 5px;
+  border-radius: 99px;
+  font-size: 10px;
+  color: #a5b4fc;
+  background: rgba(139, 92, 246, 0.16);
+  border: 1px solid rgba(139, 92, 246, 0.32);
+}
+.session-item__running::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse-dot 1.2s var(--ease) infinite;
+}
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
 .session-item__del {
   flex: none;
   border: none;
@@ -449,10 +437,6 @@ function confirmDelete() {
   gap: 9px;
   padding: 8px 10px;
   border-radius: 12px;
-  transition: background 0.18s;
-}
-.user-chip:hover {
-  background: rgba(255, 255, 255, 0.05);
 }
 .avatar {
   width: 30px;

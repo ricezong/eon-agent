@@ -1,9 +1,12 @@
 /**
  * 会话与消息状态中心。一条 assistant 消息 = blocks[]（thinking / text / tool / file / web），保证时序交错。
- * 实时流与历史回放共用同一套事件 → 消息还原逻辑；会话身份取自每个事件携带的 session_id。
+ *
+ * 运行时按会话隔离（runs: sessionId → 运行时），因此切换会话不会打断后台任务：
+ * 事件按 session_id 写进各自的运行时，切回来直接看到实时内容。
+ * 实时流与历史回放共用同一套事件 → 消息还原逻辑。
  */
 import { defineStore } from 'pinia'
-import { computed, ref, shallowRef } from 'vue'
+import { computed, markRaw, reactive, ref } from 'vue'
 import * as api from '@/api/agent'
 import { attach, detach, flush } from '@/utils/ticker'
 import { toolMeta } from '@/config/tools'
@@ -90,34 +93,83 @@ function findResultBlock(blocks, key, kind) {
   return null
 }
 
+/** 新会话在首帧 session.start 拿到真实 id 之前，运行时暂挂在这个键下 */
+const NEW_KEY = '__new__'
+
+/** 未选中任何会话时的空壳，避免消费方到处判空 */
+const EMPTY_RUN = {
+  messages: [],
+  streaming: false,
+  status: 'idle',
+  lastError: null,
+  elapsed: 0,
+  hookPhase: '',
+  pendingQuestion: null,
+  todos: []
+}
+
 export const useSessionStore = defineStore('session', () => {
   const settings = useSettingsStore()
   const toast = useToastStore()
 
-  /* ── 状态 ─────────────────────────────── */
+  /* ── 全局状态 ─────────────────────────── */
   const sessions = ref([])
   const sessionsLoading = ref(false)
   const currentId = ref('')
-  const messages = ref([])
-  const streaming = ref(false)
-  const sessionStatus = ref('idle') // idle | running | terminated
   const loadingSession = ref(false)
-  const lastError = ref(null)
-  const connection = ref('unknown') // unknown | online | offline
-  const elapsed = ref(0)
-  /** 当前正在执行的引擎钩子名（空串表示不在钩子阶段），用于静默期的进度提示 */
-  const hookPhase = ref('')
-  /** 待用户回答的提问表单；只存在于内存，刷新即消失（用户仍可直接打字继续） */
-  const pendingQuestion = ref(null)
-  /** 会话级待办清单，由 session.todo 事件全量覆盖；空数组即代表列表消失 */
-  const todos = ref([])
+  const connection = ref('unknown')
 
-  const run = shallowRef(null) // { abort }
-  let currentAssistant = null // 当前正在生成的 assistant 消息（非响应式引用）
-  let errored = false
-  let timer = null
+  /* ── 会话运行时（按 id 隔离） ─────────── */
+  const runs = reactive({})
 
-  /* ── 计算属性 ─────────────────────────── */
+  /**
+   * 取指定会话的运行时。
+   * 赋值后要从 runs 取回代理再返回——直接改新建时的原始对象不会触发响应式更新。
+   */
+  function runOf(id, create = true) {
+    if (!id) return null
+    let r = runs[id]
+    if (!r && create) {
+      runs[id] = {
+        messages: [],
+        streaming: false,
+        status: 'idle', // idle | running | terminated
+        run: null, // { abort } 流式句柄
+        assistant: null, // 当前正在生成的 assistant 消息
+        errored: false,
+        elapsed: 0,
+        timer: null,
+        lastError: null,
+        hookPhase: '',
+        pendingQuestion: null,
+        todos: []
+      }
+      r = runs[id]
+    }
+    return r
+  }
+
+  /**
+   * 当前查看的会话运行时。
+   * 新会话在首帧 session.start 到达前挂在 NEW_KEY 下，这里必须回退到它——
+   * 否则发出第一条消息后到身份落地之间会闪一下空白（甚至显示欢迎页）。
+   */
+  const active = computed(() => runs[currentId.value] || runs[NEW_KEY] || EMPTY_RUN)
+  /** 正在运行的会话 id，供侧边栏标记 */
+  const runningIds = computed(() =>
+    Object.keys(runs).filter((id) => id !== NEW_KEY && runs[id].streaming)
+  )
+
+  /* ── 当前会话投影（消费方只读） ───────── */
+  const messages = computed(() => active.value.messages)
+  const streaming = computed(() => active.value.streaming)
+  const sessionStatus = computed(() => active.value.status)
+  const lastError = computed(() => active.value.lastError)
+  const elapsed = computed(() => active.value.elapsed)
+  const hookPhase = computed(() => active.value.hookPhase)
+  const pendingQuestion = computed(() => active.value.pendingQuestion)
+  const todos = computed(() => active.value.todos)
+
   const currentSession = computed(() => sessions.value.find((s) => s.sessionId === currentId.value) || null)
   const title = computed(() => currentSession.value?.title || (messages.value.length ? '新会话' : 'Eon Agent'))
   const hasMessages = computed(() => messages.value.length > 0)
@@ -148,45 +200,57 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
-  /** 采纳事件流携带的会话身份。仅在尚无当前会话时生效。 */
+  /**
+   * 采纳事件流携带的会话身份。新会话首帧 session.start 给出真实 id，
+   * 把临时键下的运行时整体迁过去（对象引用不变，回调闭包里持有的引用依然有效）。
+   */
   function adoptSession(id, sessionTitle) {
-    if (!id || currentId.value) return
-    currentId.value = id
+    if (!id) return
+
+    // 只有本视图刚发起的那次 run 才落地身份。后台会话的事件一律不接管选中态：
+    // currentId 为空代表用户停在新建的空白页，不能因为后台还有帧在推就把视图抢回去。
+    const pending = runs[NEW_KEY]
+    if (!pending) return
+
+    runs[id] = pending
+    delete runs[NEW_KEY]
+    // 等待身份期间用户可能已切到别的会话，此时只落地运行时，不动当前视图
+    if (!currentId.value) currentId.value = id
+
     const placeholder = {
       sessionId: id,
-      title: sessionTitle || deriveTitle(lastUserText()),
-      userMessageCount: 1,
+      title: sessionTitle || deriveTitle(lastUserText(pending)),
+      messageCount: 1,
       lastActivityAt: new Date().toISOString()
     }
     sessions.value = [placeholder, ...sessions.value.filter((s) => s.sessionId !== id)]
   }
 
+  /** 新建会话：不停止任何任务，当前会话若在运行就留在后台继续跑 */
   function newSession() {
-    if (streaming.value) stop()
+    delete runs[NEW_KEY]
     currentId.value = ''
-    messages.value = []
-    lastError.value = null
-    sessionStatus.value = 'idle'
-    elapsed.value = 0
-    pendingQuestion.value = null
-    todos.value = []
   }
 
   async function openSession(id, force = false) {
     if (!id) return
     if (!force && id === currentId.value) return
-    if (streaming.value) stop()
     loadingSession.value = true
-    lastError.value = null
     try {
-      const events = await api.getSessionEvents(id, settings.userId)
-      messages.value = buildMessages(events)
+      const existing = runs[id]
+      if (existing) {
+        // 已在内存（多半正在运行）：直接切过去看实时内容，不回放账本
+        existing.lastError = null
+      } else {
+        const events = await api.getSessionEvents(id, settings.userId)
+        const created = runOf(id)
+        created.messages = buildMessages(events)
+        created.status = 'idle'
+        created.pendingQuestion = null
+        created.todos = []
+      }
       currentId.value = id
-      sessionStatus.value = 'idle'
       connection.value = 'online'
-      pendingQuestion.value = null
-      // 先清空，随后由回放补发的 session.todo 事件填上
-      todos.value = []
     } catch (e) {
       connection.value = 'offline'
       toast.error(`加载会话失败：${e.message}`)
@@ -199,6 +263,17 @@ export const useSessionStore = defineStore('session', () => {
   async function removeSession(id) {
     try {
       await api.deleteSession(id, settings.userId)
+      // 还在跑就先掐断，否则后台会继续往已删除的目录写数据
+      const r = runs[id]
+      if (r?.streaming) {
+        try {
+          await api.interruptSession(id, settings.userId)
+        } catch {
+          /* 忽略 */
+        }
+        r.run?.abort('session_deleted')
+      }
+      delete runs[id]
       sessions.value = sessions.value.filter((s) => s.sessionId !== id)
       if (currentId.value === id) newSession()
       toast.success('会话已删除')
@@ -210,13 +285,18 @@ export const useSessionStore = defineStore('session', () => {
   /* ── 发送消息（SSE 流式） ─────────────── */
   async function send(text) {
     const content = (text || '').trim()
-    if (!content || streaming.value) return
+    if (!content) return
 
-    lastError.value = null
-    errored = false
+    // 新会话先用临时键占位，首帧 session.start 到达后迁到真实 id
+    const r = runOf(currentId.value || NEW_KEY)
+    if (r.streaming) return
 
-    messages.value.push({ id: uid('u'), role: 'user', text: content, createdAt: Date.now() })
-    const assistant = {
+    r.lastError = null
+    r.errored = false
+    r.pendingQuestion = null
+
+    r.messages.push({ id: uid('u'), role: 'user', text: content, createdAt: Date.now() })
+    r.messages.push({
       id: uid('a'),
       role: 'assistant',
       blocks: [],
@@ -225,15 +305,14 @@ export const useSessionStore = defineStore('session', () => {
       stopReason: null,
       error: null,
       createdAt: Date.now()
-    }
-    messages.value.push(assistant)
-    currentAssistant = messages.value[messages.value.length - 1]
+    })
+    r.assistant = r.messages[r.messages.length - 1]
 
-    streaming.value = true
-    sessionStatus.value = 'running'
-    elapsed.value = 0
-    timer = setInterval(() => {
-      elapsed.value += 1
+    r.streaming = true
+    r.status = 'running'
+    r.elapsed = 0
+    r.timer = setInterval(() => {
+      r.elapsed += 1
     }, 1000)
 
     const stream = api.chatStream(
@@ -241,36 +320,37 @@ export const useSessionStore = defineStore('session', () => {
       {
         onEvent: applyEvent,
         onError: (err) => {
-          lastError.value = err
+          r.lastError = err
           if (err.type !== 'aborted') {
             toast.error(err.message || '连接异常')
-            if (currentAssistant) currentAssistant.error = { message: err.message, type: err.type }
+            if (r.assistant) r.assistant.error = { message: err.message, type: err.type }
           }
-          finishRun(err.type === 'aborted' ? 'stopped' : 'error', err.message)
+          finishRun(r, err.type === 'aborted' ? 'stopped' : 'error', err.message)
         },
         onDone: ({ ok }) => {
-          if (ok && sessionStatus.value === 'running') finishRun(errored ? 'error' : 'done')
+          if (ok && r.status === 'running') finishRun(r, r.errored ? 'error' : 'done')
         }
       }
     )
-    run.value = stream
+    r.run = markRaw(stream)
 
     stream.promise.catch(() => {})
   }
 
-  /** 停止生成：调用后端 /api/interrupt 并断开本地流。 */
+  /** 停止生成：只作用于当前查看的会话，后台会话不受影响 */
   async function stop() {
-    if (!streaming.value) return
-    if (currentId.value) {
-      try {
-        await api.interruptSession(currentId.value)
-      } catch {
-        /* 忽略：即便后端无会话，本地也要断开 */
-      }
+    const id = currentId.value
+    if (!id) return
+    const r = runs[id]
+    if (!r || !r.streaming) return
+    try {
+      await api.interruptSession(id, settings.userId)
+    } catch {
+      /* 忽略：即便后端无会话，本地也要断开 */
     }
-    run.value?.abort('user_stop')
-    run.value = null
-    pendingQuestion.value = null
+    r.run?.abort('user_stop')
+    r.run = null
+    r.pendingQuestion = null
   }
 
   /**
@@ -278,26 +358,34 @@ export const useSessionStore = defineStore('session', () => {
    * 后端把它作为工具结果回填上下文后继续跑，所以这里只管清卡片，流仍在进行中。
    */
   async function answer(answers) {
-    const q = pendingQuestion.value
+    const r = runOf(currentId.value, false)
+    const q = r?.pendingQuestion
     if (!q) return
     const payload = q.questions.map((item) => {
       const picked = answers[item.id] || {}
       return { id: item.id, labels: picked.labels || [], other: picked.other || '' }
     })
-    const status = await api.answerQuestion(currentId.value, payload)
+    const status = await api.answerQuestion(currentId.value, payload, settings.userId)
     if (status !== 'answered') {
       toast.error('提交失败：该提问已超时或已被中断')
       return
     }
-    pendingQuestion.value = null
+    r.pendingQuestion = null
   }
 
   /* ── 事件 → 消息 ──────────────────────── */
-  function currentMsg(create = true) {
-    const last = messages.value[messages.value.length - 1]
+  function lastAssistant(r) {
+    for (let i = r.messages.length - 1; i >= 0; i--) {
+      if (r.messages[i].role === 'assistant') return r.messages[i]
+    }
+    return null
+  }
+
+  function currentMsg(r, create = true) {
+    const last = r.messages[r.messages.length - 1]
     if (last && last.role === 'assistant') return last
     if (!create) return null
-    const m = {
+    r.messages.push({
       id: uid('a'),
       role: 'assistant',
       blocks: [],
@@ -306,9 +394,8 @@ export const useSessionStore = defineStore('session', () => {
       stopReason: null,
       error: null,
       createdAt: Date.now()
-    }
-    messages.value.push(m)
-    return messages.value[messages.value.length - 1]
+    })
+    return r.messages[r.messages.length - 1]
   }
 
   /** 推入块并返回响应式引用；同时关闭上一个块 */
@@ -354,8 +441,7 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   function pushTool(msg, data) {
-    const block = pushBlock(msg, makeToolBlock(data.tool_use_id, data.name, data.input))
-    return block
+    return pushBlock(msg, makeToolBlock(data.tool_use_id, data.name, data.input))
   }
 
   /** 把已存在的块挪到消息末尾，用于让结果卡排在随后出现的工具卡之后。 */
@@ -415,8 +501,8 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   /** 工具执行完毕：把结构化结果写进结果卡，仍保留精简的工具卡。 */
-  function applyToolResult(msg, data) {
-    fillTool(msg, data)
+  function applyToolResult(r, msg, data) {
+    fillTool(r, msg, data)
     const kind = resultKindOf(data.name)
     if (!kind) return
 
@@ -440,9 +526,9 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
-  function fillTool(msg, data) {
+  function fillTool(r, msg, data) {
     // 工具结果可能落在上一条 assistant 消息（跨轮），向前回溯 3 条
-    const candidates = [msg, ...messages.value.slice(-4, -1).reverse()]
+    const candidates = [msg, ...(r?.messages || []).slice(-4, -1).reverse()]
     for (const m of candidates) {
       if (!m || m.role !== 'assistant') continue
       const hit = m.blocks.find((b) => b.kind === 'tool' && b.toolUseId === data.tool_use_id)
@@ -463,67 +549,64 @@ export const useSessionStore = defineStore('session', () => {
 
   function applyEvent({ name, data }) {
     if (!data) return
-    // 每个事件都带 session_id，故此处统一采纳身份，无需为 session.start 单独分支
+    // 每个事件都带 session_id，新会话的临时键在此迁到真实 id
     adoptSession(data.session_id, data.title)
+    // 事件路由到它自己的会话：后台会话照常推进，不污染当前视图。
+    // 目标运行时缺失时按 session_id 就地建（例如新建会话被切走后身份才落地），避免事件被丢弃。
+    const r = data.session_id ? runOf(data.session_id) : runOf(currentId.value, false)
+    if (!r) return
     // 钩子阶段只是「当前状态」，收到任何其他事件即视为该阶段已结束
-    hookPhase.value = name === 'engine.hook' ? data.hook || '' : ''
+    r.hookPhase = name === 'engine.hook' ? data.hook || '' : ''
     switch (name) {
       case 'session.status': {
         if (data.status === 'running') {
-          streaming.value = true
-          sessionStatus.value = 'running'
+          r.streaming = true
+          r.status = 'running'
         } else if (data.status === 'terminated') {
-          sessionStatus.value = 'terminated'
-          finishRun('terminated', data.stop_reason)
+          r.status = 'terminated'
+          finishRun(r, 'terminated', data.stop_reason)
         } else if (data.status === 'idle') {
-          finishRun(errored ? 'error' : 'done', data.stop_reason)
+          finishRun(r, r.errored ? 'error' : 'done', data.stop_reason)
         }
         break
       }
       case 'engine.delta': {
-        const msg = currentMsg()
+        const msg = currentMsg(r)
         if (data.kind === 'thinking') appendThinking(msg, data.delta)
         else appendText(msg, data.delta)
         break
       }
       case 'engine.thinking': {
-        const msg = currentMsg()
-        appendThinking(msg, data.content)
+        appendThinking(currentMsg(r), data.content)
         break
       }
       case 'engine.message': {
-        const msg = currentMsg()
-        const text = joinParts(data.content)
-        setFinalText(msg, text)
+        setFinalText(currentMsg(r), joinParts(data.content))
         break
       }
       case 'engine.tool_delta': {
-        const msg = currentMsg()
-        applyToolDelta(msg, data)
+        applyToolDelta(currentMsg(r), data)
         break
       }
       case 'engine.tool_use': {
-        const msg = currentMsg()
-        applyToolUse(msg, data)
+        applyToolUse(currentMsg(r), data)
         break
       }
       case 'engine.tool_result': {
-        const msg = currentMsg()
-        applyToolResult(msg, data)
+        applyToolResult(r, currentMsg(r), data)
         break
       }
       case 'session.question': {
-        pendingQuestion.value = normalizeQuestion(data)
+        r.pendingQuestion = normalizeQuestion(data)
         break
       }
       case 'session.todo': {
         // 事件带的是 TodoStore 全量状态，直接覆盖；空数组表示待办已全部完成
-        todos.value = Array.isArray(data.todos) ? data.todos.filter((t) => t && t.content) : []
+        r.todos = Array.isArray(data.todos) ? data.todos.filter((t) => t && t.content) : []
         break
       }
       case 'session.usage': {
-        const msg = currentMsg()
-        msg.usage = {
+        currentMsg(r).usage = {
           prompt: data.prompt_tokens || 0,
           completion: data.completion_tokens || 0,
           total: data.total_tokens || 0
@@ -531,9 +614,8 @@ export const useSessionStore = defineStore('session', () => {
         break
       }
       case 'session.error': {
-        errored = true
-        const msg = currentMsg()
-        msg.error = { message: data.message, type: data.error_type }
+        r.errored = true
+        currentMsg(r).error = { message: data.message, type: data.error_type }
         break
       }
       default:
@@ -542,12 +624,12 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   /* ── 收尾 ─────────────────────────────── */
-  function finishRun(status, stopReason = null) {
-    if (timer) {
-      clearInterval(timer)
-      timer = null
+  function finishRun(r, status, stopReason = null) {
+    if (r.timer) {
+      clearInterval(r.timer)
+      r.timer = null
     }
-    const msg = currentAssistant || currentMsg(false)
+    const msg = r.assistant || lastAssistant(r)
     if (msg) {
       for (const b of msg.blocks) {
         if (b.kind === 'text') {
@@ -560,11 +642,11 @@ export const useSessionStore = defineStore('session', () => {
         msg.stopReason = stopReason
       }
     }
-    currentAssistant = null
-    streaming.value = false
-    sessionStatus.value = status === 'terminated' ? 'terminated' : 'idle'
-    run.value = null
-    hookPhase.value = ''
+    r.assistant = null
+    r.streaming = false
+    r.status = status === 'terminated' ? 'terminated' : 'idle'
+    r.run = null
+    r.hookPhase = ''
 
     // 收尾后刷新列表（标题 / 消息数 / 活跃时间）
     refreshAfterRun()
@@ -579,9 +661,9 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
-  function lastUserText() {
-    for (let i = messages.value.length - 1; i >= 0; i--) {
-      if (messages.value[i].role === 'user') return messages.value[i].text
+  function lastUserText(r) {
+    for (let i = r.messages.length - 1; i >= 0; i--) {
+      if (r.messages[i].role === 'user') return r.messages[i].text
     }
     return ''
   }
@@ -590,6 +672,7 @@ export const useSessionStore = defineStore('session', () => {
     sessions,
     sessionsLoading,
     currentId,
+    runningIds,
     messages,
     streaming,
     sessionStatus,
