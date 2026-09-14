@@ -230,7 +230,7 @@ public class AgentConfig {
         private String systemPromptPath = "prompts/system_prompt.md";
         private int summarizeMaxInputChars = 80000;
         private int snipKeepChars = 4000;
-        private int summarizeMaxOutputChars = 30000;
+        private int summarizeMaxOutputChars = 12000;
         /** 工具结果超过此长度才落盘 */
         private int spillThresholdChars = 12000;
         /** 落盘后块里保留的头尾摘要长度 */

@@ -40,7 +40,9 @@ eon:
     system_prompt_path: "prompts/system_prompt.md"  # 系统提示词路径
     summarize_max_input_chars: 80000        # 摘要单段输入上限
     snip_keep_chars: 4000                   # SNIP 档头尾保留字符数
-    summarize_max_output_chars: 30000        # 摘要输出上限
+    # 必须 ≤ eon.llm.max_tokens：超出则模型吐不完被截断，而 complete() 丢弃 finishReason
+    # 不感知截断，残缺摘要会被当成有效结果存下来并在下一轮继续被压
+    summarize_max_output_chars: 12000        # 摘要输出上限
     # 大文件落盘（入站阶段，与下面的水位压缩是两套独立机制）
     spill_threshold_chars: 12000            # 工具结果超过此长度才落盘
     spill_keep_chars: 8000                  # 落盘后块里保留的头尾摘要长度
