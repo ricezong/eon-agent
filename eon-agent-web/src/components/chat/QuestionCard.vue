@@ -1,11 +1,12 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { useSessionStore } from '@/stores/session'
 
 /**
- * 提问卡片。一次只渲染一题，答完点「下一题」进入下一题，最后一题点「提交答案」一次性提交全部答案；
- * 「上一题」可回退修改，已填内容保留。
+ * 提问卡片。一次渲染一题，答完自动推进：
+ * 单选题点选即跳下一题；多选题与「其他」自定义输入需要底部「确认」按钮推进（否则无法判断已选完）。
+ * 末题推进即提交全部答案；「上一题」可回退修改，已填内容保留。
  * 答案直接投递给阻塞中的那次 ask_question，本轮任务不中断；等待期间输入框不可用。
  */
 const props = defineProps({
@@ -17,6 +18,7 @@ const session = useSessionStore()
 const OTHER = '__other__'
 const submitting = ref(false)
 const step = ref(0)
+const otherInput = ref(null)
 
 /** questionId → { ids: [], other: '' }，预先初始化，模板里直接按下标访问 */
 const picked = reactive({})
@@ -32,22 +34,15 @@ const isLast = computed(() => step.value === total.value - 1)
 const cur = computed(() => picked[current.value.id])
 /** 「其他」输入框是否展开由已选项推导，不单独存状态 */
 const otherOpen = computed(() => cur.value.ids.includes(OTHER))
+/** 单选点选即自动推进，多选与「其他」还需显式确认 */
+const needsConfirm = computed(() => current.value.allowMultiple || otherOpen.value)
+const confirmLabel = computed(() => {
+  if (!isLast.value) return '下一题'
+  return submitting.value ? '提交中…' : '提交答案'
+})
 
 function isOn(optionId) {
   return cur.value.ids.includes(optionId)
-}
-
-function isOtherOn() {
-  return isOn(OTHER)
-}
-
-function toggle(optionId) {
-  const st = cur.value
-  if (current.value.allowMultiple) {
-    st.ids = st.ids.includes(optionId) ? st.ids.filter((x) => x !== optionId) : [...st.ids, optionId]
-  } else {
-    st.ids = st.ids[0] === optionId ? [] : [optionId]
-  }
 }
 
 /** 「其他」被选中但还没填内容时不算完成 */
@@ -65,13 +60,39 @@ const answeredCount = computed(() => props.question.questions.filter(isFilled).l
 const noOf = (i) => i + 1
 const otherNo = (q) => q.options.length + 1
 
+function focusOther() {
+  nextTick(() => otherInput.value?.focus())
+}
+
+/**
+ * 点选选项。单选选中即推进；多选只切换选中态，交由「确认」按钮推进；
+ * 「其他」展开输入框等用户填写，同样不自动推进。
+ */
+function choose(optionId) {
+  const st = cur.value
+  if (current.value.allowMultiple) {
+    const on = st.ids.includes(optionId)
+    st.ids = on ? st.ids.filter((x) => x !== optionId) : [...st.ids, optionId]
+    if (!on && optionId === OTHER) focusOther()
+    return
+  }
+  if (optionId === OTHER) {
+    const on = st.ids[0] === OTHER
+    st.ids = on ? [] : [OTHER]
+    if (!on) focusOther()
+    return
+  }
+  st.ids = st.ids[0] === optionId ? [] : [optionId]
+  if (st.ids.length) advance()
+}
+
 function prev() {
   if (step.value > 0) step.value -= 1
 }
 
-/** 回车：非最后一题等同于「下一题」，最后一题直接提交 */
+/** 推进：末题提交，否则进入下一题 */
 function advance() {
-  if (!currentFilled.value) return
+  if (!currentFilled.value || submitting.value) return
   if (isLast.value) submit()
   else step.value += 1
 }
@@ -132,7 +153,7 @@ async function submit() {
             :key="o.id"
             class="qb"
             :class="{ 'is-on': isOn(o.id), 'is-multi': current.allowMultiple }"
-            @click="toggle(o.id)"
+            @click="choose(o.id)"
           >
             <span class="qb__no">{{ noOf(oi) }}</span>
             <span class="qb__label">{{ o.label }}</span>
@@ -141,8 +162,8 @@ async function submit() {
 
           <button
             class="qb qb--other"
-            :class="{ 'is-on': isOtherOn(), 'is-multi': current.allowMultiple }"
-            @click="toggle(OTHER)"
+            :class="{ 'is-on': isOn(OTHER), 'is-multi': current.allowMultiple }"
+            @click="choose(OTHER)"
           >
             <span class="qb__no">{{ otherNo(current) }}</span>
             <span class="qb__label">其他…</span>
@@ -150,10 +171,11 @@ async function submit() {
 
           <input
             v-if="otherOpen"
+            ref="otherInput"
             v-model="cur.other"
             class="qc__input"
             type="text"
-            placeholder="输入你的答案"
+            placeholder="输入你的答案，回车继续"
             @keyup.enter="advance"
           />
         </div>
@@ -163,11 +185,13 @@ async function submit() {
     <footer class="qc__foot">
       <button v-if="step > 0" class="qc__ghost" :disabled="submitting" @click="prev">上一题</button>
       <span class="qc__spacer" />
-      <button v-if="!isLast" class="qc__submit" :disabled="!currentFilled" @click="step += 1">
-        下一题
-      </button>
-      <button v-else class="qc__submit" :disabled="!allFilled || submitting" @click="submit">
-        {{ submitting ? '提交中…' : '提交答案' }}
+      <button
+        v-if="needsConfirm"
+        class="qc__submit"
+        :disabled="!currentFilled || submitting"
+        @click="advance"
+      >
+        {{ confirmLabel }}
       </button>
     </footer>
   </div>

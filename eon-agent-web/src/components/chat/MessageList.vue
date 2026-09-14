@@ -3,7 +3,6 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import UserBubble from './UserBubble.vue'
 import AssistantBubble from './AssistantBubble.vue'
-import QuestionCard from './QuestionCard.vue'
 import { useSessionStore } from '@/stores/session'
 import { useSettingsStore } from '@/stores/settings'
 
@@ -49,17 +48,6 @@ watch(
   }
 )
 
-// 提问卡片出现在末尾，主动滚过去，否则用户可能没发现
-watch(
-  () => session.pendingQuestion,
-  async (v) => {
-    if (!v) return
-    await nextTick()
-    stick.value = true
-    toBottom(true)
-  }
-)
-
 onMounted(() => {
   nextTick(() => toBottom(false))
   // 流式过程中持续吸底（打字机每帧都在变高）
@@ -76,27 +64,31 @@ const loading = computed(() => session.loadingSession)
 </script>
 
 <template>
-  <div class="list" ref="scroller" @scroll.passive="onScroll">
-    <div v-if="loading" class="list__loading">
-      <AppIcon name="loader" :size="18" class="spin" />
-      <span>正在回放会话账本…</span>
-    </div>
-
-    <div v-else class="list__inner">
-      <div
-        v-for="m in session.messages"
-        :key="m.id"
-        class="list__item"
-        :class="m.role === 'user' ? 'list__item--user' : 'list__item--ai'"
-      >
-        <UserBubble v-if="m.role === 'user'" :message="m" />
-        <AssistantBubble v-else :message="m" :streaming="session.streaming && isLast(m)" />
+  <div class="list-wrap">
+    <div class="list" ref="scroller" @scroll.passive="onScroll">
+      <div v-if="loading" class="list__loading">
+        <AppIcon name="loader" :size="18" class="spin" />
+        <span>正在回放会话账本…</span>
       </div>
 
-      <!-- Agent 提问：挂在输入框上方，答案投递给阻塞中的 ask_question，本轮不中断 -->
-      <QuestionCard v-if="session.pendingQuestion" :question="session.pendingQuestion" />
+      <div v-else class="list__inner">
+        <div
+          v-for="m in session.messages"
+          :key="m.id"
+          class="list__item"
+          :class="m.role === 'user' ? 'list__item--user' : 'list__item--ai'"
+        >
+          <UserBubble v-if="m.role === 'user'" :message="m" />
+          <AssistantBubble v-else :message="m" :streaming="session.streaming && isLast(m)" />
+        </div>
+      </div>
     </div>
 
+    <!--
+      「回到最新」必须挂在滚动容器之外：它若留在 .list 内（即使 sticky），
+      占着 36px 文档流高度，滚到底消失时会让 scrollHeight 骤减、浏览器强制 clamp scrollTop，
+      表现为内容突然跳一下。
+    -->
     <Transition name="pop">
       <button v-if="!stick" class="to-bottom" title="回到最新" @click="toBottom(true)">
         <AppIcon name="arrowDown" :size="15" />
@@ -106,12 +98,19 @@ const loading = computed(() => session.loadingSession)
 </template>
 
 <style scoped>
+.list-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
 .list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: auto;
-  position: relative;
 }
 
 .list__inner {
@@ -141,12 +140,12 @@ const loading = computed(() => session.loadingSession)
 }
 
 .to-bottom {
-  position: sticky;
+  position: absolute;
   bottom: 14px;
   left: 50%;
   transform: translateX(-50%);
+  z-index: 3;
   display: flex;
-  margin: 0 auto;
   width: 36px;
   height: 36px;
   border-radius: 50%;

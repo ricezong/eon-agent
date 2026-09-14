@@ -6,6 +6,7 @@ import AppIcon from '@/components/common/AppIcon.vue'
 import MessageList from '@/components/chat/MessageList.vue'
 import WelcomePanel from '@/components/chat/WelcomePanel.vue'
 import TodoPanel from '@/components/chat/TodoPanel.vue'
+import QuestionCard from '@/components/chat/QuestionCard.vue'
 import ChatComposer from '@/components/chat/ChatComposer.vue'
 import { useSessionStore } from '@/stores/session'
 import { useUiStore } from '@/stores/ui'
@@ -99,6 +100,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       <TodoPanel />
     </div>
 
+    <!-- Agent 提问：贴输入框上方固定，不随消息滚动；答案投递给阻塞中的 ask_question，本轮不中断 -->
+    <div v-if="session.pendingQuestion" class="chat__question">
+      <QuestionCard :question="session.pendingQuestion" />
+    </div>
+
     <ChatComposer
       ref="composer"
       :streaming="session.streaming"
@@ -144,6 +150,16 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   margin: 0 auto 8px;
 }
 
+/* 提问卡片：位于消息区之外，始终贴着输入框，不随历史消息滚走 */
+.chat__question {
+  flex: none;
+  padding: 0 20px 8px;
+}
+.chat__question > * {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
 .dot {
   width: 7px;
   height: 7px;
@@ -168,6 +184,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 @media (max-width: 640px) {
   .chat__todo {
     padding: 0 12px;
+  }
+  .chat__question {
+    padding: 0 12px 8px;
   }
 }
 </style>

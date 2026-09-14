@@ -214,8 +214,6 @@ export const useSessionStore = defineStore('session', () => {
 
     lastError.value = null
     errored = false
-    // 用户选择直接打字即视为放弃选项表单
-    pendingQuestion.value = null
 
     messages.value.push({ id: uid('u'), role: 'user', text: content, createdAt: Date.now() })
     const assistant = {

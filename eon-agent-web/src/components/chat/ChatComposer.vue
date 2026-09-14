@@ -15,6 +15,13 @@ const text = ref('')
 const area = ref(null)
 const focused = ref(false)
 
+/** 等待作答 / 流式处理中给出状态提示，其余时候说明快捷键 */
+const placeholder = computed(() => {
+  if (props.locked) return '请先回答上方的问题，回答后任务继续执行'
+  if (props.streaming) return 'Agent 正在处理中…'
+  return '给 Agent 发送消息，Enter 发送 / Shift+Enter 换行'
+})
+
 function resize() {
   const el = area.value
   if (!el) return
