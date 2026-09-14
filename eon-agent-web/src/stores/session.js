@@ -93,8 +93,12 @@ function findResultBlock(blocks, key, kind) {
   return null
 }
 
-/** 新会话在首帧 session.start 拿到真实 id 之前，运行时暂挂在这个键下 */
-const NEW_KEY = '__new__'
+/**
+ * 未落地会话的临时键前缀：每次 send 分配一个唯一键（__new__1、__new__2…）。
+ * 必须是「每次 send 一份」而不是单个全局键——并发的多条流共用同一个 applyEvent，
+ * 靠全局键反查会让任意一条流都能认领走别人的临时运行时。
+ */
+const NEW_PREFIX = '__new__'
 
 /** 未选中任何会话时的空壳，避免消费方到处判空 */
 const EMPTY_RUN = {
@@ -121,6 +125,13 @@ export const useSessionStore = defineStore('session', () => {
 
   /* ── 会话运行时（按 id 隔离） ─────────── */
   const runs = reactive({})
+
+  /** 未落地 send 的递增序号，用来生成互不冲突的临时键 */
+  let pendingSeq = 0
+  /** 最新发起且身份尚未落地的临时键：决定空白页显示哪一次 pending */
+  const latestPendingKey = ref('')
+  /** 列表刷新序号：并发刷新时只认最后一次发出的请求 */
+  let listSeq = 0
 
   /**
    * 取指定会话的运行时。
@@ -151,13 +162,18 @@ export const useSessionStore = defineStore('session', () => {
 
   /**
    * 当前查看的会话运行时。
-   * 新会话在首帧 session.start 到达前挂在 NEW_KEY 下，这里必须回退到它——
-   * 否则发出第一条消息后到身份落地之间会闪一下空白（甚至显示欢迎页）。
+   * 未选中会话时回退到最新发起的那次 pending——否则发出第一条消息到身份落地之间
+   * 会闪一下空白（甚至显示欢迎页）。回退只认 latestPendingKey，
+   * 保证连发多条时视图停在用户最后发起的那条上。
    */
-  const active = computed(() => runs[currentId.value] || runs[NEW_KEY] || EMPTY_RUN)
-  /** 正在运行的会话 id，供侧边栏标记 */
+  const active = computed(() => {
+    if (currentId.value) return runs[currentId.value] || EMPTY_RUN
+    const k = latestPendingKey.value
+    return (k && runs[k]) || EMPTY_RUN
+  })
+  /** 正在运行的会话 id，供侧边栏标记（临时键不算会话） */
   const runningIds = computed(() =>
-    Object.keys(runs).filter((id) => id !== NEW_KEY && runs[id].streaming)
+    Object.keys(runs).filter((id) => !id.startsWith(NEW_PREFIX) && runs[id].streaming)
   )
 
   /* ── 当前会话投影（消费方只读） ───────── */
@@ -187,35 +203,50 @@ export const useSessionStore = defineStore('session', () => {
   )
 
   /* ── 会话列表 ─────────────────────────── */
+  /**
+   * 会话列表。多个会话同时结束会并发触发刷新，先发起的请求可能后到达并带回更旧的快照，
+   * 因此只认最后一次发出的那次，过期响应直接丢弃。
+   */
   async function loadSessions() {
+    const seq = ++listSeq
     sessionsLoading.value = true
     try {
-      sessions.value = await api.listSessions(settings.userId)
+      const list = await api.listSessions(settings.userId)
+      if (seq !== listSeq) return
+      sessions.value = list
       connection.value = 'online'
     } catch (e) {
-      connection.value = 'offline'
+      if (seq === listSeq) connection.value = 'offline'
       throw e
     } finally {
-      sessionsLoading.value = false
+      if (seq === listSeq) sessionsLoading.value = false
     }
   }
 
   /**
-   * 采纳事件流携带的会话身份。新会话首帧 session.start 给出真实 id，
-   * 把临时键下的运行时整体迁过去（对象引用不变，回调闭包里持有的引用依然有效）。
+   * 采纳事件流携带的会话身份，把这次 run 的临时运行时迁到真实 id 下
+   * （对象引用不变，回调闭包里持有的引用依然有效）。
+   *
+   * ctx 由发起这次 run 的 send 闭包捕获，只有它知道自己的临时运行时是哪一份。
+   * 后台会话的流拿不到 ctx，也就无从碰别人的 pending——这是身份错配的唯一防线。
    */
-  function adoptSession(id, sessionTitle) {
-    if (!id) return
-
-    // 只有本视图刚发起的那次 run 才落地身份。后台会话的事件一律不接管选中态：
-    // currentId 为空代表用户停在新建的空白页，不能因为后台还有帧在推就把视图抢回去。
-    const pending = runs[NEW_KEY]
-    if (!pending) return
+  function adoptSession(id, sessionTitle, ctx) {
+    if (!id || !ctx?.pendingKey) return
+    const key = ctx.pendingKey
+    const pending = ctx.run
+    // 这份 pending 已被丢弃（流结束都没拿到 id）时不再落地
+    if (runs[key] !== pending) return
 
     runs[id] = pending
-    delete runs[NEW_KEY]
+    delete runs[key]
+    ctx.pendingKey = ''
+
+    // 只有最新发起的那次才接管视图：连发两条时先落地的那条不该把视图抢走。
+    // 更早那条仍然正常落地进列表，用户从侧边栏可以切过去，内容不丢。
+    const isLatest = latestPendingKey.value === key
+    if (isLatest) latestPendingKey.value = ''
     // 等待身份期间用户可能已切到别的会话，此时只落地运行时，不动当前视图
-    if (!currentId.value) currentId.value = id
+    if (isLatest && !currentId.value) currentId.value = id
 
     const placeholder = {
       sessionId: id,
@@ -226,10 +257,25 @@ export const useSessionStore = defineStore('session', () => {
     sessions.value = [placeholder, ...sessions.value.filter((s) => s.sessionId !== id)]
   }
 
-  /** 新建会话：不停止任何任务，当前会话若在运行就留在后台继续跑 */
+  /**
+   * 丢弃一次未落地的 pending：流已结束却始终没拿到真实 id（请求失败或被中断）。
+   * 此时临时运行时再没人认领，必须清掉，否则会永久挂在 runs 里。
+   */
+  function dropPending(ctx) {
+    if (!ctx?.pendingKey) return
+    const key = ctx.pendingKey
+    if (runs[key] === ctx.run) delete runs[key]
+    if (latestPendingKey.value === key) latestPendingKey.value = ''
+    ctx.pendingKey = ''
+  }
+
+  /**
+   * 新建会话：不停止任何任务，当前会话若在运行就留在后台继续跑。
+   * 未落地的 pending 也不再丢弃——它已经在后端跑起来了，照常落地进列表即可。
+   */
   function newSession() {
-    delete runs[NEW_KEY]
     currentId.value = ''
+    latestPendingKey.value = ''
   }
 
   async function openSession(id, force = false) {
@@ -287,9 +333,15 @@ export const useSessionStore = defineStore('session', () => {
     const content = (text || '').trim()
     if (!content) return
 
-    // 新会话先用临时键占位，首帧 session.start 到达后迁到真实 id
-    const r = runOf(currentId.value || NEW_KEY)
+    // 新会话先用独立临时键占位，首帧 session.start 到达后迁到真实 id
+    const pendingKey = currentId.value ? '' : `${NEW_PREFIX}${++pendingSeq}`
+    const r = runOf(currentId.value || pendingKey)
     if (r.streaming) return
+
+    // 本次 run 的身份由闭包持有：applyEvent 是所有流共用的同一个函数，
+    // 只有发起方的闭包能说清「这份临时运行时属于哪条流」
+    const ctx = pendingKey ? { pendingKey, run: r } : null
+    if (pendingKey) latestPendingKey.value = pendingKey
 
     r.lastError = null
     r.errored = false
@@ -318,8 +370,9 @@ export const useSessionStore = defineStore('session', () => {
     const stream = api.chatStream(
       { sessionId: currentId.value || null, message: content, userId: settings.userId },
       {
-        onEvent: applyEvent,
+        onEvent: (ev) => applyEvent(ev, ctx),
         onError: (err) => {
+          dropPending(ctx)
           r.lastError = err
           if (err.type !== 'aborted') {
             toast.error(err.message || '连接异常')
@@ -328,6 +381,8 @@ export const useSessionStore = defineStore('session', () => {
           finishRun(r, err.type === 'aborted' ? 'stopped' : 'error', err.message)
         },
         onDone: ({ ok }) => {
+          // 走到这里仍未落地说明这一轮没拿到真实 id，临时运行时不能再挂着
+          dropPending(ctx)
           if (ok && r.status === 'running') finishRun(r, r.errored ? 'error' : 'done')
         }
       }
@@ -547,10 +602,14 @@ export const useSessionStore = defineStore('session', () => {
     block.structured = data.structured_content || null
   }
 
-  function applyEvent({ name, data }) {
+  /**
+   * @param ctx 发起这次 run 的 send 闭包捕获的身份。后台会话的流没有 ctx，
+   *            因此它们的事件只会路由到自己的运行时，不会去认领别人的 pending。
+   */
+  function applyEvent({ name, data }, ctx = null) {
     if (!data) return
-    // 每个事件都带 session_id，新会话的临时键在此迁到真实 id
-    adoptSession(data.session_id, data.title)
+    // 每个事件都带 session_id，但只有发起方的 ctx 能触发身份落地
+    adoptSession(data.session_id, data.title, ctx)
     // 事件路由到它自己的会话：后台会话照常推进，不污染当前视图。
     // 目标运行时缺失时按 session_id 就地建（例如新建会话被切走后身份才落地），避免事件被丢弃。
     const r = data.session_id ? runOf(data.session_id) : runOf(currentId.value, false)
@@ -652,13 +711,9 @@ export const useSessionStore = defineStore('session', () => {
     refreshAfterRun()
   }
 
-  async function refreshAfterRun() {
-    try {
-      sessions.value = await api.listSessions(settings.userId)
-      connection.value = 'online'
-    } catch {
-      connection.value = 'offline'
-    }
+  /** 收尾后刷新列表（标题 / 消息数 / 活跃时间）。并发保护与失败静默都在 loadSessions 里。 */
+  function refreshAfterRun() {
+    loadSessions().catch(() => {})
   }
 
   function lastUserText(r) {
@@ -694,8 +749,7 @@ export const useSessionStore = defineStore('session', () => {
     removeSession,
     send,
     stop,
-    answer,
-    applyEvent
+    answer
   }
 })
 
