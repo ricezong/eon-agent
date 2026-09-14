@@ -22,7 +22,8 @@ public final class TurnScope {
     private String assistantText;
     private String thinking;
     private List<ToolExecutionRequest> pendingToolCalls = List.of();
-    private List<ToolCallRecord> toolResults = List.of();
+    /** null = 本轮尚未派发工具，与「派发过但零结果」区分开 */
+    private List<ToolCallRecord> toolResults;
 
     public TurnScope(int index) {
         this.index = index;
@@ -81,7 +82,8 @@ public final class TurnScope {
         return toolResults;
     }
 
+    /** 保留 null 语义：null 代表没派发过，空列表代表派发过但零结果。 */
     public void setToolResults(List<ToolCallRecord> toolResults) {
-        this.toolResults = toolResults != null ? toolResults : List.of();
+        this.toolResults = toolResults;
     }
 }

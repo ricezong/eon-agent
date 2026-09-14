@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import UserBubble from './UserBubble.vue'
 import AssistantBubble from './AssistantBubble.vue'
+import QuestionCard from './QuestionCard.vue'
 import { useSessionStore } from '@/stores/session'
 import { useSettingsStore } from '@/stores/settings'
 
@@ -48,6 +49,17 @@ watch(
   }
 )
 
+// 提问卡片出现在末尾，主动滚过去，否则用户可能没发现
+watch(
+  () => session.pendingQuestion,
+  async (v) => {
+    if (!v) return
+    await nextTick()
+    stick.value = true
+    toBottom(true)
+  }
+)
+
 onMounted(() => {
   nextTick(() => toBottom(false))
   // 流式过程中持续吸底（打字机每帧都在变高）
@@ -80,6 +92,9 @@ const loading = computed(() => session.loadingSession)
         <UserBubble v-if="m.role === 'user'" :message="m" />
         <AssistantBubble v-else :message="m" :streaming="session.streaming && isLast(m)" />
       </div>
+
+      <!-- Agent 提问：挂在输入框上方，答案投递给阻塞中的 ask_question，本轮不中断 -->
+      <QuestionCard v-if="session.pendingQuestion" :question="session.pendingQuestion" />
     </div>
 
     <Transition name="pop">

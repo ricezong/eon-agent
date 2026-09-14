@@ -1,8 +1,11 @@
 package cn.kong.eon.engine.exec;
 
 import cn.kong.eon.config.AgentConfig;
+import cn.kong.eon.event.AgentQuestion;
+import cn.kong.eon.event.AgentTodo;
 import cn.kong.eon.event.AgentToolResult;
 import cn.kong.eon.event.AgentToolUse;
+import cn.kong.eon.runtime.InteractionGateway;
 import cn.kong.eon.runtime.RunContext;
 import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolResult;
@@ -36,10 +39,13 @@ public class ToolCallDispatcher {
     private final ToolService toolService;
     private final ExecutorService parallelExecutor;
     private final ObjectMapper objectMapper;
+    private final InteractionGateway interactions;
 
-    public ToolCallDispatcher(ToolService toolService, AgentConfig config, ObjectMapper objectMapper) {
+    public ToolCallDispatcher(ToolService toolService, AgentConfig config, ObjectMapper objectMapper,
+                              InteractionGateway interactions) {
         this.toolService = toolService;
         this.objectMapper = objectMapper;
+        this.interactions = interactions;
         int parallelism = config.getTools().getParallelism();
         this.parallelExecutor = Executors.newFixedThreadPool(Math.max(1, parallelism), r -> {
             Thread t = new Thread(r, "tool-exec");
@@ -59,7 +65,12 @@ public class ToolCallDispatcher {
                 r.session().memoryStore(),
                 r.session().pathResolver(),
                 r.task().turnCount(),
-                r.session().sessionId());
+                r.session().sessionId(),
+                request -> {
+                    r.emit(AgentQuestion.now(r.task().turnId(), request.title(), request.questions()));
+                    return interactions.ask(r.session().sessionId());
+                },
+                () -> r.emit(AgentTodo.now(r.task().turnId(), r.session().todoStore().getAll())));
 
         ToolCallRecord[] results = new ToolCallRecord[requests.size()];
         List<Future<ToolCallRecord>> futures = new ArrayList<>();
@@ -129,7 +140,8 @@ public class ToolCallDispatcher {
         r.emit(AgentToolResult.now(turnId, req.id(), req.name(),
                 outcome.content(), outcome.toolResultView(), outcome.success()));
 
-        return new ToolCallRecord(req.id(), req.name(), outcome.success(), outcome.content(), outcome.toolResultView());
+        return new ToolCallRecord(req.id(), req.name(), outcome.success(), outcome.content(),
+                outcome.toolResultView());
     }
 
     /** 合成错误结果（用于异常隔离）。 */

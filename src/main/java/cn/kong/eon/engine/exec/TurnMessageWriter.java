@@ -23,11 +23,15 @@ public class TurnMessageWriter {
     public void flush(RunContext r) {
         TurnScope turn = r.turn();
         String assistantText = turn.assistantText();
-        List<ToolExecutionRequest> pendingCalls = turn.pendingToolCalls();
+        List<ToolCallRecord> toolResults = turn.toolResults();
+        // 带 tool_calls 的 AiMessage 必须紧跟对应的工具结果，所以只有真正派发过工具才写 tool_calls；
+        // 本轮在派发前就退出（PostModel/PreTool 拦截、用户中断）时只留正文，避免账本出现孤立 tool_calls。
+        boolean dispatched = toolResults != null;
+        List<ToolExecutionRequest> committedCalls = dispatched ? turn.pendingToolCalls() : List.of();
         boolean hasText = assistantText != null && !assistantText.isBlank();
-        boolean hasCalls = pendingCalls != null && !pendingCalls.isEmpty();
+        boolean hasCalls = !committedCalls.isEmpty();
 
-        // 异常路径下可能既无文本又无工具调用，直接清理并返回
+        // 无正文且没有已执行的工具调用，本轮没有可留存的内容
         if (!hasText && !hasCalls) {
             turn.setPendingToolCalls(null);
             turn.setToolResults(null);
@@ -35,9 +39,8 @@ public class TurnMessageWriter {
             return;
         }
 
-        List<ToolCallRecord> toolResults = turn.toolResults();
         Set<String> succeeded = succeededIds(toolResults);
-        AiMessage aiMsg = buildAiMessage(assistantText, pendingCalls, hasText, hasCalls, turn.thinking());
+        AiMessage aiMsg = buildAiMessage(assistantText, committedCalls, hasText, hasCalls, turn.thinking());
         r.session().ledger().append(aiMsg, succeeded);
 
         if (toolResults != null) {

@@ -1,5 +1,6 @@
 package cn.kong.eon.web;
 
+import cn.kong.eon.web.dto.AnswerRequest;
 import cn.kong.eon.web.dto.ChatRequest;
 import cn.kong.eon.web.dto.InterruptRequest;
 import cn.kong.eon.web.dto.SessionListItem;
@@ -46,6 +47,13 @@ public class AgentController {
     public Map<String, Object> interrupt(@RequestBody InterruptRequest request) {
         boolean interrupted = chatService.interrupt(request.sessionId());
         return Map.of("status", interrupted ? "interrupted" : "no_session");
+    }
+
+    /** 回答 ask_question 的提问。阻塞中的那次工具调用拿到答案后本轮继续执行。 */
+    @PostMapping("/answer")
+    public Map<String, Object> answer(@RequestBody AnswerRequest request) {
+        boolean answered = chatService.answer(request.sessionId(), request.toAnswer());
+        return Map.of("status", answered ? "answered" : "no_pending");
     }
 
     @GetMapping("/sessions")

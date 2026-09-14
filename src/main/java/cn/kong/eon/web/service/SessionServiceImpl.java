@@ -2,12 +2,17 @@ package cn.kong.eon.web.service;
 
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.event.AgentEvent;
+import cn.kong.eon.event.AgentTodo;
 import cn.kong.eon.event.SessionStart;
 import cn.kong.eon.runtime.cache.SessionRegistry;
 import cn.kong.eon.store.index.SessionIndexStore;
 import cn.kong.eon.store.ledger.LedgerReplayer;
+import cn.kong.eon.store.snapshot.SessionSnapshot;
+import cn.kong.eon.store.snapshot.SessionSnapshotStore;
+import cn.kong.eon.store.todo.TodoItem;
 import cn.kong.eon.web.dto.SessionListItem;
 import cn.kong.eon.web.sse.EventFormatter;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -30,17 +35,20 @@ public class SessionServiceImpl implements SessionService {
     private final SessionRegistry registry;
     private final LedgerReplayer replayer;
     private final EventFormatter formatter;
+    private final ObjectMapper objectMapper;
 
     public SessionServiceImpl(AgentConfig config,
                               SessionIndexStore indexStore,
                               SessionRegistry registry,
                               LedgerReplayer replayer,
-                              EventFormatter formatter) {
+                              EventFormatter formatter,
+                              ObjectMapper objectMapper) {
         this.config = config;
         this.indexStore = indexStore;
         this.registry = registry;
         this.replayer = replayer;
         this.formatter = formatter;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -75,6 +83,11 @@ public class SessionServiceImpl implements SessionService {
         // session.start 不落盘，回放时补发首帧，使两条链路的事件形状一致
         events.add(SessionStart.now(sessionId, null));
         events.addAll(replayer.replay(ledgerPath(sessionId)));
+        // 待办是会话级状态、不在账本里，回放末尾补发一次，让遗留的未完成项也能呈现
+        List<TodoItem> todos = loadTodos(sessionId);
+        if (!todos.isEmpty()) {
+            events.add(AgentTodo.now(null, todos));
+        }
 
         List<Map<String, Object>> rendered = new ArrayList<>(events.size());
         for (AgentEvent event : events) {
@@ -83,11 +96,33 @@ public class SessionServiceImpl implements SessionService {
         return rendered;
     }
 
+    /**
+     * 取会话当前的待办列表。优先读已加载的会话上下文，
+     * 缓存未命中时（服务重启后打开旧会话）回退读 state.json 快照。
+     */
+    private List<TodoItem> loadTodos(String sessionId) {
+        return registry.find(sessionId)
+                .map(scope -> scope.todoStore().getAll())
+                .orElseGet(() -> {
+                    SessionSnapshot snap = new SessionSnapshotStore(statePath(sessionId), objectMapper).load();
+                    return snap != null && snap.getTodoSnapshot() != null ? snap.getTodoSnapshot() : List.of();
+                });
+    }
+
     /** 指定会话的账本路径（不需要会话已加载）。 */
     private Path ledgerPath(String sessionId) {
+        return sessionFile(sessionId, "ledger.jsonl");
+    }
+
+    /** 指定会话的快照路径（不需要会话已加载）。 */
+    private Path statePath(String sessionId) {
+        return sessionFile(sessionId, "state.json");
+    }
+
+    private Path sessionFile(String sessionId, String name) {
         return Path.of(config.getStorage().getBaseDir())
                 .toAbsolutePath().normalize()
                 .resolve(sessionId)
-                .resolve("ledger.jsonl");
+                .resolve(name);
     }
 }

@@ -17,6 +17,10 @@ public record ToolRuntime(
         /** 当前轮次序号 */
         int turn,
         /** 会话 ID */
-        String sessionId
+        String sessionId,
+        /** 提问通道，仅 ask_question 使用；由调度器装配为「发 session.question 事件 + 阻塞等答案」 */
+        QuestionChannel questions,
+        /** 待办变更出口，仅 todo_write 使用；由调度器装配为「发 session.todo 事件」 */
+        Runnable todoChanged
 ) {
 }

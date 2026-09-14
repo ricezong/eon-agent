@@ -17,6 +17,10 @@ public interface AgentEventVisitor<T> {
 
     T visitHook(AgentHook e);
 
+    T visitQuestion(AgentQuestion e);
+
+    T visitTodo(AgentTodo e);
+
     T visitToolResult(AgentToolResult e);
 
     T visitUsage(SessionUsage e);

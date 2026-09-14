@@ -80,13 +80,22 @@ public class TodoWriteTool implements ToolExecutor {
         if (allDone) {
             runtime.todoStore().clear();
             log.info("todo_write: 全部完成/取消，已清空 TodoStore");
+            notifyChange(runtime);
             return ToolResult.success("所有任务已完成。\n" + formatTodoList(result));
         }
 
         String progress = TodoStore.formatProgress(result);
         log.info("todo_write: {} items (merge={}), {}", result.size(), merge, progress);
 
+        notifyChange(runtime);
         return ToolResult.success("待办列表已更新。 " + progress + "\n" + formatTodoList(result));
+    }
+
+    /** 通知待办已变更。事件内容由调度器读 TodoStore 的当前全量状态，此处不传参。 */
+    private static void notifyChange(ToolRuntime runtime) {
+        if (runtime.todoChanged() != null) {
+            runtime.todoChanged().run();
+        }
     }
 
     /** 解析状态字符串为枚举值。 */

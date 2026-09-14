@@ -28,6 +28,15 @@ export async function interruptSession(sessionId) {
   return res?.status || 'no_session'
 }
 
+/**
+ * 提交提问答案。答案直接交给阻塞中的 ask_question——本轮不中断，后端会把它作为工具结果继续跑。
+ * 返回 'answered' | 'no_pending'（会话已不在等待回答）。
+ */
+export async function answerQuestion(sessionId, answers) {
+  const res = await http.post('/answer', { sessionId, answers })
+  return res?.status || 'no_pending'
+}
+
 export function listSessions(userId) {
   return http.get('/sessions', { headers: userHeaders(userId) })
 }

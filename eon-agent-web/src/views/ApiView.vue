@@ -111,6 +111,8 @@ const EVENTS = [
   ['engine.hook', 'turn_id / hook', '确定进入 SUMMARIZE 压缩档、即将调 LLM 生成摘要时发出'],
   ['engine.tool_use', 'turn_id / tool_use_id / name / input', '请求调用工具'],
   ['engine.tool_result', 'tool_use_id / content / structured_content / success', '工具执行结果'],
+  ['session.question', 'turn_id / title / questions[]', 'Agent 向用户提问，本轮结束后等待回答'],
+  ['session.todo', 'turn_id / todos[]', '待办清单全量状态；空数组表示已全部完成，回放时补发一次'],
   ['session.usage', 'prompt_tokens / completion_tokens / total_tokens', 'token 用量'],
   ['session.error', 'message / error_type', '执行错误'],
   ['user.message', 'content', '仅回放时出现，还原用户消息']

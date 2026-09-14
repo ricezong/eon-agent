@@ -5,6 +5,7 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import MessageList from '@/components/chat/MessageList.vue'
 import WelcomePanel from '@/components/chat/WelcomePanel.vue'
+import TodoPanel from '@/components/chat/TodoPanel.vue'
 import ChatComposer from '@/components/chat/ChatComposer.vue'
 import { useSessionStore } from '@/stores/session'
 import { useUiStore } from '@/stores/ui'
@@ -94,9 +95,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       <MessageList v-else />
     </div>
 
+    <div class="chat__todo">
+      <TodoPanel />
+    </div>
+
     <ChatComposer
       ref="composer"
       :streaming="session.streaming"
+      :locked="!!session.pendingQuestion"
       :offline="session.connection === 'offline'"
       @send="onSend"
       @stop="session.stop()"
@@ -128,6 +134,16 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   align-items: center;
 }
 
+/* 待办面板：消息区与输入框之间，不随消息滚动；面板为空时不占高度 */
+.chat__todo {
+  flex: none;
+  padding: 0 20px;
+}
+.chat__todo > * {
+  max-width: 900px;
+  margin: 0 auto 8px;
+}
+
 .dot {
   width: 7px;
   height: 7px;
@@ -146,6 +162,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 @media (max-width: 900px) {
   .chat .pill:first-of-type {
     display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .chat__todo {
+    padding: 0 12px;
   }
 }
 </style>

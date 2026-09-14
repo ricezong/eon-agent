@@ -80,7 +80,7 @@ public class AgentBeans {
             registry.register(WebFetchTool.descriptor());
         }
 
-        registry.register(AskQuestionTool.descriptor());
+        registry.register(AskQuestionTool.descriptor(objectMapper));
 
         connectMcpServers(config, registry);
 

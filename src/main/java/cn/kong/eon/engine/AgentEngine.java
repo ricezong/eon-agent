@@ -187,8 +187,13 @@ public class AgentEngine {
             return interruptExit(r);
         }
 
-        // 执行工具（ToolCallDispatcher 内部发出 engine.tool_use 和 engine.tool_result）
+        // 执行工具（ToolCallDispatcher 内部发出 engine.tool_use 和 engine.tool_result）。
+        // ask_question 会阻塞在这里等用户回答，期间用户可能点了停止——网关唤醒后立即收尾。
         List<ToolCallRecord> results = dispatcher.execute(r);
+
+        if (r.task().isInterrupted()) {
+            return interruptExit(r);
+        }
 
         // PostTool Hooks
         for (int i = 0; i < requests.size(); i++) {
@@ -233,7 +238,6 @@ public class AgentEngine {
                 r.session().usageAccum().getCompletionTokens(),
                 r.session().usageAccum().getTotalTokens()));
 
-        // 发出 session.status: idle
         r.emit(SessionStatus.idle("task_completed"));
 
         return output;

@@ -4,6 +4,7 @@ import cn.kong.eon.event.*;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /** 将 AgentEvent 转为前端渲染所需的 Map。实时与回放两条链路共用。 */
@@ -81,6 +82,23 @@ public class EventFormatter implements AgentEventVisitor<Map<String, Object>> {
         Map<String, Object> data = base(e);
         data.put("turn_id", e.turnId());
         data.put("hook", e.hook());
+        return data;
+    }
+
+    @Override
+    public Map<String, Object> visitQuestion(AgentQuestion e) {
+        Map<String, Object> data = base(e);
+        data.put("turn_id", e.turnId());
+        if (e.title() != null) data.put("title", e.title());
+        if (e.questions() != null) data.put("questions", e.questions());
+        return data;
+    }
+
+    @Override
+    public Map<String, Object> visitTodo(AgentTodo e) {
+        Map<String, Object> data = base(e);
+        data.put("turn_id", e.turnId());
+        data.put("todos", e.todos() != null ? e.todos() : List.of());
         return data;
     }
 

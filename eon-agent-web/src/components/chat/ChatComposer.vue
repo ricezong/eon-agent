@@ -1,9 +1,11 @@
 <script setup>
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 
 const props = defineProps({
   streaming: { type: Boolean, default: false },
+  /** Agent 正在等用户作答（阻塞中的 ask_question）：输入框锁死，只能答题或点停止 */
+  locked: { type: Boolean, default: false },
   offline: { type: Boolean, default: false }
 })
 
@@ -62,11 +64,8 @@ defineExpose({ focus, setText })
         v-model="text"
         class="composer__area"
         rows="1"
-        :placeholder="
-          streaming
-            ? 'Eon 正在执行任务，可随时点击停止…'
-            : '给 Eon 下达任务，Enter 发送，Shift + Enter 换行'
-        "
+        :disabled="locked"
+        :placeholder="placeholder"
         @keydown="onKeydown"
         @focus="focused = true"
         @blur="focused = false"
@@ -148,6 +147,10 @@ defineExpose({ focus, setText })
 }
 .composer__area::placeholder {
   color: var(--text-muted);
+}
+.composer__area:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .composer__bar {

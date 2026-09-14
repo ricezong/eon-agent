@@ -3,12 +3,14 @@ package cn.kong.eon.web.service;
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.engine.AgentEngine;
 import cn.kong.eon.event.SessionStart;
+import cn.kong.eon.runtime.InteractionGateway;
 import cn.kong.eon.runtime.RunContext;
 import cn.kong.eon.runtime.TaskScope;
 import cn.kong.eon.runtime.cache.SessionRegistry;
 import cn.kong.eon.runtime.cache.SessionScope;
 import cn.kong.eon.store.index.SessionIndexStore;
 import cn.kong.eon.store.index.SessionMeta;
+import cn.kong.eon.tool.InteractionAnswer;
 import cn.kong.eon.web.dto.ChatRequest;
 import cn.kong.eon.web.exception.ApiException;
 import cn.kong.eon.web.sse.EventFormatter;
@@ -39,6 +41,7 @@ public class ChatServiceImpl implements ChatService {
     private final ExecutorService sseExecutor;
     private final ObjectMapper objectMapper;
     private final EventFormatter formatter;
+    private final InteractionGateway interactions;
 
     public ChatServiceImpl(AgentConfig config,
                            SessionIndexStore sessionIndexStore,
@@ -46,7 +49,8 @@ public class ChatServiceImpl implements ChatService {
                            AgentEngine agent,
                            @Qualifier("sseExecutor") ExecutorService sseExecutor,
                            ObjectMapper objectMapper,
-                           EventFormatter formatter) {
+                           EventFormatter formatter,
+                           InteractionGateway interactions) {
         this.config = config;
         this.sessionIndexStore = sessionIndexStore;
         this.registry = registry;
@@ -54,6 +58,7 @@ public class ChatServiceImpl implements ChatService {
         this.sseExecutor = sseExecutor;
         this.objectMapper = objectMapper;
         this.formatter = formatter;
+        this.interactions = interactions;
     }
 
     @Override
@@ -80,7 +85,8 @@ public class ChatServiceImpl implements ChatService {
             created = false;
         }
 
-        SseEmitter emitter = new SseEmitter(300_000L); // 5 分钟超时
+        // 一次 run 里可能多次阻塞等用户回答，超时必须覆盖「执行 + 等待」，不能沿用默认的 5 分钟
+        SseEmitter emitter = new SseEmitter(config.getInteraction().getSseTimeoutSeconds() * 1000);
 
         sseExecutor.execute(() -> {
             try {
@@ -122,6 +128,8 @@ public class ChatServiceImpl implements ChatService {
                     sessionId, task.turnCount(), scope.usageAccum().getTotalTokens());
         } finally {
             try {
+                // run 无论怎么结束都不该留下悬挂的提问；正常路径下网关早已自行清理
+                interactions.cancel(sessionId);
                 sessionIndexStore.touch(sessionId, scope.ledger().getMessageCount());
                 registry.release(sessionId);
             } finally {
@@ -145,6 +153,11 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    public boolean answer(String sessionId, InteractionAnswer answer) {
+        return interactions.answer(sessionId, answer);
+    }
+
+    @Override
     public boolean interrupt(String sessionId) {
         return registry.find(sessionId)
                 .map(scope -> {
@@ -153,6 +166,8 @@ public class ChatServiceImpl implements ChatService {
                         return false;
                     }
                     current.task().requestInterrupt();
+                    // 阻塞在提问里的工具线程不会轮询中断标志，必须显式唤醒
+                    interactions.cancel(sessionId);
                     return true;
                 })
                 .orElse(false);

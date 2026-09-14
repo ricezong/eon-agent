@@ -57,6 +57,25 @@ const makeResultBlock = (kind, key, name) => ({
   ...RESULT_BLOCK_FIELD[kind]()
 })
 
+/**
+ * 收敛后端透传的问题结构：去重 id、剔除不合法项，让卡片渲染不必到处判空。
+ * 没有任何有效问题时返回 null，避免出现空卡片。
+ */
+function normalizeQuestion(data) {
+  const raw = Array.isArray(data?.questions) ? data.questions : []
+  const questions = raw
+    .filter((q) => q && q.prompt)
+    .map((q, i) => ({
+      id: String(q.id ?? `q${i}`),
+      prompt: String(q.prompt),
+      allowMultiple: Boolean(q.allow_multiple),
+      options: (Array.isArray(q.options) ? q.options : [])
+        .filter((o) => o && o.label != null)
+        .map((o, j) => ({ id: String(o.id ?? `o${j}`), label: String(o.label) }))
+    }))
+  return questions.length ? { title: String(data.title || ''), questions } : null
+}
+
 const isResultBlock = (b) => b && (b.kind === 'file' || b.kind === 'web')
 
 /** 按 key（tool_use_id 或流序号）找未认领的结果块，用于把 delta 与后续的 tool_use 对上。 */
@@ -88,6 +107,10 @@ export const useSessionStore = defineStore('session', () => {
   const elapsed = ref(0)
   /** 当前正在执行的引擎钩子名（空串表示不在钩子阶段），用于静默期的进度提示 */
   const hookPhase = ref('')
+  /** 待用户回答的提问表单；只存在于内存，刷新即消失（用户仍可直接打字继续） */
+  const pendingQuestion = ref(null)
+  /** 会话级待办清单，由 session.todo 事件全量覆盖；空数组即代表列表消失 */
+  const todos = ref([])
 
   const run = shallowRef(null) // { abort }
   let currentAssistant = null // 当前正在生成的 assistant 消息（非响应式引用）
@@ -145,6 +168,8 @@ export const useSessionStore = defineStore('session', () => {
     lastError.value = null
     sessionStatus.value = 'idle'
     elapsed.value = 0
+    pendingQuestion.value = null
+    todos.value = []
   }
 
   async function openSession(id, force = false) {
@@ -159,6 +184,9 @@ export const useSessionStore = defineStore('session', () => {
       currentId.value = id
       sessionStatus.value = 'idle'
       connection.value = 'online'
+      pendingQuestion.value = null
+      // 先清空，随后由回放补发的 session.todo 事件填上
+      todos.value = []
     } catch (e) {
       connection.value = 'offline'
       toast.error(`加载会话失败：${e.message}`)
@@ -186,6 +214,8 @@ export const useSessionStore = defineStore('session', () => {
 
     lastError.value = null
     errored = false
+    // 用户选择直接打字即视为放弃选项表单
+    pendingQuestion.value = null
 
     messages.value.push({ id: uid('u'), role: 'user', text: content, createdAt: Date.now() })
     const assistant = {
@@ -242,6 +272,26 @@ export const useSessionStore = defineStore('session', () => {
     }
     run.value?.abort('user_stop')
     run.value = null
+    pendingQuestion.value = null
+  }
+
+  /**
+   * 提交问题答案。答案投递给阻塞中的那次 ask_question——本轮 run 不中断，
+   * 后端把它作为工具结果回填上下文后继续跑，所以这里只管清卡片，流仍在进行中。
+   */
+  async function answer(answers) {
+    const q = pendingQuestion.value
+    if (!q) return
+    const payload = q.questions.map((item) => {
+      const picked = answers[item.id] || {}
+      return { id: item.id, labels: picked.labels || [], other: picked.other || '' }
+    })
+    const status = await api.answerQuestion(currentId.value, payload)
+    if (status !== 'answered') {
+      toast.error('提交失败：该提问已超时或已被中断')
+      return
+    }
+    pendingQuestion.value = null
   }
 
   /* ── 事件 → 消息 ──────────────────────── */
@@ -464,6 +514,15 @@ export const useSessionStore = defineStore('session', () => {
         applyToolResult(msg, data)
         break
       }
+      case 'session.question': {
+        pendingQuestion.value = normalizeQuestion(data)
+        break
+      }
+      case 'session.todo': {
+        // 事件带的是 TodoStore 全量状态，直接覆盖；空数组表示待办已全部完成
+        todos.value = Array.isArray(data.todos) ? data.todos.filter((t) => t && t.content) : []
+        break
+      }
       case 'session.usage': {
         const msg = currentMsg()
         msg.usage = {
@@ -541,6 +600,8 @@ export const useSessionStore = defineStore('session', () => {
     connection,
     elapsed,
     hookPhase,
+    pendingQuestion,
+    todos,
     currentSession,
     title,
     hasMessages,
@@ -552,6 +613,7 @@ export const useSessionStore = defineStore('session', () => {
     removeSession,
     send,
     stop,
+    answer,
     applyEvent
   }
 })

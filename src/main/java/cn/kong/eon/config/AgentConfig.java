@@ -22,6 +22,7 @@ public class AgentConfig {
     private WebSearchConfig webSearch = new WebSearchConfig();
     private ModeConfig mode = new ModeConfig();
     private BudgetConfig budget = new BudgetConfig();
+    private InteractionConfig interaction = new InteractionConfig();
 
     public LlmConfig getLlm() {
         return llm;
@@ -122,6 +123,14 @@ public class AgentConfig {
 
     public void setBudget(BudgetConfig budget) {
         this.budget = budget;
+    }
+
+    public InteractionConfig getInteraction() {
+        return interaction;
+    }
+
+    public void setInteraction(InteractionConfig interaction) {
+        this.interaction = interaction;
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -380,6 +389,35 @@ public class AgentConfig {
 
         public void setMaxSteps(int v) {
             this.maxSteps = v;
+        }
+    }
+
+    /**
+     * 交互配置。ask_question 会阻塞在工具执行里等用户回答，因此流式连接必须比等待上限更长，
+     * 否则答案还没提交连接就被容器掐断。
+     */
+    public static class InteractionConfig {
+
+        /** 单次提问等待用户回答的上限（秒），超时后交回模型自行决策。 */
+        private int timeoutSeconds = 600;
+
+        /** 流式连接上限（秒），需覆盖「任务执行 + 可能多次的提问等待」。 */
+        private long sseTimeoutSeconds = 1800;
+
+        public int getTimeoutSeconds() {
+            return timeoutSeconds;
+        }
+
+        public void setTimeoutSeconds(int v) {
+            this.timeoutSeconds = v;
+        }
+
+        public long getSseTimeoutSeconds() {
+            return sseTimeoutSeconds;
+        }
+
+        public void setSseTimeoutSeconds(long v) {
+            this.sseTimeoutSeconds = v;
         }
     }
 
