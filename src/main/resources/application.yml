@@ -20,7 +20,7 @@ eon:
     api_key: "${LLM_API_KEY}"               # 从环境变量读取
     model_name: "mimo-v2.5"                 # 模型名称
     temperature: 0.7                        # 采样温度
-    timeout: 120                            # 请求超时（秒）
+    timeout: 300                            # 请求超时（秒）
     max_tokens: 12000                       # 单次响应最大输出 token 数
     stream_enabled: true                    # 流式响应开关
 

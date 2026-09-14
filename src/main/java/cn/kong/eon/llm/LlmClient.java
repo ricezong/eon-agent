@@ -209,7 +209,7 @@ public class LlmClient implements LlmService {
             }
         });
 
-        long timeoutSeconds = retryConfig.getAttempts() * 30L;
+        long timeoutSeconds = 300;
         try {
             return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
