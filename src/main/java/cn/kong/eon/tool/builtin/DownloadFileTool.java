@@ -113,8 +113,10 @@ public class DownloadFileTool implements ToolExecutor {
             log.info("download_file 完成: {} ({} 字节)", localPath, bytesWritten);
 
             String sizeDesc = formatSize(bytesWritten);
-            String modelContent = "文件下载成功: " + fileName + "（" + sizeDesc + "）";
-            return ToolResult.successFile(modelContent, fileName, sizeDesc);
+            // 回传相对工作目录的规范化路径，使工具产出与文件接口的路径口径一致
+            String storedPath = resolver.relativize(localPath);
+            String modelContent = "文件下载成功: " + storedPath + "（" + sizeDesc + "）";
+            return ToolResult.successFile(modelContent, storedPath, sizeDesc, bytesWritten);
 
         } catch (java.net.ConnectException e) {
             log.error("download_file 连接失败: {}", e.getMessage());

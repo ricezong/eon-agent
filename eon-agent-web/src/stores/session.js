@@ -1,11 +1,12 @@
 /**
- * 会话与消息状态中心。一条 assistant 消息 = blocks[]（thinking / text / tool），保证时序交错。
+ * 会话与消息状态中心。一条 assistant 消息 = blocks[]（thinking / text / tool / file / web），保证时序交错。
  * 实时流与历史回放共用同一套事件 → 消息还原逻辑；会话身份取自每个事件携带的 session_id。
  */
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import * as api from '@/api/agent'
 import { attach, detach, flush } from '@/utils/ticker'
+import { toolMeta } from '@/config/tools'
 import { useSettingsStore } from './settings'
 import { useToastStore } from './toast'
 import { deriveTitle, safeJson, uid } from '@/utils/format'
@@ -27,6 +28,49 @@ const makeToolBlock = (toolUseId, name, input) => ({
   opened: false
 })
 
+/**
+ * 声明了预览能力的工具（write / download_file / web_fetch）在消息流中单独成卡，
+ * 不把结果塞进折叠的工具卡里。块状态随调用推进：generating → writing → done | error。
+ * - generating：模型还在流式产出工具入参（写文件时就是文件内容），此时页面必须有反馈
+ * - writing：入参已就绪，工具正在落盘或抓取
+ */
+const RESULT_BLOCK_FIELD = {
+  file: () => ({ path: '', fileSize: '', sizeBytes: 0 }),
+  web: () => ({ pages: [] })
+}
+
+/** 工具名 → 结果卡块类型；未声明 preview 的工具不单独成卡。 */
+function resultKindOf(toolName) {
+  const p = toolMeta(toolName).preview
+  return p === 'file' || p === 'web' ? p : ''
+}
+
+const makeResultBlock = (kind, key, name) => ({
+  id: uid('b'),
+  kind,
+  key,
+  toolUseId: '',
+  name,
+  state: 'generating',
+  argsChars: 0,
+  content: '',
+  ...RESULT_BLOCK_FIELD[kind]()
+})
+
+const isResultBlock = (b) => b && (b.kind === 'file' || b.kind === 'web')
+
+/** 按 key（tool_use_id 或流序号）找未认领的结果块，用于把 delta 与后续的 tool_use 对上。 */
+function findResultBlock(blocks, key, kind) {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i]
+    if (!isResultBlock(b)) continue
+    if (kind && b.kind !== kind) continue
+    if (key && b.key === key) return b
+    if (!key && !b.key) return b
+  }
+  return null
+}
+
 export const useSessionStore = defineStore('session', () => {
   const settings = useSettingsStore()
   const toast = useToastStore()
@@ -42,6 +86,8 @@ export const useSessionStore = defineStore('session', () => {
   const lastError = ref(null)
   const connection = ref('unknown') // unknown | online | offline
   const elapsed = ref(0)
+  /** 当前正在执行的引擎钩子名（空串表示不在钩子阶段），用于静默期的进度提示 */
+  const hookPhase = ref('')
 
   const run = shallowRef(null) // { abort }
   let currentAssistant = null // 当前正在生成的 assistant 消息（非响应式引用）
@@ -264,6 +310,88 @@ export const useSessionStore = defineStore('session', () => {
     return block
   }
 
+  /** 把已存在的块挪到消息末尾，用于让结果卡排在随后出现的工具卡之后。 */
+  function moveToEnd(msg, block) {
+    const i = msg.blocks.indexOf(block)
+    if (i === -1 || i === msg.blocks.length - 1) return
+    msg.blocks.splice(i, 1)
+    msg.blocks.push(block)
+  }
+
+  /**
+   * 工具入参流式产出。首个 delta 带工具名，据此建卡；后续 delta 只带片段，按 key 累加。
+   * 这是写文件「长时间无反馈」的主要窗口——内容生成阶段最久，必须在这里就有进度。
+   */
+  function applyToolDelta(msg, data) {
+    const key = data.tool_use_id || `#${data.index ?? 0}`
+    let block = findResultBlock(msg.blocks, key, null)
+    if (!block) {
+      const kind = resultKindOf(data.name)
+      if (!kind) return
+      block = pushBlock(msg, makeResultBlock(kind, key, data.name || ''))
+    }
+    block.argsChars += (data.delta || '').length
+  }
+
+  /** 入参就绪、工具开始执行：认领 generating 中的结果卡并切到 writing。 */
+  function applyToolUse(msg, data) {
+    pushTool(msg, data)
+    const kind = resultKindOf(data.name)
+    if (!kind) return
+
+    let rb = findResultBlock(msg.blocks, data.tool_use_id, kind)
+    if (!rb) {
+      // delta 阶段拿不到 tool_use_id，认领最后一块未归属的同类型结果卡
+      const pending = [...msg.blocks].reverse().find((b) => isResultBlock(b) && b.kind === kind && !b.toolUseId)
+      if (pending) {
+        pending.toolUseId = data.tool_use_id
+        pending.key = data.tool_use_id
+        rb = pending
+      }
+    }
+    if (!rb) rb = pushBlock(msg, makeResultBlock(kind, data.tool_use_id, data.name))
+
+    rb.state = 'writing'
+    rb.name = data.name || rb.name
+
+    // 入参里的路径 / 链接先填上，执行阶段就能显示文件名或链接数
+    const args = safeJson(data.input, null)
+    if (args && typeof args === 'object') {
+      const p = args.file_path || args.target_file || args.file_name
+      if (p && !rb.path) rb.path = String(p)
+      if (kind === 'web' && Array.isArray(args.urls) && !(rb.pages || []).length) {
+        rb.pages = args.urls.map((u) => ({ url: String(u), success: true, contentLength: 0 }))
+      }
+    }
+    moveToEnd(msg, rb)
+  }
+
+  /** 工具执行完毕：把结构化结果写进结果卡，仍保留精简的工具卡。 */
+  function applyToolResult(msg, data) {
+    fillTool(msg, data)
+    const kind = resultKindOf(data.name)
+    if (!kind) return
+
+    let rb = findResultBlock(msg.blocks, data.tool_use_id, kind)
+    if (!rb) {
+      // 成功但没有可用载荷时不建卡，避免出现空白的结果卡
+      const payload = kind === 'file' ? !!data.structured_content?.filePath : (data.structured_content?.pages || []).length > 0
+      if (data.success !== false && !payload) return
+      rb = pushBlock(msg, makeResultBlock(kind, data.tool_use_id, data.name))
+    }
+
+    rb.state = data.success === false ? 'error' : 'done'
+    rb.content = data.content || ''
+    const view = data.structured_content || null
+    if (kind === 'file') {
+      rb.path = view?.filePath || rb.path
+      rb.fileSize = view?.fileSize || ''
+      rb.sizeBytes = Number(view?.sizeBytes) || 0
+    } else {
+      rb.pages = view?.pages || rb.pages || []
+    }
+  }
+
   function fillTool(msg, data) {
     // 工具结果可能落在上一条 assistant 消息（跨轮），向前回溯 3 条
     const candidates = [msg, ...messages.value.slice(-4, -1).reverse()]
@@ -289,6 +417,8 @@ export const useSessionStore = defineStore('session', () => {
     if (!data) return
     // 每个事件都带 session_id，故此处统一采纳身份，无需为 session.start 单独分支
     adoptSession(data.session_id, data.title)
+    // 钩子阶段只是「当前状态」，收到任何其他事件即视为该阶段已结束
+    hookPhase.value = name === 'engine.hook' ? data.hook || '' : ''
     switch (name) {
       case 'session.status': {
         if (data.status === 'running') {
@@ -319,14 +449,19 @@ export const useSessionStore = defineStore('session', () => {
         setFinalText(msg, text)
         break
       }
+      case 'engine.tool_delta': {
+        const msg = currentMsg()
+        applyToolDelta(msg, data)
+        break
+      }
       case 'engine.tool_use': {
         const msg = currentMsg()
-        pushTool(msg, data)
+        applyToolUse(msg, data)
         break
       }
       case 'engine.tool_result': {
         const msg = currentMsg()
-        fillTool(msg, data)
+        applyToolResult(msg, data)
         break
       }
       case 'session.usage': {
@@ -372,6 +507,7 @@ export const useSessionStore = defineStore('session', () => {
     streaming.value = false
     sessionStatus.value = status === 'terminated' ? 'terminated' : 'idle'
     run.value = null
+    hookPhase.value = ''
 
     // 收尾后刷新列表（标题 / 消息数 / 活跃时间）
     refreshAfterRun()
@@ -404,6 +540,7 @@ export const useSessionStore = defineStore('session', () => {
     lastError,
     connection,
     elapsed,
+    hookPhase,
     currentSession,
     title,
     hasMessages,
@@ -420,6 +557,28 @@ export const useSessionStore = defineStore('session', () => {
 })
 
 /* ── 回放：事件数组 → 消息列表 ──────────── */
+
+/** 回放没有中间态，结果卡在 tool_result 处一次性成型，接在工具卡之后。 */
+function pushReplayResult(msg, ev) {
+  const kind = resultKindOf(ev.name)
+  if (!kind) return
+  const view = ev.structured_content || null
+  const ok = ev.success !== false
+  const rb = makeResultBlock(kind, ev.tool_use_id, ev.name)
+  rb.state = ok ? 'done' : 'error'
+  rb.content = ev.content || ''
+  if (kind === 'file') {
+    rb.path = view?.filePath || ''
+    rb.fileSize = view?.fileSize || ''
+    rb.sizeBytes = Number(view?.sizeBytes) || 0
+    if (ok && !rb.path) return
+  } else {
+    rb.pages = view?.pages || []
+    if (ok && !rb.pages.length) return
+  }
+  msg.blocks.push(rb)
+}
+
 export function buildMessages(events) {
   const out = []
   let msg = null
@@ -477,6 +636,7 @@ export function buildMessages(events) {
         break
       }
       case 'engine.tool_result': {
+        let target = null
         for (let i = out.length - 1; i >= 0 && i >= out.length - 4; i--) {
           const m = out[i]
           if (m.role !== 'assistant') continue
@@ -486,9 +646,11 @@ export function buildMessages(events) {
             hit.success = ev.success !== false
             hit.content = ev.content || ''
             hit.structured = ev.structured_content || null
+            target = m
             break
           }
         }
+        if (target) pushReplayResult(target, ev)
         break
       }
       case 'session.usage': {

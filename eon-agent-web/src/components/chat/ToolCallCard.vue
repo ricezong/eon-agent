@@ -35,6 +35,19 @@ const resultText = computed(() => {
 
 const resultView = computed(() => props.structured || null)
 
+/**
+ * 带独立结果卡的工具（write / download_file / web_fetch）在这里只留一行摘要，
+ * 完整预览由平级的 FileResultCard / WebPageResultCard 承担，避免同一份结果渲染两遍。
+ */
+const brief = computed(() => {
+  const v = resultView.value
+  if (!v) return ''
+  if (v.type === 'file') return v.filePath || ''
+  if (v.type === 'web_page') return `${(v.pages || []).length} 个链接`
+  if (v.type === 'artifact') return `artifact://${v.artifactId}`
+  return ''
+})
+
 const stateText = computed(() =>
   props.state === 'running' ? '执行中' : props.state === 'error' ? '失败' : '完成'
 )
@@ -100,11 +113,10 @@ async function copyResult() {
             </button>
           </h4>
 
-          <!-- 文件 -->
-          <div v-if="resultView?.type === 'file'" class="tool__file">
-            <AppIcon name="fileText" :size="16" />
-            <span class="mono">{{ resultView.filePath }}</span>
-            <span class="tool__size">{{ resultView.fileSize || '' }}</span>
+          <!-- 已有独立结果卡：这里只留一行摘要 -->
+          <div v-if="brief" class="tool__file">
+            <AppIcon name="external" :size="14" />
+            <span class="mono">{{ brief }}</span>
           </div>
 
           <!-- 目录列表 -->
@@ -116,12 +128,6 @@ async function copyResult() {
             </li>
             <li v-if="!(resultView.entries || []).length" class="muted">空目录</li>
           </ul>
-
-          <!-- artifact -->
-          <div v-else-if="resultView?.type === 'artifact'" class="tool__file">
-            <AppIcon name="layers" :size="16" />
-            <span class="mono">artifact://{{ resultView.artifactId }}</span>
-          </div>
 
           <!-- 文本 -->
           <pre v-else-if="resultText" class="tool__result mono">{{ displayed }}</pre>

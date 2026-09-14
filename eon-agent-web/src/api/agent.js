@@ -41,6 +41,28 @@ export function getSessionEvents(sessionId, userId) {
   return http.get(`/sessions/${encodeURIComponent(sessionId)}`, { headers: userHeaders(userId) })
 }
 
+/** 文件元信息：体积 / MIME / 是否二进制 / 编码。 */
+export function getFileMeta(sessionId, path, userId) {
+  return http.get(`/sessions/${encodeURIComponent(sessionId)}/files/meta`, {
+    params: { path },
+    headers: userHeaders(userId)
+  })
+}
+
+/** 文件文本预览，超限时后端截断。 */
+export function getFileContent(sessionId, path, userId) {
+  return http.get(`/sessions/${encodeURIComponent(sessionId)}/files/content`, {
+    params: { path },
+    headers: userHeaders(userId)
+  })
+}
+
+/** 原始文件链接，供 img / iframe / 下载直接引用（不经过 fetch）。 */
+export function fileRawUrl(sessionId, path, download = false) {
+  const q = `path=${encodeURIComponent(path)}${download ? '&download=1' : ''}`
+  return `${API_BASE}/sessions/${encodeURIComponent(sessionId)}/files/raw?${q}`
+}
+
 /** 连通性探测（复用会话列表接口）。 */
 export async function ping(userId) {
   const started = performance.now()

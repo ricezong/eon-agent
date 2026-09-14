@@ -36,11 +36,14 @@ public interface LlmService {
      * @param tools             工具规格
      * @param onTextDelta     文本增量回调
      * @param onThinkingDelta  thinking 增量回调
+     * @param onToolCallDelta 工具参数增量回调；模型生成工具入参时逐段触发，
+     *                        使调用方在工具执行前的静默期也能反馈进度
      * @return 完整的 LLM 响应
      */
     LlmResponse streamChat(List<ChatMessage> messages, List<ToolSpecification> tools,
                            Consumer<String> onTextDelta,
-                           Consumer<String> onThinkingDelta);
+                           Consumer<String> onThinkingDelta,
+                           Consumer<ToolCallDelta> onToolCallDelta);
 
     /** 是否启用流式。 */
     boolean isStreamEnabled();

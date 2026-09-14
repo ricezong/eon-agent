@@ -131,12 +131,14 @@ public class LlmClient implements LlmService {
      * @param tools          工具规格
      * @param onTextDelta    文本增量回调
      * @param onThinkingDelta thinking 增量回调
+     * @param onToolCallDelta 工具参数增量回调
      * @return 完整的 LLM 响应
      */
     @Override
     public LlmResponse streamChat(List<ChatMessage> messages, List<ToolSpecification> tools,
                                    Consumer<String> onTextDelta,
-                                   Consumer<String> onThinkingDelta) {
+                                   Consumer<String> onThinkingDelta,
+                                   Consumer<ToolCallDelta> onToolCallDelta) {
         ChatRequest.Builder requestBuilder = ChatRequest.builder().messages(messages);
         if (tools != null && !tools.isEmpty()) {
             requestBuilder.toolSpecifications(tools);
@@ -163,6 +165,18 @@ public class LlmClient implements LlmService {
                 if (onThinkingDelta != null && partialThinking.text() != null) {
                     onThinkingDelta.accept(partialThinking.text());
                 }
+            }
+
+            @Override
+            public void onPartialToolCall(dev.langchain4j.model.chat.response.PartialToolCall partialToolCall) {
+                if (onToolCallDelta == null) {
+                    return;
+                }
+                onToolCallDelta.accept(new ToolCallDelta(
+                        partialToolCall.index(),
+                        partialToolCall.id(),
+                        partialToolCall.name(),
+                        partialToolCall.partialArguments()));
             }
 
             @Override

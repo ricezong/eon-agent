@@ -53,4 +53,19 @@ public class PathResolver {
 
         return resolved;
     }
+
+    /**
+     * 将绝对路径还原为相对工作目录的路径，统一使用正斜杠。
+     * 工具回传路径与文件接口都走这里，保证两侧对「相对路径」的定义一致。
+     * 不在工作目录内（沙箱关闭时）时退化为文件名。
+     */
+    public String relativize(Path absolute) {
+        Path target = absolute.toAbsolutePath().normalize();
+        Path workspace = Path.of(workDir).toAbsolutePath().normalize();
+        if (target.startsWith(workspace)) {
+            String rel = workspace.relativize(target).toString().replace('\\', '/');
+            return rel.isEmpty() ? String.valueOf(target.getFileName()) : rel;
+        }
+        return String.valueOf(target.getFileName());
+    }
 }

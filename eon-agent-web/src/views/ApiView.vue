@@ -67,15 +67,48 @@ const ENDPOINTS = [
       ['X-User-Id', 'header', '用户标识请求头，缺省 default']
     ],
     res: '{ status: "deleted" | "not_found", session_id }'
+  },
+  {
+    method: 'GET',
+    path: '/api/sessions/{sessionId}/files/meta',
+    desc: '查询会话工作区文件的元信息，前端据此选择预览渲染器。',
+    req: [
+      ['sessionId', 'string', '路径参数'],
+      ['path', 'string', 'query，相对会话工作目录的文件路径']
+    ],
+    res: '{ name, path, sizeBytes, mime, binary, encoding, modifiedAt }'
+  },
+  {
+    method: 'GET',
+    path: '/api/sessions/{sessionId}/files/content',
+    desc: '读取文件文本用于预览，超过 200KB 时截断。',
+    req: [
+      ['sessionId', 'string', '路径参数'],
+      ['path', 'string', 'query，文件路径']
+    ],
+    res: '{ meta, content, truncated, limit }'
+  },
+  {
+    method: 'GET',
+    path: '/api/sessions/{sessionId}/files/raw',
+    desc: '输出文件原始字节。download=1 触发下载；内联模式下 HTML / SVG 附加 CSP sandbox。',
+    req: [
+      ['sessionId', 'string', '路径参数'],
+      ['path', 'string', 'query，文件路径'],
+      ['download', 'boolean', 'query，默认 false']
+    ],
+    res: '二进制流'
   }
 ]
 
 const EVENTS = [
-  ['session.start', 'session_id / is_new / title', '首帧：交付服务端确定的会话身份'],
+  ['session.start', 'session_id / title', '首帧：交付服务端确定的会话身份'],
   ['session.status', 'status / stop_reason', '任务状态：running → idle / terminated'],
   ['engine.delta', 'turn_id / kind / delta', '流式增量，kind 为 text 或 thinking'],
   ['engine.thinking', 'turn_id / content', '完整思考块'],
   ['engine.message', 'turn_id / message_id / content[]', '本轮最终回答'],
+  ['engine.tool_delta', 'index / tool_use_id / name / delta', '工具入参流式片段，用于写文件时的进度反馈'],
+  ['engine.hook', 'turn_id / hook', '确定进入 SUMMARIZE 压缩档、即将调 LLM 生成摘要时发出'],
   ['engine.tool_use', 'turn_id / tool_use_id / name / input', '请求调用工具'],
   ['engine.tool_result', 'tool_use_id / content / structured_content / success', '工具执行结果'],
   ['session.usage', 'prompt_tokens / completion_tokens / total_tokens', 'token 用量'],

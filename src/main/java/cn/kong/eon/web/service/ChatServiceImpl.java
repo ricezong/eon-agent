@@ -10,8 +10,7 @@ import cn.kong.eon.runtime.cache.SessionScope;
 import cn.kong.eon.store.index.SessionIndexStore;
 import cn.kong.eon.store.index.SessionMeta;
 import cn.kong.eon.web.dto.ChatRequest;
-import cn.kong.eon.web.exception.SessionBusyException;
-import cn.kong.eon.web.exception.SessionNotFoundException;
+import cn.kong.eon.web.exception.ApiException;
 import cn.kong.eon.web.sse.EventFormatter;
 import cn.kong.eon.web.sse.SseEventListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -73,7 +72,7 @@ public class ChatServiceImpl implements ChatService {
             log.info("新建会话 {} (userId={})", sessionId, userId);
         } else {
             SessionMeta meta = sessionIndexStore.find(userId, requestedId)
-                    .orElseThrow(() -> new SessionNotFoundException(requestedId));
+                    .orElseThrow(() -> ApiException.sessionNotFound(requestedId));
             // 取索引中的完整 ID：直接用 requestedId 会让前缀成为会话身份，导致上下文串行
             sessionId = meta.sessionId();
             sessionTitle = meta.title();
@@ -135,8 +134,7 @@ public class ChatServiceImpl implements ChatService {
 
     /** 把异常映射为 SSE session.error 的 type 字段，前端按 type 区分。 */
     private static String errorTypeOf(Throwable e) {
-        if (e instanceof SessionNotFoundException) return "session_not_found";
-        if (e instanceof SessionBusyException) return "session_busy";
+        if (e instanceof ApiException api) return api.type();
         if (e instanceof IllegalArgumentException) return "bad_request";
         return "runtime_error";
     }

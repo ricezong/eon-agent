@@ -130,7 +130,8 @@ public class AgentEngine {
             if (llmService.isStreamEnabled()) {
                 response = llmService.streamChat(messages, toolService.getSpecifications(),
                         delta -> r.emit(AgentDelta.text(r.task().turnId(), delta)),
-                        delta -> r.emit(AgentDelta.thinking(r.task().turnId(), delta)));
+                        delta -> r.emit(AgentDelta.thinking(r.task().turnId(), delta)),
+                        d -> r.emit(AgentToolDelta.now(r.task().turnId(), d.index(), d.id(), d.name(), d.partialArgs())));
             } else {
                 response = llmService.chat(messages, toolService.getSpecifications());
             }

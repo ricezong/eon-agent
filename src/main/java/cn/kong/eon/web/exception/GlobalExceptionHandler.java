@@ -13,28 +13,23 @@ import java.util.Map;
 
 /**
  * 全局异常处理。统一异常响应格式，避免每个接口手动 try-catch。
+ * 业务异常统一用 {@link ApiException} 抛出，状态码与类型码由抛出点决定。
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(ApiException.class)
+    public ResponseEntity<Map<String, Object>> handleApi(ApiException e, WebRequest request) {
+        log.warn("接口异常 [{}]: {}", e.type(), e.getMessage());
+        return buildResponse(e.status(), e.type(), e.getMessage());
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException e, WebRequest request) {
         log.warn("参数错误: {}", e.getMessage());
         return buildResponse(HttpStatus.BAD_REQUEST, "bad_request", e.getMessage());
-    }
-
-    @ExceptionHandler(SessionNotFoundException.class)
-    public ResponseEntity<Map<String, Object>> handleSessionNotFound(SessionNotFoundException e, WebRequest request) {
-        log.warn("会话不存在: {}", e.getMessage());
-        return buildResponse(HttpStatus.NOT_FOUND, "session_not_found", e.getMessage());
-    }
-
-    @ExceptionHandler(SessionBusyException.class)
-    public ResponseEntity<Map<String, Object>> handleSessionBusy(SessionBusyException e, WebRequest request) {
-        log.warn("会话忙: {}", e.getMessage());
-        return buildResponse(HttpStatus.CONFLICT, "session_busy", e.getMessage());
     }
 
     @ExceptionHandler(IllegalStateException.class)

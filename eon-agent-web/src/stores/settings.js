@@ -28,10 +28,12 @@ export const useSettingsStore = defineStore('settings', () => {
   const expandThinking = ref(saved.expandThinking === true)
   /** 工具结果默认折叠 */
   const collapseToolResult = ref(saved.collapseToolResult !== false)
+  /** HTML 预览是否执行脚本：关闭后沙箱内不运行 JS */
+  const htmlPreviewScripts = ref(saved.htmlPreviewScripts !== false)
 
   setSpeed(typeSpeed.value)
 
-  watch([userId, typeSpeed, autoScroll, expandThinking, collapseToolResult], () => {
+  watch([userId, typeSpeed, autoScroll, expandThinking, collapseToolResult, htmlPreviewScripts], () => {
     localStorage.setItem(
       KEY,
       JSON.stringify({
@@ -39,7 +41,8 @@ export const useSettingsStore = defineStore('settings', () => {
         typeSpeed: typeSpeed.value,
         autoScroll: autoScroll.value,
         expandThinking: expandThinking.value,
-        collapseToolResult: collapseToolResult.value
+        collapseToolResult: collapseToolResult.value,
+        htmlPreviewScripts: htmlPreviewScripts.value
       })
     )
   })
@@ -52,7 +55,8 @@ export const useSettingsStore = defineStore('settings', () => {
     autoScroll.value = true
     expandThinking.value = false
     collapseToolResult.value = true
+    htmlPreviewScripts.value = true
   }
 
-  return { userId, typeSpeed, autoScroll, expandThinking, collapseToolResult, reset }
+  return { userId, typeSpeed, autoScroll, expandThinking, collapseToolResult, htmlPreviewScripts, reset }
 })

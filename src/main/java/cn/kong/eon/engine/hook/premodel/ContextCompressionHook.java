@@ -4,6 +4,7 @@ import cn.kong.eon.context.CompressionState;
 import cn.kong.eon.context.ContextMetrics;
 import cn.kong.eon.context.ContextWindow;
 import cn.kong.eon.context.block.CompressionLevel;
+import cn.kong.eon.event.AgentHook;
 import cn.kong.eon.engine.hook.Hook;
 import cn.kong.eon.engine.hook.HookResult;
 import cn.kong.eon.engine.stop.StopCategory;
@@ -37,7 +38,8 @@ public class ContextCompressionHook implements Hook.PreModelHook {
         ContextMetrics before = r.turn().prompt().metrics();
 
         CompressionLevel level = r.session().compressionPolicy()
-                .apply(window, before, cs, r.task().turnCount(), r.session().ledgerPath());
+                .apply(window, before, cs, r.task().turnCount(), r.session().ledgerPath(),
+                        () -> r.emit(AgentHook.now(r.task().turnId(), name())));
         if (!level.enabled()) {
             return HookResult.ok();
         }

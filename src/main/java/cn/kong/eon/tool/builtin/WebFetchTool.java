@@ -5,9 +5,13 @@ import cn.kong.eon.tool.ToolRuntime;
 import cn.kong.eon.tool.ToolDescriptor;
 import cn.kong.eon.tool.ToolExecutor;
 import cn.kong.eon.tool.ToolResult;
+import cn.kong.eon.tool.model.ToolResultView;
 import com.vladsch.flexmark.html2md.converter.FlexmarkHtmlConverter;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,11 +24,17 @@ import java.util.*;
 
 /**
  * web_fetch 工具：批量抓取 URL 内容并转为 markdown。内容过大时截断，含 LRU 缓存。
+ * <p>
+ * 给模型的是 markdown 全文；给前端的 {@code structured_content} 额外带上
+ * 标题 / 摘要 / favicon 等元信息（由 Jsoup 解析），用于渲染网页预览卡片。
  */
 public class WebFetchTool implements ToolExecutor {
     private static final Logger log = LoggerFactory.getLogger(WebFetchTool.class);
 
     private static final int TIMEOUT_SECONDS = 30;
+
+    /** 摘要缺失时，从正文截取的字符数。 */
+    private static final int SUMMARY_FALLBACK_CHARS = 200;
 
     private final int maxContentLength;
     private final long cacheTtlMs;
@@ -34,7 +44,7 @@ public class WebFetchTool implements ToolExecutor {
 
     private final FlexmarkHtmlConverter htmlConverter = FlexmarkHtmlConverter.builder().build();
 
-    /** LRU 缓存：URL → (内容, 时间戳)。 */
+    /** LRU 缓存：URL → (抓取结果, 时间戳)。 */
     private final Map<String, CacheEntry> cache;
 
     /** 默认构造，生产环境通过 descriptor(int, long, int, HttpClient) 传入配置。 */
@@ -98,18 +108,21 @@ public class WebFetchTool implements ToolExecutor {
         }
 
         StringBuilder output = new StringBuilder();
+        List<ToolResultView.WebPage> pages = new ArrayList<>();
         int success = 0;
         int failed = 0;
 
         for (String url : urls) {
             try {
-                String content = fetchUrl(url);
+                Fetched fetched = fetchUrl(url);
                 output.append("--- ").append(url).append(" ---\n\n");
-                output.append(content).append("\n\n");
+                output.append(fetched.content()).append("\n\n");
+                pages.add(fetched.page());
                 success++;
             } catch (Exception e) {
                 output.append("--- ").append(url).append("（失败）---\n");
                 output.append("错误: ").append(e.getMessage()).append("\n\n");
+                pages.add(ToolResultView.WebPage.failed(url, e.getMessage()));
                 failed++;
                 log.warn("web_fetch 失败 {}: {}", url, e.getMessage());
             }
@@ -118,14 +131,14 @@ public class WebFetchTool implements ToolExecutor {
         cleanCache();
 
         output.insert(0, String.format("已获取 %d 个 URL：%d 个成功，%d 个失败。\n\n", urls.size(), success, failed));
-        return ToolResult.success(output.toString());
+        return ToolResult.success(output.toString(), ToolResultView.webPages(pages));
     }
 
-    /** 抓取单个 URL 内容，HTML 转 markdown，超长截断。 */
-    private String fetchUrl(String rawUrl) throws Exception {
+    /** 抓取单个 URL：HTML 转 markdown，超长截断，同时解析页面元信息。 */
+    private Fetched fetchUrl(String rawUrl) throws Exception {
         String url = rawUrl.trim();
 
-        String cached = getFromCache(url);
+        Fetched cached = getFromCache(url);
         if (cached != null) {
             log.debug("缓存命中: {}", url);
             return cached;
@@ -149,21 +162,20 @@ public class WebFetchTool implements ToolExecutor {
 
         String body = response.body();
         String contentType = response.headers().firstValue("content-type").orElse("");
+        boolean html = contentType.contains("text/html") || contentType.contains("application/xhtml");
 
-        String result;
-        if (contentType.contains("text/html") || contentType.contains("application/xhtml")) {
-            result = htmlToMarkdown(body);
-        } else {
-            result = body;
-        }
-
+        String result = html ? htmlToMarkdown(body) : body;
         if (result.length() > maxContentLength) {
             result = result.substring(0, maxContentLength) + "\n... [内容已截断，截断于 " + maxContentLength + " 字符]";
         }
 
-        putToCache(url, result);
+        ToolResultView.WebPage page = html
+                ? parsePage(body, url, result)
+                : ToolResultView.WebPage.ok(url, null, summaryOf(result), null, null, result.length());
 
-        return result;
+        Fetched fetched = new Fetched(result, page);
+        putToCache(url, fetched);
+        return fetched;
     }
 
     /** HTML 转 markdown 并清理多余空行。 */
@@ -176,8 +188,74 @@ public class WebFetchTool implements ToolExecutor {
         return result;
     }
 
-    /** 从缓存获取内容（检查 TTL）。 */
-    private String getFromCache(String url) {
+    // ═══════════════ 元信息解析 ═══════════════
+
+    /** 解析页面元信息。baseUri 传入页面地址，Jsoup 据此把相对链接绝对化。 */
+    private static ToolResultView.WebPage parsePage(String html, String url, String markdown) {
+        Document doc = Jsoup.parse(html, url);
+        String description = firstNonBlank(
+                meta(doc, "meta[name=description]"),
+                meta(doc, "meta[property=og:description]"),
+                summaryOf(markdown));
+        return ToolResultView.WebPage.ok(
+                url,
+                trimToNull(doc.title()),
+                description,
+                faviconOf(doc, url),
+                meta(doc, "meta[property=og:site_name]"),
+                markdown.length());
+    }
+
+    private static String meta(Document doc, String cssQuery) {
+        Element el = doc.selectFirst(cssQuery);
+        return el == null ? null : trimToNull(el.attr("content"));
+    }
+
+    /** favicon：优先 link[rel~=icon] 的绝对地址，缺失时回退站点根目录的 favicon.ico。 */
+    private static String faviconOf(Document doc, String pageUrl) {
+        for (Element link : doc.select("link[rel]")) {
+            if (!link.attr("rel").toLowerCase().contains("icon")) continue;
+            String href = trimToNull(link.attr("abs:href"));
+            if (href != null) return href;
+        }
+        return absolutize(pageUrl, "/favicon.ico");
+    }
+
+    /** 相对 URL 转绝对 URL，非法时返回 null。 */
+    private static String absolutize(String pageUrl, String href) {
+        try {
+            return URI.create(pageUrl).resolve(href).toString();
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** 取正文首段作为摘要：去掉 markdown 标记并压缩空白。 */
+    private static String summaryOf(String text) {
+        if (text == null || text.isBlank()) return null;
+        String flat = text.replaceAll("[#>*`\\-_\\[\\]()!]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (flat.isEmpty()) return null;
+        return flat.length() <= SUMMARY_FALLBACK_CHARS
+                ? flat : flat.substring(0, SUMMARY_FALLBACK_CHARS) + "…";
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String v : values) {
+            if (v != null && !v.isBlank()) return v;
+        }
+        return null;
+    }
+
+    private static String trimToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
+    }
+
+    // ═══════════════ 缓存 ═══════════════
+
+    /** 从缓存获取（检查 TTL）。 */
+    private Fetched getFromCache(String url) {
         synchronized (cache) {
             CacheEntry entry = cache.get(url);
             if (entry == null) return null;
@@ -185,13 +263,13 @@ public class WebFetchTool implements ToolExecutor {
                 cache.remove(url);
                 return null;
             }
-            return entry.content();
+            return entry.fetched();
         }
     }
 
     /** 写入缓存。 */
-    private void putToCache(String url, String content) {
-        cache.put(url, new CacheEntry(content, System.currentTimeMillis()));
+    private void putToCache(String url, Fetched fetched) {
+        cache.put(url, new CacheEntry(fetched, System.currentTimeMillis()));
     }
 
     /** 清理过期缓存条目。 */
@@ -202,7 +280,11 @@ public class WebFetchTool implements ToolExecutor {
         }
     }
 
+    /** 抓取结果：给模型的正文 + 给前端的预览卡片。 */
+    private record Fetched(String content, ToolResultView.WebPage page) {
+    }
+
     /** 缓存条目。 */
-    private record CacheEntry(String content, long timestamp) {
+    private record CacheEntry(Fetched fetched, long timestamp) {
     }
 }

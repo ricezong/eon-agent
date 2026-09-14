@@ -4,8 +4,12 @@ import AppIcon from '@/components/common/AppIcon.vue'
 import MarkdownBlock from './MarkdownBlock.vue'
 import ThinkingBlock from './ThinkingBlock.vue'
 import ToolCallCard from './ToolCallCard.vue'
+import FileResultCard from '@/components/preview/FileResultCard.vue'
+import WebPageResultCard from '@/components/preview/WebPageResultCard.vue'
+import { hookLabel } from '@/config/hooks'
 import { copyText, clockTime, formatTokens } from '@/utils/format'
 import { useToastStore } from '@/stores/toast'
+import { useSessionStore } from '@/stores/session'
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -13,6 +17,7 @@ const props = defineProps({
 })
 
 const toast = useToastStore()
+const session = useSessionStore()
 
 const STOP_TEXT = {
   task_completed: '任务完成',
@@ -53,6 +58,9 @@ function isTyping(b) {
   return isStreaming.value && !b.closed && b.shown.length < b.target.length
 }
 
+/** 钩子阶段（如上下文压缩）同步再调 LLM 且无增量输出，靠这一行告诉用户卡在哪。 */
+const hookText = computed(() => (isStreaming.value && session.hookPhase ? hookLabel(session.hookPhase) : ''))
+
 async function copyAll() {
   const ok = await copyText(plainText.value)
   toast[ok ? 'success' : 'warn'](ok ? '回复已复制' : '复制失败')
@@ -89,10 +97,20 @@ async function copyAll() {
             :content="b.content"
             :structured="b.structured"
           />
+
+          <!-- 文件 / 网页结果独立成卡，与工具卡平级，无需展开工具卡即可看到 -->
+          <FileResultCard v-else-if="b.kind === 'file'" :block="b" />
+          <WebPageResultCard v-else-if="b.kind === 'web'" :block="b" />
         </template>
 
+        <!-- 钩子阶段的进度提示 -->
+        <p v-if="hookText" class="hookline">
+          <span class="hookline__spin" />
+          <span>正在{{ hookText }}…</span>
+        </p>
+
         <!-- 等待首个 token -->
-        <div v-if="isStreaming && !message.blocks.length" class="waiting">
+        <div v-else-if="isStreaming && !message.blocks.length" class="waiting">
           <span /><span /><span />
           <em>正在思考…</em>
         </div>
@@ -195,6 +213,32 @@ async function copyAll() {
   background: linear-gradient(180deg, #a78bfa, #22d3ee);
   border-radius: 2px;
   animation: blink 1s step-end infinite;
+}
+
+.hookline {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  /* 延迟淡入：毫秒级就跑完的钩子不该闪一下提示，只有真卡住时才显示 */
+  opacity: 0;
+  animation: hookline-in 0.2s ease 0.5s forwards;
+}
+@keyframes hookline-in {
+  to {
+    opacity: 1;
+  }
+}
+.hookline__spin {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(139, 92, 246, 0.25);
+  border-top-color: #a78bfa;
+  animation: spin 0.8s linear infinite;
+  flex: none;
 }
 
 .waiting {

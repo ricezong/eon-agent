@@ -542,7 +542,7 @@ public class AgentConfig {
             private int idleTtlMinutes = 30;
             /** RUNNING 状态 TTL（分钟），兜底防长任务被淘汰 */
             private int runningTtlMinutes = 1440;
-            /** 同会话并发策略：REJECT（抛 SessionBusyException）| QUEUE（排队等待） */
+            /** 同会话并发策略：REJECT（抛 ApiException#sessionBusy）| QUEUE（排队等待） */
             private String busyPolicy = "REJECT";
             /** QUEUE 模式下等待前一个任务的最长秒数，超时按 busy 处理，避免无限阻塞 */
             private int queueTimeoutSeconds = 60;

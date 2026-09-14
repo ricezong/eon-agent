@@ -17,10 +17,10 @@ public record ToolResult(
                 ToolResultView.text(content != null ? content : ""));
     }
 
-    /** 构建成功结果：文件类。 */
-    public static ToolResult successFile(String modelContent, String filePath, String fileSize) {
+    /** 构建成功结果：文件类。sizeBytes 为真实字节数，前端据此决定是否截断预览。 */
+    public static ToolResult successFile(String modelContent, String filePath, String fileSize, long sizeBytes) {
         return new ToolResult(true, modelContent,
-                ToolResultView.file(filePath, fileSize));
+                ToolResultView.file(filePath, fileSize, sizeBytes));
     }
 
     /** 构建成功结果：artifact 引用。 */

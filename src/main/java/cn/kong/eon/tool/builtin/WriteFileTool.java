@@ -46,11 +46,14 @@ public class WriteFileTool implements ToolExecutor {
             Files.writeString(resolvedPath, contents);
 
             int lineCount = contents.split("\n", -1).length;
-            log.info("write: {} ({} 行, {} 字符)", filePath, lineCount, contents.length());
+            long sizeBytes = Files.size(resolvedPath);
+            // 回传相对工作目录的规范化路径，使工具产出与文件接口的路径口径一致
+            String storedPath = resolver.relativize(resolvedPath);
+            log.info("write: {} ({} 行, {} 字节)", storedPath, lineCount, sizeBytes);
 
-            String modelContent = "文件写入成功: " + filePath + "（" + lineCount + " 行，" + contents.length() + " 字符）";
+            String modelContent = "文件写入成功: " + storedPath + "（" + lineCount + " 行，" + contents.length() + " 字符）";
             String sizeDesc = lineCount + " 行, " + contents.length() + " 字符";
-            return ToolResult.successFile(modelContent, filePath, sizeDesc);
+            return ToolResult.successFile(modelContent, storedPath, sizeDesc, sizeBytes);
 
         } catch (IOException e) {
             log.error("write 失败: {}", e.getMessage());

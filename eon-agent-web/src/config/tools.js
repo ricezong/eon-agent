@@ -21,7 +21,8 @@ export const TOOL_META = [
     icon: 'edit',
     source: 'local',
     desc: '创建或覆盖写入文件，路径相对于会话工作目录。',
-    params: ['file_path', 'contents']
+    params: ['file_path', 'contents'],
+    preview: 'file'
   },
   {
     name: 'list_dir',
@@ -39,7 +40,8 @@ export const TOOL_META = [
     icon: 'download',
     source: 'local',
     desc: '把网络文件下载到会话目录，单文件上限 100 MB。',
-    params: ['url', 'file_name']
+    params: ['url', 'file_name'],
+    preview: 'file'
   },
   {
     name: 'web_search',
@@ -57,7 +59,8 @@ export const TOOL_META = [
     icon: 'globe',
     source: 'local',
     desc: '批量抓取 URL 内容并转为可读文本，单页截断 50000 字符，带 15 分钟缓存。',
-    params: ['urls']
+    params: ['urls'],
+    preview: 'web'
   },
   {
     name: 'todo_write',

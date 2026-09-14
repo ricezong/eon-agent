@@ -1,7 +1,7 @@
 package cn.kong.eon.runtime.cache;
 
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.web.exception.SessionBusyException;
+import cn.kong.eon.web.exception.ApiException;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import jakarta.annotation.PreDestroy;
@@ -38,7 +38,7 @@ public class SessionRegistry {
      * 获取会话上下文并占用它（IDLE → RUNNING）。
      *
      * @param resumed true = 续接已有会话（需加载快照）；false = 本次新建
-     * @throws SessionBusyException 已有任务在执行且 busyPolicy=REJECT
+     * @throws ApiException 已有任务在执行且 busyPolicy=REJECT
      */
     public SessionScope acquire(String sessionId, boolean resumed) {
         SessionScope scope = cache.get(sessionId, k -> loader.load(k, resumed));
@@ -52,20 +52,20 @@ public class SessionRegistry {
             try {
                 if (!scope.runLock().tryLock(queueTimeoutSeconds(), TimeUnit.SECONDS)) {
                     log.warn("会话 {} 排队等待超时（{}s），按 busy 处理", sessionId, queueTimeoutSeconds());
-                    throw new SessionBusyException(sessionId);
+                    throw ApiException.sessionBusy(sessionId);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw new SessionBusyException(sessionId);
+                throw ApiException.sessionBusy(sessionId);
             }
             if (!scope.tryAcquire()) {
                 scope.runLock().unlock();
-                throw new SessionBusyException(sessionId);
+                throw ApiException.sessionBusy(sessionId);
             }
             return scope;
         }
 
-        throw new SessionBusyException(sessionId);
+        throw ApiException.sessionBusy(sessionId);
     }
 
     /** 归还会话上下文（RUNNING → IDLE）并刷新 TTL。 */

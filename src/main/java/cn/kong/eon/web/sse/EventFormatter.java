@@ -66,6 +66,25 @@ public class EventFormatter implements AgentEventVisitor<Map<String, Object>> {
     }
 
     @Override
+    public Map<String, Object> visitToolDelta(AgentToolDelta e) {
+        Map<String, Object> data = base(e);
+        data.put("turn_id", e.turnId());
+        data.put("index", e.index());
+        data.put("tool_use_id", e.toolUseId());
+        data.put("name", e.name());
+        if (e.delta() != null) data.put("delta", e.delta());
+        return data;
+    }
+
+    @Override
+    public Map<String, Object> visitHook(AgentHook e) {
+        Map<String, Object> data = base(e);
+        data.put("turn_id", e.turnId());
+        data.put("hook", e.hook());
+        return data;
+    }
+
+    @Override
     public Map<String, Object> visitToolResult(AgentToolResult e) {
         Map<String, Object> data = base(e);
         data.put("turn_id", e.turnId());
