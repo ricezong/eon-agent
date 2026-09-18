@@ -1,0 +1,120 @@
+package cn.kong.eon.tool.builtin;
+
+import cn.kong.eon.tool.ToolPermission;
+import cn.kong.eon.tool.ToolRuntime;
+import cn.kong.eon.tool.ToolDescriptor;
+import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.tool.ToolResult;
+import cn.kong.eon.tool.PathResolver;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import cn.kong.eon.tool.model.ToolResultView;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
+
+/**
+ * list_dir 工具：列出目录内容，不显示隐藏文件。
+ */
+public class ListDirTool implements ToolExecutor {
+    private static final Logger log = LoggerFactory.getLogger(ListDirTool.class);
+
+    @Override
+    public ToolResult execute(Map<String, Object> arguments, ToolRuntime runtime) {
+        String targetDir = (String) arguments.get("target_directory");
+        boolean defaulted = targetDir == null || targetDir.isBlank();
+        if (defaulted) {
+            targetDir = ".";
+        }
+
+        PathResolver resolver = runtime.pathResolver();
+        Path dirPath;
+        try {
+            dirPath = resolver.resolve(targetDir);
+        } catch (IllegalArgumentException e) {
+            return ToolResult.failure("路径解析失败: " + e.getMessage());
+        }
+
+        if (!Files.exists(dirPath)) {
+            return ToolResult.failure("目录不存在: " + targetDir);
+        }
+        if (!Files.isDirectory(dirPath)) {
+            return ToolResult.failure("不是目录: " + targetDir);
+        }
+
+        try (Stream<Path> stream = Files.list(dirPath)) {
+            List<Path> entries = stream
+                    .filter(p -> !isDotFile(p))
+                    .sorted()
+                    .toList();
+
+            List<ToolResultView.DirEntry> dirEntries = new ArrayList<>();
+            StringBuilder sb = new StringBuilder();
+            sb.append("目录内容 ").append(dirPath).append(":\n\n");
+
+            for (Path entry : entries) {
+                String name = entry.getFileName().toString();
+                boolean isDir = Files.isDirectory(entry);
+                if (isDir) {
+                    sb.append("[目录]  ").append(name).append("/\n");
+                    dirEntries.add(ToolResultView.DirEntry.dir(name));
+                } else {
+                    long size = Files.size(entry);
+                    String sizeStr = formatSize(size);
+                    sb.append("[文件] ").append(name).append(" (").append(sizeStr).append(")\n");
+                    dirEntries.add(ToolResultView.DirEntry.file(name, sizeStr));
+                }
+            }
+
+            if (entries.isEmpty()) {
+                sb.append("（空目录）\n");
+            }
+
+            sb.append("\n").append(entries.size()).append(" 个条目");
+            log.info("list_dir: {} ({} 个条目)", dirPath, entries.size());
+
+            return ToolResult.success(sb.toString(),
+                    ToolResultView.dirList(dirPath.toString(), dirEntries));
+
+        } catch (IOException e) {
+            log.error("list_dir 失败: {}", e.getMessage());
+            return ToolResult.failure("列出目录失败: " + e.getMessage());
+        }
+    }
+
+    /** 判断是否为隐藏文件（以 . 开头）。 */
+    private boolean isDotFile(Path p) {
+        String name = p.getFileName().toString();
+        return name.startsWith(".");
+    }
+
+    /** 格式化文件大小为可读字符串。 */
+    private String formatSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
+        return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
+    }
+
+    @Tool(name = "list_dir", value = {
+            "浏览目录中的文件和子目录。当用户需要查看某个文件夹里有什么文件时使用此工具。",
+            "返回文件名、类型和大小信息。"
+    })
+    public String listDir(
+            @P(name = "target_directory", description = "要浏览的目录路径。相对于工作目录，不传或为空则浏览工作目录本身。") String target_directory
+    ) {
+        return null;
+    }
+
+    public static ToolDescriptor descriptor() {
+        return ToolDescriptor.fromAnnotated(new ListDirTool(), ToolPermission.READONLY);
+    }
+}

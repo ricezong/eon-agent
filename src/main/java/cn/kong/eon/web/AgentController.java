@@ -1,0 +1,77 @@
+package cn.kong.eon.web;
+
+import cn.kong.eon.web.dto.AnswerRequest;
+import cn.kong.eon.web.dto.ChatRequest;
+import cn.kong.eon.web.dto.InterruptRequest;
+import cn.kong.eon.web.dto.SessionListItem;
+import cn.kong.eon.web.service.ChatService;
+import cn.kong.eon.web.service.SessionService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.util.List;
+import java.util.Map;
+
+/** Agent HTTP/SSE 控制器，纯传输层。 */
+@RestController
+@RequestMapping("/api")
+public class AgentController {
+
+    private static final String USER_ID_HEADER = "X-User-Id";
+    private static final String DEFAULT_USER_ID = "default";
+
+    private final ChatService chatService;
+    private final SessionService sessionService;
+
+    @Autowired
+    public AgentController(ChatService chatService,
+                           SessionService sessionService) {
+        this.chatService = chatService;
+        this.sessionService = sessionService;
+    }
+
+    /** 流式对话，sessionId 为空时自动创建新会话。会话身份由首帧 session.start 交付。 */
+    @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter chat(@RequestBody ChatRequest request,
+                           @RequestHeader(name = USER_ID_HEADER, defaultValue = DEFAULT_USER_ID) String userId) {
+        // 前置校验：否则会先建会话行再报错，留下脏数据
+        if (request.message() == null || request.message().isBlank()) {
+            throw new IllegalArgumentException("输入不能为空。");
+        }
+        return chatService.chat(request, userId);
+    }
+
+    @PostMapping("/interrupt")
+    public Map<String, Object> interrupt(@RequestBody InterruptRequest request) {
+        boolean interrupted = chatService.interrupt(request.sessionId());
+        return Map.of("status", interrupted ? "interrupted" : "no_session");
+    }
+
+    /** 回答 ask_question 的提问。阻塞中的那次工具调用拿到答案后本轮继续执行。 */
+    @PostMapping("/answer")
+    public Map<String, Object> answer(@RequestBody AnswerRequest request) {
+        boolean answered = chatService.answer(request.sessionId(), request.toAnswer());
+        return Map.of("status", answered ? "answered" : "no_pending");
+    }
+
+    @GetMapping("/sessions")
+    public List<SessionListItem> listSessions(
+            @RequestHeader(name = USER_ID_HEADER, defaultValue = DEFAULT_USER_ID) String userId) {
+        return sessionService.listSessions(userId);
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public Map<String, Object> deleteSession(@PathVariable String sessionId,
+            @RequestHeader(name = USER_ID_HEADER, defaultValue = DEFAULT_USER_ID) String userId) {
+        boolean deleted = sessionService.deleteSession(userId, sessionId);
+        return Map.of("status", deleted ? "deleted" : "not_found", "session_id", sessionId);
+    }
+
+    /** 回放账本事件。 */
+    @GetMapping("/sessions/{sessionId}")
+    public List<Map<String, Object>> getSession(@PathVariable String sessionId) {
+        return sessionService.getSessionEvents(sessionId);
+    }
+}

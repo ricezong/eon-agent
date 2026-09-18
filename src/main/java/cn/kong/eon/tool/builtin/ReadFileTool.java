@@ -1,0 +1,145 @@
+package cn.kong.eon.tool.builtin;
+
+import cn.kong.eon.tool.ToolPermission;
+import cn.kong.eon.tool.ToolRuntime;
+import cn.kong.eon.tool.ToolDescriptor;
+import cn.kong.eon.tool.ToolExecutor;
+import cn.kong.eon.tool.ToolResult;
+import cn.kong.eon.tool.PathResolver;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+
+/**
+ * read_file 工具：读取本地文件内容，支持 offset/limit 分段读取。
+ */
+public class ReadFileTool implements ToolExecutor {
+    private static final Logger log = LoggerFactory.getLogger(ReadFileTool.class);
+
+    private static final int DEFAULT_LIMIT = 2000;
+
+    private static final String ARTIFACT_PREFIX = "artifact://";
+
+    @Override
+    public ToolResult execute(Map<String, Object> arguments, ToolRuntime runtime) {
+        String targetFile = (String) arguments.get("target_file");
+        if (targetFile == null || targetFile.isBlank()) {
+            return ToolResult.failure("缺少 'target_file' 参数");
+        }
+
+        Integer offset = arguments.containsKey("offset") ? (Integer) arguments.get("offset") : null;
+        Integer limit = arguments.containsKey("limit") ? (Integer) arguments.get("limit") : null;
+
+        // artifact:// 引用：从 ArtifactStore 读取后分页返回，避免全文一次性进入上下文
+        if (targetFile.startsWith(ARTIFACT_PREFIX)) {
+            String refId = targetFile.substring(ARTIFACT_PREFIX.length()).trim();
+            String content = runtime.artifactStore().readContent(refId);
+            if (content == null) {
+                return ToolResult.failure("找不到 artifact 引用: " + refId);
+            }
+            log.info("read_file: artifact://{} ({} 字符)", refId, content.length());
+            return paginate(content, offset, limit, refId);
+        }
+
+        PathResolver resolver = runtime.pathResolver();
+        Path filePath;
+        try {
+            filePath = resolver.resolve(targetFile);
+        } catch (IllegalArgumentException e) {
+            return ToolResult.failure("路径解析失败: " + e.getMessage());
+        }
+
+        if (!Files.exists(filePath)) {
+            return ToolResult.failure("文件不存在: " + targetFile);
+        }
+        if (!Files.isRegularFile(filePath)) {
+            return ToolResult.failure("不是普通文件: " + targetFile);
+        }
+
+        try {
+            String content = Files.readString(filePath);
+            log.info("read_file: {} ({} 字符)", targetFile, content.length());
+            return paginate(content, offset, limit);
+        } catch (IOException e) {
+            log.error("read_file 失败: {}", e.getMessage());
+            return ToolResult.failure("读取文件失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 行分页：offset 从 1 开始，limit 上限 DEFAULT_LIMIT。截断时附带页脚提示。
+     */
+        ToolResult paginate(String content, Integer offset, Integer limit) {
+        return paginate(content, offset, limit, null);
+    }
+
+    /**
+     * 行分页：offset 从 1 开始，limit 上限 DEFAULT_LIMIT。截断时附带页脚提示。
+     * artifactId 非空时，structuredContent 为 artifact 类型，前端可点击展开原文。
+     */
+    private ToolResult paginate(String content, Integer offset, Integer limit, String artifactId) {
+        String[] lines = content.split("\n", -1);
+        int totalLines = lines.length;
+
+        if (totalLines == 1 && lines[0].isEmpty()) {
+            if (artifactId != null) {
+                return ToolResult.successArtifact("内容为空。", artifactId);
+            }
+            return ToolResult.success("内容为空。");
+        }
+
+        int startLine = offset != null ? Math.max(offset, 1) : 1;
+        int maxLines = limit != null ? Math.min(limit, DEFAULT_LIMIT) : DEFAULT_LIMIT;
+        int endLine = Math.min(startLine - 1 + maxLines, totalLines);
+
+        if (startLine > totalLines) {
+            log.info("read_file: offset {} 超出总行数 {}", startLine, totalLines);
+            String msg = "起始行 " + startLine + " 超出总行数（共 " + totalLines + " 行）。";
+            if (artifactId != null) {
+                return ToolResult.successArtifact(msg, artifactId);
+            }
+            return ToolResult.success(msg);
+        }
+
+        int count = endLine - startLine + 1;
+        String[] subset = new String[count];
+        System.arraycopy(lines, startLine - 1, subset, 0, count);
+        String result = String.join("\n", subset);
+
+        if (endLine < totalLines) {
+            result += "\n\n(共 " + totalLines + " 行，已显示第 " + startLine + "-" + endLine
+                    + " 行，可调整 offset/limit 继续读取)";
+        }
+
+        log.info("read_file: 第 {}-{} 行，共 {} 行", startLine, endLine, totalLines);
+        if (artifactId != null) {
+            return ToolResult.successArtifact(result, artifactId);
+        }
+        return ToolResult.success(result);
+    }
+
+    @Tool(name = "read_file", value = {
+            "读取本地文件的内容。当用户需要查看文件、文档或笔记时使用此工具。",
+            "对于较长的文件，可以通过 offset 和 limit 参数分段读取。",
+            "如果文件不存在或无法读取，会返回错误信息。",
+            "也支持读取 artifact:// 引用（工具结果过长时系统会自动生成此类引用），",
+            "且同样支持 offset/limit 分页；内容较大时请分段读取，不要期望一次拿到全部。"
+    })
+    public String readFile(
+            @P(name = "target_file", description = "要读取的文件路径（相对于工作目录，可直接传文件名），或 artifact://tool-result_00042 形式的引用。") String target_file,
+            @P(name = "offset", description = "从第几行开始读取（从 1 开始计数）。不指定则从头读取。", required = false) Integer offset,
+            @P(name = "limit", description = "最多读取多少行。不指定则按默认上限读取。", required = false) Integer limit
+    ) {
+        return null;
+    }
+
+    public static ToolDescriptor descriptor() {
+        return ToolDescriptor.fromAnnotated(new ReadFileTool(), ToolPermission.READONLY);
+    }
+}

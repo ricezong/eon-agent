@@ -1,0 +1,17 @@
+package cn.kong.eon.llm;
+
+import dev.langchain4j.data.message.AiMessage;
+
+/**
+ * LLM 响应封装。
+ */
+public record LlmResponse(
+        AiMessage aiMessage,
+        TokenUsage usage,
+        String finishReason
+) {
+    /** 创建实例。 */
+    public static LlmResponse of(AiMessage aiMessage, TokenUsage usage, String finishReason) {
+        return new LlmResponse(aiMessage, usage, finishReason);
+    }
+}
