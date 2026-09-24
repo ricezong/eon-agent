@@ -1,7 +1,7 @@
 package cn.kong.eon.runtime.cache;
 
 import cn.kong.eon.config.AgentConfig;
-import cn.kong.eon.web.exception.ApiException;
+import cn.kong.eon.api.exception.ApiException;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import jakarta.annotation.PreDestroy;

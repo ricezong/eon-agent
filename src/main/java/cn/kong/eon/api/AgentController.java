@@ -1,11 +1,11 @@
-package cn.kong.eon.web;
+package cn.kong.eon.api;
 
-import cn.kong.eon.web.dto.AnswerRequest;
-import cn.kong.eon.web.dto.ChatRequest;
-import cn.kong.eon.web.dto.InterruptRequest;
-import cn.kong.eon.web.dto.SessionListItem;
-import cn.kong.eon.web.service.ChatService;
-import cn.kong.eon.web.service.SessionService;
+import cn.kong.eon.api.dto.AnswerRequest;
+import cn.kong.eon.api.dto.ChatRequest;
+import cn.kong.eon.api.dto.InterruptRequest;
+import cn.kong.eon.api.dto.SessionListItem;
+import cn.kong.eon.api.service.ChatService;
+import cn.kong.eon.api.service.SessionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;

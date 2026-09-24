@@ -1,4 +1,4 @@
-package cn.kong.eon.web.exception;
+package cn.kong.eon.api.exception;
 
 import org.springframework.http.HttpStatus;
 

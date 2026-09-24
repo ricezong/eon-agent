@@ -1,4 +1,4 @@
-package cn.kong.eon.web.dto;
+package cn.kong.eon.api.dto;
 
 /**
  * 会话工作区内文件的元信息。

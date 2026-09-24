@@ -1,4 +1,4 @@
-package cn.kong.eon.web.dto;
+package cn.kong.eon.api.dto;
 
 /**
  * 文件文本预览结果。

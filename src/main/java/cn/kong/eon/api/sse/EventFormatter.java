@@ -1,4 +1,4 @@
-package cn.kong.eon.web.sse;
+package cn.kong.eon.api.sse;
 
 import cn.kong.eon.event.*;
 import org.springframework.stereotype.Component;

@@ -1,4 +1,4 @@
-package cn.kong.eon.web.dto;
+package cn.kong.eon.api.dto;
 
 /**
  * 对话请求。用户标识由 {@code X-User-Id} 请求头承载，不在请求体里重复。

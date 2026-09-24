@@ -16,7 +16,7 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * 提问网关：ask_question 阻塞等答案的落点。一次会话同时最多一个待回答的问题，
- * 工具线程阻塞在 {@link #ask} 上，答案由 web 层投递。
+ * 工具线程阻塞在 {@link #ask} 上，答案由 api 层投递。
  */
 @Component
 public class InteractionGateway {

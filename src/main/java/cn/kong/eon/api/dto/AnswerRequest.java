@@ -1,4 +1,4 @@
-package cn.kong.eon.web.dto;
+package cn.kong.eon.api.dto;
 
 import cn.kong.eon.tool.InteractionAnswer;
 

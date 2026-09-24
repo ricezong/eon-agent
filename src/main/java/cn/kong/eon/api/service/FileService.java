@@ -1,10 +1,10 @@
-package cn.kong.eon.web.service;
+package cn.kong.eon.api.service;
 
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.tool.PathResolver;
-import cn.kong.eon.web.dto.FileContent;
-import cn.kong.eon.web.dto.FileMeta;
-import cn.kong.eon.web.exception.ApiException;
+import cn.kong.eon.api.dto.FileContent;
+import cn.kong.eon.api.dto.FileMeta;
+import cn.kong.eon.api.exception.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

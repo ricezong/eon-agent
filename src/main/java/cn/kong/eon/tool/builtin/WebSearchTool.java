@@ -119,7 +119,7 @@ public class WebSearchTool implements ToolExecutor {
 
         ArrayNode resourceTypeFilter = body.putArray("resource_type_filter");
         ObjectNode webFilter = resourceTypeFilter.addObject();
-        webFilter.put("type", "web");
+        webFilter.put("type", "api");
         webFilter.put("top_k", topK);
 
         if (siteFilter != null && !siteFilter.isBlank()) {
@@ -195,7 +195,7 @@ public class WebSearchTool implements ToolExecutor {
             String url = ref.path("url").asText("");
             String content = ref.path("content").asText("");
             String date = ref.path("date").asText("");
-            String type = ref.path("type").asText("web");
+            String type = ref.path("type").asText("api");
 
             sb.append(count).append(". ").append(title).append("\n");
             sb.append("   URL: ").append(url).append("\n");

@@ -1,4 +1,4 @@
-package cn.kong.eon.web.dto;
+package cn.kong.eon.api.dto;
 
 /** 会话列表项。 */
 public record SessionListItem(

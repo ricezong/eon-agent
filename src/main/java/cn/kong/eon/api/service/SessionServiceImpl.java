@@ -1,4 +1,4 @@
-package cn.kong.eon.web.service;
+package cn.kong.eon.api.service;
 
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.event.AgentEvent;
@@ -10,8 +10,8 @@ import cn.kong.eon.store.ledger.LedgerReplayer;
 import cn.kong.eon.store.snapshot.SessionSnapshot;
 import cn.kong.eon.store.snapshot.SessionSnapshotStore;
 import cn.kong.eon.store.todo.TodoItem;
-import cn.kong.eon.web.dto.SessionListItem;
-import cn.kong.eon.web.sse.EventFormatter;
+import cn.kong.eon.api.dto.SessionListItem;
+import cn.kong.eon.api.sse.EventFormatter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

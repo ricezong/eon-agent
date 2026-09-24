@@ -1,7 +1,7 @@
-package cn.kong.eon.web.service;
+package cn.kong.eon.api.service;
 
 import cn.kong.eon.tool.InteractionAnswer;
-import cn.kong.eon.web.dto.ChatRequest;
+import cn.kong.eon.api.dto.ChatRequest;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /** 对话编排服务。负责会话身份解析（新建/续接）与引擎执行。 */

@@ -1,4 +1,4 @@
-package cn.kong.eon.web.service;
+package cn.kong.eon.api.service;
 
 import cn.kong.eon.config.AgentConfig;
 import cn.kong.eon.engine.AgentEngine;
@@ -11,10 +11,10 @@ import cn.kong.eon.runtime.cache.SessionScope;
 import cn.kong.eon.store.index.SessionIndexStore;
 import cn.kong.eon.store.index.SessionMeta;
 import cn.kong.eon.tool.InteractionAnswer;
-import cn.kong.eon.web.dto.ChatRequest;
-import cn.kong.eon.web.exception.ApiException;
-import cn.kong.eon.web.sse.EventFormatter;
-import cn.kong.eon.web.sse.SseEventListener;
+import cn.kong.eon.api.dto.ChatRequest;
+import cn.kong.eon.api.exception.ApiException;
+import cn.kong.eon.api.sse.EventFormatter;
+import cn.kong.eon.api.sse.SseEventListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

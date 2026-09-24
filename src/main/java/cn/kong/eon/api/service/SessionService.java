@@ -1,6 +1,6 @@
-package cn.kong.eon.web.service;
+package cn.kong.eon.api.service;
 
-import cn.kong.eon.web.dto.SessionListItem;
+import cn.kong.eon.api.dto.SessionListItem;
 
 import java.util.List;
 import java.util.Map;

@@ -1,8 +1,8 @@
-package cn.kong.eon.web;
+package cn.kong.eon.api;
 
-import cn.kong.eon.web.dto.FileContent;
-import cn.kong.eon.web.dto.FileMeta;
-import cn.kong.eon.web.service.FileService;
+import cn.kong.eon.api.dto.FileContent;
+import cn.kong.eon.api.dto.FileMeta;
+import cn.kong.eon.api.service.FileService;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
